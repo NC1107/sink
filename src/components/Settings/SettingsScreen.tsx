@@ -13,6 +13,15 @@ interface DefaultDevices {
   input: string | null;
 }
 
+interface HeadsetStatus {
+  enabled: boolean;
+  tool_installed: boolean;
+  device_present: boolean;
+  connected: boolean;
+  model: string | null;
+  message: string | null;
+}
+
 type LabelStyle = "plain" | "suffix" | "prefix";
 
 const LABEL_STYLES: { value: LabelStyle; label: string; example: string }[] = [
@@ -85,6 +94,7 @@ export function SettingsScreen() {
   const [labelStyle, setLabelStyle] = useState<LabelStyle>("plain");
   const [labelStyleOpen, setLabelStyleOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [headset, setHeadset] = useState<HeadsetStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const outputDevices = useMixerStore((s) => s.outputDevices);
   const inputDevices = useMixerStore((s) => s.inputDevices);
@@ -102,8 +112,20 @@ export function SettingsScreen() {
         setStartMinimized(p.start_minimized);
       })
       .catch(() => {});
+    void invoke<HeadsetStatus>("get_headset_status").then(setHeadset).catch(() => {});
     void getVersion().then(setVersion);
   }, []);
+
+  const toggleHeadset = async () => {
+    const next = !(headset?.enabled ?? false);
+    try {
+      const status = await invoke<HeadsetStatus>("set_headset_detection", { enabled: next });
+      setHeadset(status);
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const pickDefault = async (kind: "output" | "input", name: string) => {
     try {
@@ -239,6 +261,20 @@ export function SettingsScreen() {
               />
             </div>
           )}
+          <div className="row">
+            <div className="ricon">
+              <Ms name="headset_mic" />
+            </div>
+            <div className="rmain">
+              <div className="rtitle">SteelSeries headset detection</div>
+              <div className="rsub">
+                {headset?.enabled && headset.message
+                  ? headset.message
+                  : "Move audio to your speakers when a SteelSeries headset powers off but its dongle keeps the sink alive (needs headsetcontrol)"}
+              </div>
+            </div>
+            <Toggle on={headset?.enabled ?? false} onClick={() => void toggleHeadset()} />
+          </div>
         </div>
 
         <div className="section-label">About</div>

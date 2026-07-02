@@ -39,6 +39,10 @@ pub struct Prefs {
     /// showing the window (only meaningful with autostart enabled).
     #[serde(default)]
     pub start_minimized: bool,
+    /// Opt-in: poll `headsetcontrol` and move audio off a SteelSeries headset
+    /// to the speakers when it powers off (its dongle keeps the sink alive).
+    #[serde(default)]
+    pub headset_detection: bool,
 }
 
 fn default_true() -> bool {
@@ -54,6 +58,7 @@ impl Default for Prefs {
             balance_b: None,
             show_balance: true,
             start_minimized: false,
+            headset_detection: false,
         }
     }
 }

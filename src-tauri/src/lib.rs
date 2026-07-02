@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod error;
+mod headset;
 mod mixer;
 mod persistence;
 mod state;
@@ -92,6 +93,8 @@ pub fn run() {
             commands::settings::set_balance_channels,
             commands::settings::set_balance_visible,
             commands::settings::set_start_minimized,
+            commands::settings::get_headset_status,
+            commands::settings::set_headset_detection,
             commands::settings::reset_app,
         ])
         .setup(move |app| {
@@ -106,6 +109,15 @@ pub fn run() {
             }
             if let Some(levels) = levels {
                 spawn_level_emitter(app.handle().clone(), levels);
+            }
+            // Resume opt-in headset detection if it was left enabled.
+            let state = app.state::<AppState>();
+            let headset_on = state
+                .lock_mixer()
+                .map(|m| m.prefs.headset_detection)
+                .unwrap_or(false);
+            if headset_on {
+                state.headset.start(state.backend.clone());
             }
             Ok(())
         })

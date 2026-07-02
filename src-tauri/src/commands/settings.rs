@@ -1,6 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 
+use crate::headset::HeadsetStatus;
 use crate::persistence::autostart;
 use crate::persistence::prefs::{DeviceLabelStyle, Prefs};
 use crate::state::AppState;
@@ -70,6 +71,34 @@ pub fn set_start_minimized(state: State<'_, AppState>, minimized: bool) -> Resul
         autostart::enable().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Current SteelSeries headset-detection status for the settings UI (installed?
+/// supported device present? headset on/off?).
+#[tauri::command]
+pub fn get_headset_status(state: State<'_, AppState>) -> HeadsetStatus {
+    state.headset.status()
+}
+
+/// Turn opt-in SteelSeries headset-off detection on or off. Persists the
+/// preference and starts/stops the polling monitor.
+#[tauri::command]
+pub fn set_headset_detection(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<HeadsetStatus, String> {
+    let prefs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer.prefs.headset_detection = enabled;
+        mixer.prefs.clone()
+    };
+    prefs.save().map_err(|e| e.to_string())?;
+    if enabled {
+        state.headset.start(state.backend.clone());
+    } else {
+        state.headset.stop();
+    }
+    Ok(state.headset.status())
 }
 
 /// Show or hide the title-bar balance slider.

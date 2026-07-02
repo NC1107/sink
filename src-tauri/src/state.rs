@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::audio::backend::AudioBackend;
+use crate::headset::HeadsetMonitor;
 use crate::mixer::state::MixerState;
 
 /// Application state managed by Tauri and shared across commands and the tray.
@@ -9,6 +10,8 @@ pub struct AppState {
     /// True when the native PipeWire backend is driving (vs pactl fallback).
     pub backend_native: bool,
     pub mixer: Mutex<MixerState>,
+    /// Opt-in SteelSeries headset-off detector (idle until the setting is on).
+    pub headset: HeadsetMonitor,
 }
 
 impl AppState {
@@ -49,6 +52,7 @@ impl AppState {
             backend,
             backend_native,
             mixer: Mutex::new(mixer),
+            headset: HeadsetMonitor::new(),
         }
     }
 
