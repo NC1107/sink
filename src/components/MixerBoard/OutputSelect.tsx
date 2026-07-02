@@ -24,6 +24,8 @@ interface OutputSelectProps {
   /** Compact footer style (channel strip) vs pill style (mixer top bar). */
   compact?: boolean;
   popoverStyle?: CSSProperties;
+  /** Tooltip for the pill (mixer top bar); compact builds its own. */
+  title?: string;
 }
 
 function deviceIcon(description: string): string {
@@ -43,6 +45,7 @@ export function OutputSelect({
   onChange,
   compact,
   popoverStyle,
+  title,
 }: OutputSelectProps) {
   const [open, setOpen] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
@@ -140,7 +143,7 @@ export function OutputSelect({
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="out-pill" onClick={() => setOpen((o) => !o)}>
+      <button className="out-pill" onClick={() => setOpen((o) => !o)} title={title ?? label}>
         <Ms name={shown ? deviceIcon(shown.description) : "speaker_group"} />
         <span>{label}</span>
         <Ms name="expand_more" className="chev" />

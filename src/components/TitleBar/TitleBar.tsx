@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useMixerStore } from "../../store/mixer";
 import { Ms, SinkMark } from "../Icons";
 import { BalanceBar } from "../MixerBoard/BalanceBar";
+import { MasterOutput } from "./MasterOutput";
 import { ProfileMenu } from "./ProfileMenu";
 
 /**
@@ -31,6 +32,7 @@ export function TitleBar({ screen }: { screen: string }) {
       </div>
       <div data-tauri-drag-region className="hb-spacer" />
       <BalanceBar />
+      {screen === "Mixer" && <MasterOutput />}
       <ProfileMenu />
       <div className={"hb-status" + (error ? " err" : "")}>
         <span className="dot" />
