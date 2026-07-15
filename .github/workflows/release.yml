@@ -276,3 +276,45 @@ jobs:
           else
             echo "::warning::AUR publish failed for sink-bin ${VER}. The .pkg.tar.zst is on the release; push packaging/arch/PKGBUILD to ssh://aur@aur.archlinux.org/sink-bin.git manually."
           fi
+
+  copr:
+    name: Fedora COPR
+    # Stable releases only - never the rolling dev prerelease. Best effort:
+    # the .rpm is already on the release, so a COPR failure only warns.
+    needs: build
+    if: needs.build.outputs.prerelease == 'false'
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install tooling
+        run: dnf -y install git copr-cli rpm-build rpmdevtools binutils tar gzip >/dev/null
+
+      - uses: actions/checkout@v5
+
+      - name: Publish sink to COPR
+        env:
+          VER: ${{ needs.build.outputs.version }}
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          set -uo pipefail
+          if [ -z "${COPR_CONFIG:-}" ]; then
+            echo "::warning::COPR_CONFIG secret is not set - skipping COPR publish"
+            exit 0
+          fi
+          mkdir -p ~/.config
+          printf '%s\n' "$COPR_CONFIG" > ~/.config/copr
+          chmod 600 ~/.config/copr
+          rpmdev-setuptree
+          # Stamp the release version into the repo spec, then embed the release
+          # .deb into the SRPM here (COPR's build root has no network, so the
+          # source must travel inside the SRPM).
+          cp packaging/fedora/sink.spec ~/rpmbuild/SPECS/sink.spec
+          sed -i "s/^Version:.*/Version:        ${VER}/" ~/rpmbuild/SPECS/sink.spec
+          spectool -g -R ~/rpmbuild/SPECS/sink.spec
+          rpmbuild -bs ~/rpmbuild/SPECS/sink.spec >/dev/null
+          srpm=$(ls ~/rpmbuild/SRPMS/sink-*.src.rpm)
+          if copr-cli build nc1107/sink "$srpm" --nowait; then
+            echo "submitted sink ${VER} to COPR (nc1107/sink)"
+          else
+            echo "::warning::COPR submit failed for sink ${VER}. The .rpm is on the release; rebuild manually with 'copr-cli build nc1107/sink <srpm>' from packaging/fedora/sink.spec."
+          fi
