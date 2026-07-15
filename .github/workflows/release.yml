@@ -28,11 +28,11 @@ jobs:
       tag: ${{ steps.ver.outputs.tag }}
       prerelease: ${{ steps.ver.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -42,7 +42,7 @@ jobs:
           toolchain: stable
           components: clippy
 
-      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2.9.1
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.9.1
         with:
           workspaces: .
 
@@ -185,7 +185,7 @@ jobs:
       - name: Install build tooling
         run: pacman -Syu --noconfirm --needed base-devel git github-cli
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Build and attach sink-bin
         env:
@@ -289,7 +289,7 @@ jobs:
       - name: Install tooling
         run: dnf -y install git copr-cli rpm-build rpmdevtools binutils tar gzip >/dev/null
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Publish sink to COPR
         env:
