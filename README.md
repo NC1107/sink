@@ -39,7 +39,24 @@ processed virtual microphone for voice chat.
 
 ## Install
 
-Grab the latest from [Releases](https://github.com/NC1107/sink/releases).
+**Arch / Manjaro / EndeavourOS** - from the [AUR](https://aur.archlinux.org/packages/sink-bin):
+
+```bash
+yay -S sink-bin      # or: paru -S sink-bin
+```
+
+**Fedora** - from [COPR](https://copr.fedorainfracloud.org/coprs/nc1107/sink/):
+
+```bash
+sudo dnf copr enable nc1107/sink
+sudo dnf install sink
+```
+
+Both track new releases, so you update through your package manager like any
+other package.
+
+Otherwise, grab the latest from [Releases](https://github.com/NC1107/sink/releases)
+and install the file directly:
 
 **Fedora / openSUSE**
 
@@ -59,10 +76,10 @@ sudo apt install ./sink_*_amd64.deb
 sudo pacman -U ./sink-bin-*-x86_64.pkg.tar.zst
 ```
 
-All three install the app properly — launcher entry, icon, uninstall
+These install the app properly - launcher entry, icon, uninstall
 through your package manager.
 
-**Any other distro — AppImage (portable, no root)**
+**Any other distro - AppImage (portable, no root)**
 
 ```bash
 chmod +x sink_*_amd64.AppImage

@@ -227,3 +227,94 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir /tmp 2>/dev/null || true
           echo "$(sha256sum "$pkg" | cut -d' ' -f1)  $(basename "$pkg")" >> /tmp/SHA256SUMS
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber /tmp/SHA256SUMS
+
+      - name: Publish sink-bin to the AUR
+        # Stable releases only - never the rolling dev prerelease. Best effort:
+        # the .pkg.tar.zst is already on the release, so an AUR failure here
+        # must not fail the run (it surfaces as a warning instead).
+        if: needs.build.outputs.prerelease == 'false'
+        env:
+          VER: ${{ needs.build.outputs.version }}
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          set -uo pipefail
+          if [ -z "${AUR_SSH_KEY:-}" ]; then
+            echo "::warning::AUR_SSH_KEY secret is not set - skipping AUR publish"
+            exit 0
+          fi
+          # Reuse the stamped, smoke-tested PKGBUILD from the step above; it is
+          # exactly what should land on the AUR. Push as the builder user so
+          # makepkg (root-averse) can regenerate .SRCINFO in the same tree.
+          install -d -m 700 /home/builder/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" > /home/builder/.ssh/id_aur
+          chmod 600 /home/builder/.ssh/id_aur
+          {
+            echo 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN'
+            echo 'aur.archlinux.org ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBLMiLrP8pVi5BFX2i3vepSUnpedeiewE5XptnUnau+ZoeUOPkpoCgZZuYfpaIQfhhJJI5qgnjJmr4hyJbe/zxow='
+            echo 'aur.archlinux.org ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDKF9vAFWdgm9Bi8uc+tYRBmXASBb5cB5iZsB7LOWWFeBrLp3r14w0/9S2vozjgqY5sJLDPONWoTTaVTbhe3vwO8CBKZTEt1AcWxuXNlRnk9FliR1/eNB9uz/7y1R0+c1Md+P98AJJSJWKN12nqIDIhjl2S1vOUvm7FNY43fU2knIhEbHybhwWeg+0wxpKwcAd/JeL5i92Uv03MYftOToUijd1pqyVFdJvQFhqD4v3M157jxS5FTOBrccAEjT+zYmFyD8WvKUa9vUclRddNllmBJdy4NyLB8SvVZULUPrP3QOlmzemeKracTlVOUG1wsDbxknF1BwSCU7CmU6UFP90kpWIyz66bP0bl67QAvlIc52Yix7pKJPbw85+zykvnfl2mdROsaT8p8R9nwCdFsBc9IiD0NhPEHcyHRwB8fokXTajk2QnGhL+zP5KnkmXnyQYOCUYo3EKMXIlVOVbPDgRYYT/XqvBuzq5S9rrU70KoI/S5lDnFfx/+lPLdtcnnEPk='
+          } > /home/builder/.ssh/known_hosts
+          chown -R builder:builder /home/builder/.ssh
+          if sudo -u builder env HOME=/home/builder VER="$VER" bash -c '
+            set -e
+            export GIT_SSH_COMMAND="ssh -i /home/builder/.ssh/id_aur -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/builder/.ssh/known_hosts"
+            git config --global user.name "NC1107"
+            git config --global user.email "nickpconn@gmail.com"
+            rm -rf /tmp/aur
+            git clone ssh://aur@aur.archlinux.org/sink-bin.git /tmp/aur
+            cp /build/PKGBUILD /tmp/aur/PKGBUILD
+            cd /tmp/aur
+            makepkg --printsrcinfo > .SRCINFO
+            git add PKGBUILD .SRCINFO
+            if git diff --cached --quiet; then
+              echo "AUR already current for sink-bin ${VER}, nothing to push"
+              exit 0
+            fi
+            git commit -m "upgpkg: sink-bin ${VER}-1"
+            git push
+          '; then
+            echo "sink-bin ${VER} published to the AUR"
+          else
+            echo "::warning::AUR publish failed for sink-bin ${VER}. The .pkg.tar.zst is on the release; push packaging/arch/PKGBUILD to ssh://aur@aur.archlinux.org/sink-bin.git manually."
+          fi
+
+  copr:
+    name: Fedora COPR
+    # Stable releases only - never the rolling dev prerelease. Best effort:
+    # the .rpm is already on the release, so a COPR failure only warns.
+    needs: build
+    if: needs.build.outputs.prerelease == 'false'
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install tooling
+        run: dnf -y install git copr-cli rpm-build rpmdevtools binutils tar gzip >/dev/null
+
+      - uses: actions/checkout@v5
+
+      - name: Publish sink to COPR
+        env:
+          VER: ${{ needs.build.outputs.version }}
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          set -uo pipefail
+          if [ -z "${COPR_CONFIG:-}" ]; then
+            echo "::warning::COPR_CONFIG secret is not set - skipping COPR publish"
+            exit 0
+          fi
+          mkdir -p ~/.config
+          printf '%s\n' "$COPR_CONFIG" > ~/.config/copr
+          chmod 600 ~/.config/copr
+          rpmdev-setuptree
+          # Stamp the release version into the repo spec, then embed the release
+          # .deb into the SRPM here (COPR's build root has no network, so the
+          # source must travel inside the SRPM).
+          cp packaging/fedora/sink.spec ~/rpmbuild/SPECS/sink.spec
+          sed -i "s/^Version:.*/Version:        ${VER}/" ~/rpmbuild/SPECS/sink.spec
+          spectool -g -R ~/rpmbuild/SPECS/sink.spec
+          rpmbuild -bs ~/rpmbuild/SPECS/sink.spec >/dev/null
+          srpm=$(ls ~/rpmbuild/SRPMS/sink-*.src.rpm)
+          if copr-cli build nc1107/sink "$srpm" --nowait; then
+            echo "submitted sink ${VER} to COPR (nc1107/sink)"
+          else
+            echo "::warning::COPR submit failed for sink ${VER}. The .rpm is on the release; rebuild manually with 'copr-cli build nc1107/sink <srpm>' from packaging/fedora/sink.spec."
+          fi
