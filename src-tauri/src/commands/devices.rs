@@ -231,6 +231,7 @@ pub fn init_virtual_devices(
             channels: mixer.channels.clone(),
             assignments: mixer.assignments.clone(),
             outputs: mixer.outputs.clone(),
+            eq: mixer.eq.clone(),
             trigger_device: None,
             buses: mixer.buses.clone(),
         };

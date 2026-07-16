@@ -18,6 +18,7 @@ pub fn autosave_active(mixer: &crate::mixer::state::MixerState) {
         channels: mixer.channels.clone(),
         assignments: mixer.assignments.clone(),
         outputs: mixer.outputs.clone(),
+        eq: mixer.eq.clone(),
         // Preserved from the cache rather than re-read from disk each mutation.
         trigger_device: mixer.active_trigger.clone(),
         buses: mixer.buses.clone(),
@@ -139,6 +140,14 @@ pub fn load_profile(
         {
             eprintln!("sink: profile failover for {} failed: {e}", channel.name);
         }
+        // EQ: non-fatal like output/failover — one channel's insert failing
+        // must not abort the whole profile load.
+        if let Err(e) = state
+            .backend
+            .set_channel_eq(&channel.name, &profile.eq.get(&channel.name))
+        {
+            eprintln!("sink: profile eq for {} failed: {e}", channel.name);
+        }
     }
 
     // ---- mix bus reconciliation ----
@@ -171,7 +180,7 @@ pub fn load_profile(
         }
     }
 
-    let (defs, assignments, outputs) = {
+    let (defs, assignments, outputs, eq) = {
         let mut mixer = state.lock_mixer()?;
         mixer.buses = target_buses.clone();
         mixer.channel_defs = crate::persistence::channels::Channels {
@@ -189,17 +198,20 @@ pub fn load_profile(
         mixer.channels = profile.channels.clone();
         mixer.assignments = profile.assignments.clone();
         mixer.outputs = profile.outputs.clone();
+        mixer.eq = profile.eq.clone();
         mixer.auto_routed.clear();
         (
             mixer.channel_defs.clone(),
             mixer.assignments.clone(),
             mixer.outputs.clone(),
+            mixer.eq.clone(),
         )
     };
 
     defs.save().map_err(|e| e.to_string())?;
     assignments.save().map_err(|e| e.to_string())?;
     outputs.save().map_err(|e| e.to_string())?;
+    eq.save().map_err(|e| e.to_string())?;
     target_buses.save().map_err(|e| e.to_string())?;
     wireplumber::write(&assignments).map_err(|e| e.to_string())?;
     // The loaded profile becomes the live-bound (autosaving) one.
@@ -234,6 +246,7 @@ pub fn create_blank_profile(app: tauri::AppHandle, name: String) -> Result<(), S
         channels,
         assignments: Default::default(),
         outputs: Default::default(),
+        eq: Default::default(),
         trigger_device: None,
         buses: Default::default(),
     };

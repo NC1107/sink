@@ -1,4 +1,4 @@
-use crate::audio::types::{AppStream, MicConfig, OutputDevice};
+use crate::audio::types::{AppStream, EqConfig, MicConfig, OutputDevice};
 use crate::error::SinkError;
 
 /// Abstraction over the underlying audio system.
@@ -41,6 +41,11 @@ pub trait AudioBackend: Send + Sync {
     fn set_channel_failover(&self, _sink_name: &str, _enabled: bool) -> Result<(), SinkError> {
         Ok(())
     }
+
+    /// Apply a channel's parametric EQ (insert/re-tune/remove the biquad
+    /// chain in the channel's output path). Native-only: the pactl fallback
+    /// has no in-graph insert point, mirroring `set_mic_config`.
+    fn set_channel_eq(&self, sink_name: &str, config: &EqConfig) -> Result<(), SinkError>;
 
     /// Per-channel resolved output: the `node.name` of the device each channel
     /// is actually routed to right now, after explicit/default/fallback

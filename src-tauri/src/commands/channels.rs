@@ -164,7 +164,7 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
         .destroy_virtual_sink(&sink_name)
         .map_err(|e| e.to_string())?;
 
-    let (defs, assignments, outputs, buses, names) = {
+    let (defs, assignments, outputs, eq, buses, names) = {
         let mut mixer = state.lock_mixer()?;
         mixer.channels.retain(|c| c.name != sink_name);
         mixer
@@ -172,6 +172,9 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
             .assignments
             .retain(|a| a.sink_name != sink_name);
         mixer.outputs.remove(&sink_name);
+        // The backend's DestroySink already tore down the live insert;
+        // this drops the persisted config with the channel.
+        mixer.eq.remove(&sink_name);
         // Drop the channel from every mix's membership too.
         mixer.buses.remove_channel(&sink_name);
         // Re-evaluate auto-routing with the channel gone.
@@ -181,6 +184,7 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
             mixer.channel_defs.clone(),
             mixer.assignments.clone(),
             mixer.outputs.clone(),
+            mixer.eq.clone(),
             mixer.buses.clone(),
             crate::commands::buses::channel_names(&mixer),
         )
@@ -195,6 +199,7 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
     defs.save().map_err(|e| e.to_string())?;
     assignments.save().map_err(|e| e.to_string())?;
     outputs.save().map_err(|e| e.to_string())?;
+    eq.save().map_err(|e| e.to_string())?;
     buses.save().map_err(|e| e.to_string())?;
     wireplumber::write(&assignments).map_err(|e| e.to_string())?;
     Ok(())

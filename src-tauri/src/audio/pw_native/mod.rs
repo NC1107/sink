@@ -6,6 +6,8 @@
 //! Extras over the pactl backend: real per-sink level metering (`levels`).
 
 mod dsp;
+mod eq;
+mod eq_chain;
 pub mod levels;
 pub mod meter;
 mod mic;
@@ -185,6 +187,16 @@ impl AudioBackend for PipeWireBackend {
     fn set_mic_config(&self, config: &crate::audio::types::MicConfig) -> Result<(), SinkError> {
         let config = config.clone();
         self.request(|reply| Cmd::SetMicConfig { config, reply })
+    }
+
+    fn set_channel_eq(
+        &self,
+        sink_name: &str,
+        config: &crate::audio::types::EqConfig,
+    ) -> Result<(), SinkError> {
+        let sink_name = sink_name.to_string();
+        let config = config.clone();
+        self.request(|reply| Cmd::SetChannelEq { sink_name, config, reply })
     }
 
     fn get_default_devices(&self) -> Result<(Option<String>, Option<String>), SinkError> {

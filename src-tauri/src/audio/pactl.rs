@@ -331,6 +331,16 @@ impl AudioBackend for PactlBackend {
         ))
     }
 
+    fn set_channel_eq(
+        &self,
+        _sink_name: &str,
+        _config: &crate::audio::types::EqConfig,
+    ) -> Result<(), SinkError> {
+        Err(SinkError::Config(
+            "parametric EQ requires the native PipeWire backend".into(),
+        ))
+    }
+
     fn create_bus(&self, _name: &str, _label: &str) -> Result<(), SinkError> {
         Err(SinkError::Config(
             "mix buses require the native PipeWire backend".into(),

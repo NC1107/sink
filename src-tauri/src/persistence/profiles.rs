@@ -18,6 +18,9 @@ pub struct Profile {
     /// Added in Phase 4; default keeps older profile files loadable.
     #[serde(default)]
     pub outputs: crate::persistence::outputs::ChannelOutputs,
+    /// Per-channel parametric EQ; default keeps older profile files loadable.
+    #[serde(default)]
+    pub eq: crate::persistence::eq::ChannelEq,
     /// Phase 5: output device (node.name) whose appearance auto-loads this
     /// profile — Sonar-style hardware profile switching.
     #[serde(default)]

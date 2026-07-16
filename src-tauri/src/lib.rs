@@ -75,6 +75,8 @@ pub fn run() {
             commands::mic::get_mic_config,
             commands::mic::set_mic_config,
             commands::mic::get_input_devices,
+            commands::eq::get_channel_eq_configs,
+            commands::eq::set_channel_eq,
             commands::profiles::list_profiles,
             commands::profiles::load_profile,
             commands::profiles::delete_profile,

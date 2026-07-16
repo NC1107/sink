@@ -20,6 +20,8 @@ pub struct MixerState {
     pub aliases: Aliases,
     /// Per-channel output device choices (persisted to disk).
     pub outputs: crate::persistence::outputs::ChannelOutputs,
+    /// Per-channel parametric EQ configs (persisted to disk).
+    pub eq: crate::persistence::eq::ChannelEq,
     /// Mic chain configuration (persisted to disk).
     pub mic: crate::audio::types::MicConfig,
     /// Every app identity ever observed (history + ignore list).

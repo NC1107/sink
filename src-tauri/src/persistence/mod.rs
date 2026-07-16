@@ -4,6 +4,7 @@ pub mod assignments;
 pub mod autostart;
 pub mod buses;
 pub mod channels;
+pub mod eq;
 pub mod mic;
 pub mod outputs;
 pub mod prefs;

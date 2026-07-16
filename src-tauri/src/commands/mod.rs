@@ -2,6 +2,7 @@ pub mod apps;
 pub mod buses;
 pub mod channels;
 pub mod devices;
+pub mod eq;
 pub mod mic;
 pub mod profiles;
 pub mod routing;

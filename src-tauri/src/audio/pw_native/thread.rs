@@ -16,11 +16,12 @@ use pw::registry::{GlobalObject, RegistryRc};
 use pw::spa::utils::dict::DictRef;
 use pw::types::ObjectType;
 
+use crate::audio::pw_native::eq_chain::EqChainHandle;
 use crate::audio::pw_native::levels::LevelStore;
 use crate::audio::pw_native::meter::MeterHandle;
 use crate::audio::pw_native::mic::{MicStreams, MIC_NODE};
 use crate::audio::pw_native::pods;
-use crate::audio::types::{is_virtual_sink, AppStream, MicConfig, OutputDevice};
+use crate::audio::types::{is_virtual_sink, AppStream, EqConfig, MicConfig, OutputDevice};
 use crate::error::SinkError;
 use crate::persistence::buses::is_bus_name;
 
@@ -61,6 +62,8 @@ pub enum Cmd {
     SetMonitor { name: String, enabled: bool, reply: Reply<()> },
     /// Apply mic chain configuration (create/destroy/re-tune as needed).
     SetMicConfig { config: MicConfig, reply: Reply<()> },
+    /// Apply a channel's parametric EQ (create/destroy/re-tune the insert).
+    SetChannelEq { sink_name: String, config: EqConfig, reply: Reply<()> },
     /// Hardware capture devices (microphones).
     ListInputs { reply: Reply<Vec<OutputDevice>> },
     /// Current system defaults: (output sink name, input source name).
@@ -150,6 +153,18 @@ struct State {
     monitor_links: HashMap<String, LinkSet>,
     /// Links from the mic playback stream into the virtual mic.
     mic_links: LinkSet,
+    /// Per-channel EQ configs (source of truth for chain (re)creation —
+    /// kept even while disabled so re-enabling restores the bands).
+    eq_configs: HashMap<String, EqConfig>,
+    /// Live EQ inserts by channel sink name. Presence here *is* "EQ is
+    /// enabled and live"; the channel's outgoing links re-source from the
+    /// insert's playback node.
+    eq_streams: HashMap<String, EqChainHandle>,
+    /// EQ playback node id -> node ids it is allowed to feed. Rebuilt
+    /// wholesale by every `ensure_all_links` pass; the link police destroys
+    /// anything else (WirePlumber routes playback streams to the default
+    /// sink — same leak the mic police exists for).
+    eq_desired_targets: HashMap<u32, std::collections::HashSet<u32>>,
 }
 
 impl State {
@@ -161,6 +176,21 @@ impl State {
             .map(|m| m.playback_node_id())
             .filter(|id| *id != u32::MAX)
     }
+
+    /// Live node id of a channel's EQ playback stream, if the insert is up.
+    fn eq_playback_node(&self, sink_name: &str) -> Option<u32> {
+        self.eq_streams
+            .get(sink_name)
+            .map(|h| h.playback_node_id())
+            .filter(|id| *id != u32::MAX)
+    }
+}
+
+/// The node whose ports feed a channel's downstream links: the EQ insert's
+/// playback stream when one is live, otherwise the channel sink itself.
+/// Pure so the routing decision is unit-testable (like `resolve_target`).
+fn resolve_source(eq_playback: Option<u32>, channel_id: u32) -> u32 {
+    eq_playback.unwrap_or(channel_id)
 }
 
 impl State {
@@ -360,18 +390,11 @@ fn on_global(
                 direction: props.get("port.direction").unwrap_or_default().to_string(),
                 channel: props.get("audio.channel").map(str::to_string),
             };
-            let relevant_links = {
-                let mut s = state.borrow_mut();
-                s.ports.insert(global.id, entry);
-                s.nodes
-                    .get(&node_id)
-                    .is_some_and(|n| n.media_class == SINK_CLASS)
-            };
-            if relevant_links {
-                ensure_all_links(state);
-            }
-            // Mic wiring depends on ports of untracked stream nodes, so
-            // reconcile on every port event (no-op until both ends exist).
+            state.borrow_mut().ports.insert(global.id, entry);
+            // Channel and mic wiring both depend on ports of untracked
+            // stream nodes (EQ/mic playback streams), so reconcile on every
+            // port event — both are idempotent no-ops until both ends exist.
+            ensure_all_links(state);
             ensure_mic_links(state);
         }
         ObjectType::Link => {
@@ -386,12 +409,26 @@ fn on_global(
                     // session-manager fallback) links it somewhere other
                     // than the virtual mic, destroy that link — mic audio
                     // must never leak into the speakers.
-                    match (s.mic_playback_node(), s.node_by_name(MIC_NODE)) {
+                    let mic_stray = match (s.mic_playback_node(), s.node_by_name(MIC_NODE)) {
                         (Some(playback), mic) if out == playback => {
                             mic.map(|n| n.id) != Some(inp)
                         }
                         _ => false,
-                    }
+                    };
+                    // Same policing for EQ playback streams: only the links
+                    // the loop planned (device/buses/monitor) may exist. An
+                    // EQ node with no plan yet (chain just built, first
+                    // reconcile pending) allows nothing — our own links are
+                    // always created after the plan is recorded.
+                    let eq_stray = s
+                        .eq_streams
+                        .values()
+                        .any(|h| h.playback_node_id() == out)
+                        && !s
+                            .eq_desired_targets
+                            .get(&out)
+                            .is_some_and(|allowed| allowed.contains(&inp));
+                    mic_stray || eq_stray
                 };
                 if police {
                     let _ = registry.destroy_global(global.id);
@@ -570,6 +607,20 @@ fn on_node(
                     s.meters.insert(node_name.clone(), meter);
                 }
                 Err(e) => eprintln!("sink: meter for {node_name} failed: {e}"),
+            }
+        }
+        // An enabled EQ config with no live insert: build it against the
+        // fresh sink id. Covers both startup (config loaded before the sink
+        // exists) and the heal path (sink recreated after an external
+        // destroy) with the same hook — like the meter above.
+        if !s.eq_streams.contains_key(&node_name) {
+            if let Some(config) = s.eq_configs.get(&node_name).filter(|c| c.enabled).cloned() {
+                match EqChainHandle::new(core, &node_name, global.id, &config) {
+                    Ok(handle) => {
+                        s.eq_streams.insert(node_name.clone(), handle);
+                    }
+                    Err(e) => eprintln!("sink: eq chain for {node_name} failed: {e}"),
+                }
             }
         }
         drop(s);
@@ -822,12 +873,21 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     // Forget resolved targets for channels that no longer exist.
     s.channel_targets.retain(|name, _| channel_names.contains(name));
 
+    // The link plan for every live EQ insert, rebuilt from scratch each
+    // pass — the link police destroys anything an EQ playback node feeds
+    // that isn't in here.
+    let mut eq_targets: HashMap<u32, std::collections::HashSet<u32>> = HashMap::new();
+
     for sink_name in &channel_names {
         let sink_name = sink_name.as_str();
         let channel_id = match node_ids.get(sink_name) {
             Some(id) => *id,
             None => continue,
         };
+        // With a live EQ insert, every outgoing link (device, buses,
+        // monitor) re-sources from its playback node — one coherent source,
+        // so all listeners hear the same (EQ'd, equally delayed) audio.
+        let source_id = resolve_source(s.eq_playback_node(sink_name), channel_id);
 
         // ---- output device links ----
         let explicit = s.channel_outputs.get(sink_name).cloned().flatten();
@@ -850,8 +910,11 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
                 s.channel_targets.remove(sink_name);
             }
         }
+        if let (Some(t), true) = (target_id, source_id != channel_id) {
+            eq_targets.entry(source_id).or_default().insert(t);
+        }
         let pairs = target_id
-            .map(|t| desired_pairs(&s, channel_id, t))
+            .map(|t| desired_pairs(&s, source_id, t))
             .unwrap_or_default();
         let current: Vec<(u32, u32)> = s
             .channel_links
@@ -864,7 +927,7 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
                 .first()
                 .and_then(|(_, input)| s.ports.get(input).map(|p| p.node_id))
             {
-                let created = create_links(&core, sink_name, channel_id, in_node, &pairs);
+                let created = create_links(&core, sink_name, source_id, in_node, &pairs);
                 if !created.is_empty() {
                     s.channel_links.insert(sink_name.to_string(), created);
                 }
@@ -877,8 +940,11 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
                 .bus_members
                 .get(bus_name)
                 .is_some_and(|members| members.contains(sink_name));
+            if included && source_id != channel_id {
+                eq_targets.entry(source_id).or_default().insert(*bus_id);
+            }
             let pairs = if included {
-                desired_pairs(&s, channel_id, *bus_id)
+                desired_pairs(&s, source_id, *bus_id)
             } else {
                 Vec::new()
             };
@@ -891,7 +957,7 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
             if current != pairs {
                 s.bus_links.remove(&key);
                 if !pairs.is_empty() {
-                    let created = create_links(&core, sink_name, channel_id, *bus_id, &pairs);
+                    let created = create_links(&core, sink_name, source_id, *bus_id, &pairs);
                     if !created.is_empty() {
                         s.bus_links.insert(key, created);
                     }
@@ -908,7 +974,17 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         .copied();
     let monitored: Vec<String> = s.monitored.iter().cloned().collect();
     for name in monitored {
-        let node_id = node_ids.get(&name).copied();
+        // Monitoring an EQ'd channel listens to the insert's output — the
+        // same audio its device/buses hear.
+        let node_id = node_ids
+            .get(&name)
+            .copied()
+            .map(|id| resolve_source(s.eq_playback_node(&name), id));
+        if let (Some(node), Some(default)) = (node_id, default_id) {
+            if node_ids.get(&name).copied() != Some(node) {
+                eq_targets.entry(node).or_default().insert(default);
+            }
+        }
         let mut pairs = match (node_id, default_id) {
             (Some(node), Some(default)) => desired_pairs(&s, node, default),
             _ => Vec::new(),
@@ -939,6 +1015,9 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
             }
         }
     }
+
+    // Publish the EQ link plan for the police (see on_global's Link arm).
+    s.eq_desired_targets = eq_targets;
 }
 
 /// The three virtual node shapes we own (kind 0=channel sink, 1=mix bus,
@@ -1012,6 +1091,10 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             let mut s = state.borrow_mut();
             s.desired.remove(&name);
             s.meters.remove(&name);
+            // Drop the EQ insert before the sink proxy goes away so the
+            // capture stream's target doesn't vanish under it mid-teardown.
+            s.eq_streams.remove(&name);
+            s.eq_configs.remove(&name);
             s.channel_links.remove(&name);
             s.bus_links.retain(|(_, ch), _| ch != &name);
             s.channel_outputs.remove(&name);
@@ -1189,6 +1272,53 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     s.monitor_links.remove(&name);
                 }
             }
+            ensure_all_links(state);
+            let _ = reply.send(Ok(()));
+        }
+        Cmd::SetChannelEq { sink_name, config, reply } => {
+            if !is_virtual_sink(&sink_name) {
+                let _ = reply.send(Err(SinkError::UnknownSink(sink_name)));
+                return;
+            }
+            let (needs_create, needs_destroy) = {
+                let mut s = state.borrow_mut();
+                s.eq_configs.insert(sink_name.clone(), config.clone());
+                // Live re-tune: band edits reach the RT thread through the
+                // params atomics, no relink and no audible gap.
+                if let Some(handle) = s.eq_streams.get(&sink_name) {
+                    handle.params.apply(&config);
+                }
+                let live = s.eq_streams.contains_key(&sink_name);
+                (config.enabled && !live, !config.enabled && live)
+            };
+            if needs_destroy {
+                state.borrow_mut().eq_streams.remove(&sink_name);
+            } else if needs_create {
+                let sink_id = state
+                    .borrow()
+                    .node_by_name(&sink_name)
+                    .map(|n| n.id);
+                if let Some(sink_id) = sink_id {
+                    let Some(core) = CORE.with(|c| c.borrow().clone()) else {
+                        let _ = reply.send(Err(SinkError::Config(
+                            "eq chain requires a live core".into(),
+                        )));
+                        return;
+                    };
+                    match EqChainHandle::new(&core, &sink_name, sink_id, &config) {
+                        Ok(handle) => {
+                            state.borrow_mut().eq_streams.insert(sink_name.clone(), handle);
+                        }
+                        Err(e) => {
+                            let _ = reply.send(Err(e));
+                            return;
+                        }
+                    }
+                }
+                // Sink not live yet (e.g. mid-profile-load): the on_node
+                // hook builds the chain from eq_configs when it appears.
+            }
+            // Re-source the channel's links from/to the insert.
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
@@ -1471,6 +1601,16 @@ mod tests {
             direction: dir.to_string(),
             channel: channel.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn resolve_source_prefers_live_eq_playback() {
+        assert_eq!(resolve_source(Some(77), 10), 77);
+    }
+
+    #[test]
+    fn resolve_source_falls_back_to_channel() {
+        assert_eq!(resolve_source(None, 10), 10);
     }
 
     #[test]

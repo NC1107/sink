@@ -392,3 +392,169 @@ mod mic_clamp_tests {
         assert_eq!(c, before);
     }
 }
+
+/// Hard cap on parametric EQ bands per channel. Ten matches the Sonar EQ
+/// users already know, keeps preset validation simple, and bounds the RT
+/// cost per channel.
+pub const MAX_EQ_BANDS: usize = 10;
+
+/// Parametric EQ band shapes (RBJ Audio EQ Cookbook designs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EqBandKind {
+    Peaking,
+    LowShelf,
+    HighShelf,
+    LowPass,
+    HighPass,
+}
+
+fn default_band_q() -> f32 {
+    1.0
+}
+
+/// One parametric EQ band.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct EqBand {
+    pub kind: EqBandKind,
+    pub freq_hz: f32,
+    /// Ignored by LowPass/HighPass (their shape has no gain parameter).
+    #[serde(default)]
+    pub gain_db: f32,
+    /// Peaking/LowPass/HighPass: filter Q. Shelves: RBJ shelf slope S —
+    /// one field, two meanings, so presets stay a flat 4-field record.
+    #[serde(default = "default_band_q")]
+    pub q: f32,
+}
+
+impl EqBand {
+    /// TD-050: clamp to DSP-safe ranges, replacing non-finite values, so a
+    /// hostile IPC payload or preset file can't blow up the filter design.
+    pub fn clamp_ranges(&mut self) {
+        fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
+            if v.is_finite() {
+                v.clamp(lo, hi)
+            } else {
+                fallback
+            }
+        }
+        self.freq_hz = finite(self.freq_hz, 1000.0, 20.0, 20000.0);
+        self.gain_db = finite(self.gain_db, 0.0, -24.0, 24.0);
+        self.q = finite(self.q, default_band_q(), 0.1, 10.0);
+    }
+}
+
+/// The Sonar-style starting layout: shelves at the extremes, three mids,
+/// everything flat. Five bands; the UI can add up to MAX_EQ_BANDS.
+pub fn default_eq_bands() -> Vec<EqBand> {
+    [
+        (EqBandKind::LowShelf, 100.0, 0.71),
+        (EqBandKind::Peaking, 500.0, 1.0),
+        (EqBandKind::Peaking, 1500.0, 1.0),
+        (EqBandKind::Peaking, 5000.0, 1.0),
+        (EqBandKind::HighShelf, 10000.0, 0.71),
+    ]
+    .into_iter()
+    .map(|(kind, freq_hz, q)| EqBand {
+        kind,
+        freq_hz,
+        gain_db: 0.0,
+        q,
+    })
+    .collect()
+}
+
+/// A channel's parametric EQ (persisted per channel; applied live).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EqConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Headroom trim applied before the band cascade (dB). Boost-heavy
+    /// curves need this negative to avoid clipping.
+    #[serde(default)]
+    pub preamp_db: f32,
+    #[serde(default = "default_eq_bands")]
+    pub bands: Vec<EqBand>,
+}
+
+impl EqConfig {
+    /// TD-050-style sanitization for the whole config (see EqBand).
+    pub fn clamp_ranges(&mut self) {
+        if !self.preamp_db.is_finite() {
+            self.preamp_db = 0.0;
+        }
+        self.preamp_db = self.preamp_db.clamp(-24.0, 24.0);
+        self.bands.truncate(MAX_EQ_BANDS);
+        for band in &mut self.bands {
+            band.clamp_ranges();
+        }
+    }
+}
+
+impl Default for EqConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            preamp_db: 0.0,
+            bands: default_eq_bands(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod eq_clamp_tests {
+    use super::*;
+
+    #[test]
+    fn band_clamp_bounds_out_of_range_values() {
+        let mut b = EqBand {
+            kind: EqBandKind::Peaking,
+            freq_hz: 99999.0,
+            gain_db: -80.0,
+            q: 0.0,
+        };
+        b.clamp_ranges();
+        assert_eq!(b.freq_hz, 20000.0);
+        assert_eq!(b.gain_db, -24.0);
+        assert_eq!(b.q, 0.1);
+    }
+
+    #[test]
+    fn band_clamp_replaces_non_finite_with_defaults() {
+        let mut b = EqBand {
+            kind: EqBandKind::Peaking,
+            freq_hz: f32::NAN,
+            gain_db: f32::INFINITY,
+            q: f32::NEG_INFINITY,
+        };
+        b.clamp_ranges();
+        assert_eq!(b.freq_hz, 1000.0);
+        assert_eq!(b.gain_db, 0.0);
+        assert_eq!(b.q, default_band_q());
+    }
+
+    #[test]
+    fn config_clamp_truncates_to_max_bands() {
+        let mut c = EqConfig::default();
+        c.bands = vec![c.bands[0]; MAX_EQ_BANDS + 5];
+        c.preamp_db = f32::NAN;
+        c.clamp_ranges();
+        assert_eq!(c.bands.len(), MAX_EQ_BANDS);
+        assert_eq!(c.preamp_db, 0.0);
+    }
+
+    #[test]
+    fn config_without_fields_deserializes_with_defaults() {
+        // Old profile/eq JSON without these keys must keep loading.
+        let c: EqConfig = serde_json::from_str("{}").unwrap();
+        assert!(!c.enabled);
+        assert_eq!(c.preamp_db, 0.0);
+        assert_eq!(c.bands, default_eq_bands());
+    }
+
+    #[test]
+    fn band_kind_serializes_snake_case() {
+        let json = serde_json::to_string(&EqBandKind::LowShelf).unwrap();
+        assert_eq!(json, "\"low_shelf\"");
+    }
+}
