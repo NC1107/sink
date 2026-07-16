@@ -137,24 +137,21 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: EqPresetMen
         style={{ minWidth: 260 }}
       >
         {presets.map((entry) => (
-          <div
-            key={`${entry.source}:${entry.preset.name}`}
-            className="menu-item"
-            title={entry.preset.description ?? undefined}
-            onClick={() => applyPreset(entry)}
-          >
-            <Ms name={entry.source === "bundled" ? "verified" : "person"} />
-            <span>{entry.preset.name}</span>
+          <div key={`${entry.source}:${entry.preset.name}`} className="eqm-preset-row">
+            <button
+              className="menu-item eqm-preset-apply"
+              title={entry.preset.description ?? undefined}
+              onClick={() => applyPreset(entry)}
+            >
+              <Ms name={entry.source === "bundled" ? "verified" : "person"} />
+              <span>{entry.preset.name}</span>
+            </button>
             {entry.source === "user" && (
               <button
                 className="eqm-remove"
-                style={{ marginLeft: "auto" }}
                 title="Delete preset"
                 aria-label={`Delete preset ${entry.preset.name}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void deletePreset(entry.preset.name);
-                }}
+                onClick={() => void deletePreset(entry.preset.name)}
               >
                 <Ms name="close" style={{ fontSize: 13 }} />
               </button>
@@ -207,15 +204,15 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: EqPresetMen
             </div>
           </div>
         ) : (
-          <div className="menu-item" onClick={() => setImporting(true)}>
+          <button className="menu-item eqm-menu-btn" onClick={() => setImporting(true)}>
             <Ms name="content_paste" />
             <span>Import (paste / AutoEq / file)</span>
-          </div>
+          </button>
         )}
-        <div className="menu-item" onClick={() => void exportToFile()}>
+        <button className="menu-item eqm-menu-btn" onClick={() => void exportToFile()}>
           <Ms name="download" />
           <span>Export to file…</span>
-        </div>
+        </button>
       </Popover>
     </div>
   );

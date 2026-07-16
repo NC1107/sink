@@ -1960,3 +1960,25 @@ body,
   display: flex;
   gap: var(--sp-1);
 }
+/* menu-item as a real button (a11y): strip UA button chrome, keep the
+   menu look; the row wrapper hosts the apply button + a delete sibling
+   so no button ever nests inside another. */
+.eqm-preset-row {
+  display: flex;
+  align-items: center;
+}
+.eqm-preset-row .eqm-remove {
+  margin-left: auto;
+  margin-right: 4px;
+}
+button.menu-item {
+  width: 100%;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+}
+.eqm-preset-apply {
+  flex: 1;
+  min-width: 0;
+}
