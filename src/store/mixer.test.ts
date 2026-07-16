@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { useMixerStore } from "./mixer";
 import type { VirtualSink } from "../types";
+import { defaultEqConfig } from "../types";
 
 const channel = (name: string, volume = 100): VirtualSink => ({
   name,
@@ -97,5 +98,37 @@ describe("setLevels", () => {
   it("stores per-sink peaks", () => {
     useMixerStore.getState().setLevels({ sink_game: [0.5, 0.4] });
     expect(useMixerStore.getState().levels["sink_game"]).toEqual([0.5, 0.4]);
+  });
+});
+
+describe("setChannelEq", () => {
+  it("applies optimistically and debounces per channel", async () => {
+    const store = useMixerStore.getState();
+    const config = {
+      ...defaultEqConfig(),
+      enabled: true,
+    };
+
+    await store.setChannelEq("sink_game", { ...config, preamp_db: -2 });
+    await store.setChannelEq("sink_game", { ...config, preamp_db: -5 });
+    await store.setChannelEq("sink_chat", config);
+
+    // Optimistic: both channels reflect their latest config immediately…
+    expect(useMixerStore.getState().eqConfigs["sink_game"].preamp_db).toBe(-5);
+    expect(useMixerStore.getState().eqConfigs["sink_chat"].enabled).toBe(true);
+    // …but nothing has hit the backend yet (drag in progress).
+    expect(invoke).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
+    // One call per channel: sink_game's two edits collapsed into the last.
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledWith("set_channel_eq", {
+      sinkName: "sink_game",
+      config: { ...config, preamp_db: -5 },
+    });
+    expect(invoke).toHaveBeenCalledWith("set_channel_eq", {
+      sinkName: "sink_chat",
+      config,
+    });
   });
 });

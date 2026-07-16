@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppStream,
   BusDef,
+  EqConfig,
   MicConfig,
   OutputDevice,
   ProfileInfo,
@@ -56,6 +57,10 @@ interface MixerStore {
   setChannelFailover: (sinkName: string, enabled: boolean) => Promise<void>;
   /** Sonar-style "same device on all channels". */
   setAllOutputs: (outputName: string | null) => Promise<void>;
+  /** Channel -> parametric EQ (absent = never configured, i.e. default). */
+  eqConfigs: Record<string, EqConfig>;
+  fetchEq: () => Promise<void>;
+  setChannelEq: (sinkName: string, config: EqConfig) => Promise<void>;
   /** Mic chain (Phase 3). Null until loaded. */
   micConfig: MicConfig | null;
   inputDevices: OutputDevice[];
@@ -246,6 +251,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
         get().fetchAppStreams(),
         get().fetchProfiles(),
         get().fetchOutputs(),
+        get().fetchEq(),
         get().fetchMic(),
         get().fetchBuses(),
       ]);
@@ -400,6 +406,27 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
+  eqConfigs: {},
+
+  fetchEq: async () => {
+    try {
+      const eqConfigs = await invoke<Record<string, EqConfig>>("get_channel_eq_configs");
+      if (!jsonEqual(get().eqConfigs, eqConfigs)) set({ eqConfigs });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  setChannelEq: async (sinkName, config) => {
+    set({ eqConfigs: { ...get().eqConfigs, [sinkName]: config } });
+    // Debounced per channel: a band drag settles into one apply, and two
+    // open EQ panels never clobber each other's pending call.
+    debouncedInvoke(`eq:${sinkName}`, "set_channel_eq", { sinkName, config }, (e) => {
+      set({ error: String(e) });
+      void get().fetchEq();
+    });
+  },
+
   fetchMic: async () => {
     try {
       const [micConfig, inputDevices] = await Promise.all([
@@ -448,6 +475,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       get().fetchChannels(),
       get().fetchAppStreams(),
       get().fetchOutputs(),
+      get().fetchEq(),
       get().fetchSeenApps(),
       get().fetchProfiles(),
       get().fetchBuses(),
@@ -522,6 +550,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
         get().fetchChannels(),
         get().fetchAppStreams(),
         get().fetchOutputs(),
+        get().fetchEq(),
         get().fetchSeenApps(),
         get().fetchBuses(),
       ]);
@@ -704,6 +733,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
         get().fetchChannels(),
         get().fetchAppStreams(),
         get().fetchOutputs(),
+        get().fetchEq(), // the channel's EQ entry is gone too
         get().fetchBuses(), // memberships dropped the channel
       ]);
     } catch (e) {

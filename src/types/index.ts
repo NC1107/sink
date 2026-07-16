@@ -68,6 +68,55 @@ export const MIC_DSP_DEFAULTS = {
   limiter_ceiling_db: -1,
 } as const;
 
+/** Parametric EQ band shapes (mirrors Rust EqBandKind). */
+export type EqBandKind =
+  | "peaking"
+  | "low_shelf"
+  | "high_shelf"
+  | "low_pass"
+  | "high_pass";
+
+/** One parametric EQ band (mirrors Rust EqBand). */
+export interface EqBand {
+  kind: EqBandKind;
+  freq_hz: number;
+  /** Ignored by low_pass/high_pass. */
+  gain_db: number;
+  /** Peaking/LP/HP: filter Q. Shelves: RBJ shelf slope. */
+  q: number;
+}
+
+/** A channel's parametric EQ (mirrors Rust EqConfig). */
+export interface EqConfig {
+  enabled: boolean;
+  /** Headroom trim applied before the band cascade (dB). */
+  preamp_db: number;
+  bands: EqBand[];
+}
+
+export const MAX_EQ_BANDS = 10;
+export const EQ_GAIN_RANGE_DB = 24;
+export const EQ_FREQ_MIN_HZ = 20;
+export const EQ_FREQ_MAX_HZ = 20000;
+
+/** The Sonar-style starting layout (mirrors Rust default_eq_bands). */
+export const DEFAULT_EQ_BANDS: EqBand[] = [
+  { kind: "low_shelf", freq_hz: 100, gain_db: 0, q: 0.71 },
+  { kind: "peaking", freq_hz: 500, gain_db: 0, q: 1 },
+  { kind: "peaking", freq_hz: 1500, gain_db: 0, q: 1 },
+  { kind: "peaking", freq_hz: 5000, gain_db: 0, q: 1 },
+  { kind: "high_shelf", freq_hz: 10000, gain_db: 0, q: 0.71 },
+];
+
+/** A channel's EQ when it has never been configured. */
+export function defaultEqConfig(): EqConfig {
+  return {
+    enabled: false,
+    preamp_db: 0,
+    bands: DEFAULT_EQ_BANDS.map((b) => ({ ...b })),
+  };
+}
+
 /** App history entry (mirrors Rust SeenApp). */
 export interface SeenApp {
   match_prop: string;

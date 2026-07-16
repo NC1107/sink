@@ -7,11 +7,14 @@ export function Modal({
   onClose,
   title,
   children,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** Extra class on the dialog (e.g. a width variant). */
+  className?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -26,7 +29,7 @@ export function Modal({
   return (
     <div className="modal-scrim" onClick={onClose}>
       <div
-        className="modal"
+        className={"modal" + (className ? ` ${className}` : "")}
         role="dialog"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}

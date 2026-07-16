@@ -1771,3 +1771,155 @@ body,
 .row.row-sub .ricon {
   opacity: 0.7;
 }
+
+/* ---- Parametric EQ modal (eqm-) ---- */
+.sbtn.on-eq {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.modal.eqm-modal {
+  width: min(640px, calc(100vw - 48px));
+}
+.eqm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.eqm-enable {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+  color: var(--fg-secondary);
+}
+.eqm-curve {
+  width: 100%;
+  height: auto;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  touch-action: none;
+}
+.eqm-curve.off {
+  opacity: 0.45;
+}
+.eqm-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.eqm-grid.zero {
+  stroke: var(--fg-secondary);
+  opacity: 0.5;
+}
+.eqm-grid-label {
+  fill: var(--fg-secondary);
+  font-size: 9px;
+  font-family: inherit;
+  user-select: none;
+}
+.eqm-line {
+  fill: none;
+  stroke: var(--accent-hover);
+  stroke-width: 2;
+}
+.eqm-fill {
+  fill: var(--accent-light);
+  stroke: none;
+}
+.eqm-dot {
+  fill: var(--bg-surface);
+  stroke: var(--accent-hover);
+  stroke-width: 2;
+  cursor: grab;
+}
+.eqm-dot.sel {
+  fill: var(--accent);
+  stroke: var(--accent-hover);
+}
+.eqm-bands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.eqm-band {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px var(--sp-2);
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+}
+.eqm-band.sel {
+  border-color: var(--border);
+  background: var(--bg-surface-hover);
+}
+.eqm-kind {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  color: var(--fg-primary);
+  font-family: inherit;
+  font-size: var(--fs-meta);
+}
+.eqm-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--fg-secondary);
+}
+.eqm-field input {
+  width: 62px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  color: var(--fg-primary);
+  font-family: inherit;
+  font-size: var(--fs-meta);
+}
+.eqm-field input:disabled {
+  opacity: 0.4;
+}
+.eqm-remove {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  border: none;
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.eqm-remove:hover {
+  background: var(--bg-active);
+  color: var(--danger);
+}
+.eqm-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  align-self: flex-start;
+  padding: 5px var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-meta);
+}
+.eqm-add:hover {
+  color: var(--fg-primary);
+  border-color: var(--fg-secondary);
+}

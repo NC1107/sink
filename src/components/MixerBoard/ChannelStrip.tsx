@@ -6,6 +6,7 @@ import { channelIcon, Ms, ICON_CHOICES } from "../Icons";
 import { Modal } from "../Modal";
 import { Popover } from "../Popover";
 import { perceptual, volToDb } from "../../lib/audio";
+import { EqModal } from "../Eq/EqModal";
 import { ChannelApps } from "./ChannelApps";
 import { Fader } from "./Fader";
 import { OutputSelect } from "./OutputSelect";
@@ -44,11 +45,14 @@ export function ChannelStrip({
   const monitoring = useMixerStore((s) => s.monitors[channel.name] ?? false);
   const toggleMonitor = useMixerStore((s) => s.toggleMonitor);
 
+  const eqEnabled = useMixerStore((s) => s.eqConfigs[channel.name]?.enabled ?? false);
+
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pickingIcon, setPickingIcon] = useState(false);
   const [managingApps, setManagingApps] = useState(false);
+  const [editingEq, setEditingEq] = useState(false);
 
   const commitRename = () => {
     setEditing(false);
@@ -196,7 +200,17 @@ export function ChannelStrip({
         >
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>
+        <button
+          className={"sbtn" + (eqEnabled ? " on-eq" : "")}
+          onClick={() => setEditingEq(true)}
+          aria-pressed={eqEnabled}
+          title="Equalizer"
+        >
+          <Ms name="tune" style={{ fontSize: 16 }} />
+        </button>
       </div>
+
+      <EqModal channel={channel} open={editingEq} onClose={() => setEditingEq(false)} />
 
       <OutputSelect
         compact
