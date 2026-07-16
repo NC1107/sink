@@ -1816,30 +1816,60 @@ body,
   stroke: var(--fg-secondary);
   opacity: 0.5;
 }
-.eqm-grid-label {
+.eqm-grid.minor {
+  opacity: 0.4;
+}
+.eqm-grid.region {
+  stroke: var(--border);
+  opacity: 0.9;
+}
+.eqm-region {
+  fill: var(--bg-surface);
+}
+.eqm-region-label {
+  fill: var(--fg-secondary);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-family: inherit;
+  user-select: none;
+}
+.eqm-axis-label {
   fill: var(--fg-secondary);
   font-size: 9px;
   font-family: inherit;
   user-select: none;
 }
+.eqm-axis-label.freq {
+  text-anchor: middle;
+}
 .eqm-line {
   fill: none;
-  stroke: var(--accent-hover);
-  stroke-width: 2;
+  /* Sonar-style: neutral curve, per-band colored dots. */
+  stroke: var(--fg-primary);
+  stroke-width: 1.8;
+  opacity: 0.9;
 }
 .eqm-fill {
   fill: var(--accent-light);
   stroke: none;
 }
 .eqm-dot {
-  fill: var(--bg-surface);
-  stroke: var(--accent-hover);
+  /* fill = the band's color (inline style). */
+  stroke: var(--bg-main);
   stroke-width: 2;
   cursor: grab;
 }
 .eqm-dot.sel {
-  fill: var(--accent);
-  stroke: var(--accent-hover);
+  stroke: var(--fg-primary);
+}
+.eqm-chip {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 .eqm-bands {
   display: flex;

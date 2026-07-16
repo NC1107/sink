@@ -7,7 +7,7 @@ import { Ms } from "../Icons";
 import { Toggle } from "../Toggle";
 import { DspSlider } from "../Mic/DspSlider";
 import { EqBandRow } from "./EqBandRow";
-import { EqCurve } from "./EqCurve";
+import { bandColor, EqCurve } from "./EqCurve";
 import { EqPresetMenu } from "./EqPresetMenu";
 
 interface EqModalProps {
@@ -113,6 +113,7 @@ export function EqModal({ channel, open, onClose }: EqModalProps) {
           <EqBandRow
             key={i}
             band={band}
+            color={bandColor(i)}
             selected={i === selected}
             onSelect={() => setSelected(i)}
             onChange={(patch) => patchBand(i, patch)}

@@ -5,21 +5,55 @@ import { curvePoints, freqToX, xToFreq } from "../../lib/eqMath";
 
 // SVG coordinate space; the element scales responsively.
 const W = 600;
-const H = 220;
+const H = 252;
 const PAD = 8;
+/** Region-label strip at the top and frequency-label strip at the bottom. */
+const HEAD = 20;
+const FOOT = 16;
+const TOP = HEAD + 4;
+const BOTTOM = H - FOOT - 4;
 
 const dbToY = (db: number) =>
-  PAD + ((EQ_GAIN_RANGE_DB - db) / (2 * EQ_GAIN_RANGE_DB)) * (H - 2 * PAD);
+  TOP + ((EQ_GAIN_RANGE_DB - db) / (2 * EQ_GAIN_RANGE_DB)) * (BOTTOM - TOP);
 const yToDb = (y: number) =>
-  EQ_GAIN_RANGE_DB - ((y - PAD) / (H - 2 * PAD)) * 2 * EQ_GAIN_RANGE_DB;
+  EQ_GAIN_RANGE_DB - ((y - TOP) / (BOTTOM - TOP)) * 2 * EQ_GAIN_RANGE_DB;
 const fxToX = (fx: number) => PAD + fx * (W - 2 * PAD);
 const xToFx = (x: number) => (x - PAD) / (W - 2 * PAD);
 
-/** Frequencies that get a labeled grid line. */
-const GRID_FREQS = [50, 100, 500, 1000, 5000, 10000];
-const GRID_DBS = [-12, 0, 12];
+/** Sonar-style frequency regions across the top of the plot. */
+const REGIONS: { label: string; to: number }[] = [
+  { label: "SUB BASS", to: 60 },
+  { label: "BASS", to: 250 },
+  { label: "LOW MIDS", to: 500 },
+  { label: "MID RANGE", to: 2000 },
+  { label: "UPPER MIDS", to: 6000 },
+  { label: "HIGHS", to: 20000 },
+];
 
-const fmtFreq = (hz: number) => (hz >= 1000 ? `${hz / 1000}k` : `${hz}`);
+/** Frequencies that get a labeled vertical grid line. */
+const GRID_FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+/** dB lines: labeled majors and unlabeled minors (plot edges are ±24). */
+const GRID_DBS_MAJOR = [-12, 0, 12];
+const GRID_DBS_MINOR = [-18, -6, 6, 18];
+
+const fmtFreq = (hz: number) => (hz >= 1000 ? `${hz / 1000}kHz` : `${hz}Hz`);
+const fmtDb = (db: number) => `${db > 0 ? "+" : ""}${db} dB`;
+
+/** Per-band dot colors (index-keyed; mirrored as chips on the band rows). */
+const BAND_COLORS = [
+  "#a78bfa",
+  "#6366f1",
+  "#ec4899",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#a3e635",
+  "#22c55e",
+  "#2dd4bf",
+  "#38bdf8",
+];
+
+export const bandColor = (index: number) => BAND_COLORS[index % BAND_COLORS.length];
 
 /** Bands without a gain axis: their dot rides the 0 dB line. */
 const gainless = (band: EqBand) => band.kind === "low_pass" || band.kind === "high_pass";
@@ -89,6 +123,15 @@ export function EqCurve({ config, selected, onSelect, onBandChange }: EqCurvePro
   const zeroY = dbToY(0);
   const fill = `${path} L${fxToX(1).toFixed(1)},${zeroY} L${fxToX(0).toFixed(1)},${zeroY} Z`;
 
+  // Region strip geometry (log axis).
+  let regionFrom = 20;
+  const regions = REGIONS.map(({ label, to }) => {
+    const x0 = fxToX(freqToX(regionFrom));
+    const x1 = fxToX(freqToX(to));
+    regionFrom = to;
+    return { label, x0, x1 };
+  });
+
   return (
     <svg
       ref={svgRef}
@@ -97,21 +140,52 @@ export function EqCurve({ config, selected, onSelect, onBandChange }: EqCurvePro
       role="img"
       aria-label="EQ frequency response"
     >
-      {GRID_FREQS.map((f) => (
-        <g key={f}>
-          <line
-            className="eqm-grid"
-            x1={fxToX(freqToX(f))}
-            x2={fxToX(freqToX(f))}
-            y1={PAD}
-            y2={H - PAD}
-          />
-          <text className="eqm-grid-label" x={fxToX(freqToX(f)) + 3} y={H - PAD - 4}>
-            {fmtFreq(f)}
+      {/* frequency-region strip */}
+      {regions.map(({ label, x0, x1 }, i) => (
+        <g key={label}>
+          <rect className="eqm-region" x={x0 + 1} y={PAD - 4} width={x1 - x0 - 2} height={HEAD - 4} rx={3} />
+          <text className="eqm-region-label" x={(x0 + x1) / 2} y={PAD + HEAD / 2 + 1}>
+            {label}
           </text>
+          {i > 0 && (
+            <line className="eqm-grid region" x1={x0} x2={x0} y1={TOP} y2={BOTTOM} />
+          )}
         </g>
       ))}
-      {GRID_DBS.map((db) => (
+
+      {/* vertical grid + frequency labels (with units, Sonar-style) */}
+      {GRID_FREQS.map((f, i) => {
+        const x = fxToX(freqToX(f));
+        // Edge labels hug inward so they don't clip at the borders.
+        const edge =
+          i === 0 ? "start" : i === GRID_FREQS.length - 1 ? "end" : "middle";
+        return (
+          <g key={f}>
+            <line className="eqm-grid" x1={x} x2={x} y1={TOP} y2={BOTTOM} />
+            <text
+              className="eqm-axis-label freq"
+              x={edge === "start" ? x + 2 : edge === "end" ? x - 2 : x}
+              y={H - 5}
+              textAnchor={edge}
+            >
+              {fmtFreq(f)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* horizontal grid + dB labels */}
+      {GRID_DBS_MINOR.map((db) => (
+        <line
+          key={db}
+          className="eqm-grid minor"
+          x1={PAD}
+          x2={W - PAD}
+          y1={dbToY(db)}
+          y2={dbToY(db)}
+        />
+      ))}
+      {GRID_DBS_MAJOR.map((db) => (
         <g key={db}>
           <line
             className={"eqm-grid" + (db === 0 ? " zero" : "")}
@@ -120,17 +194,19 @@ export function EqCurve({ config, selected, onSelect, onBandChange }: EqCurvePro
             y1={dbToY(db)}
             y2={dbToY(db)}
           />
-          <text className="eqm-grid-label" x={PAD + 2} y={dbToY(db) - 3}>
-            {db > 0 ? `+${db}` : db}
+          <text className="eqm-axis-label" x={PAD + 3} y={dbToY(db) - 4}>
+            {fmtDb(db)}
           </text>
         </g>
       ))}
+
       <path className="eqm-fill" d={fill} />
       <path className="eqm-line" d={path} />
       {config.bands.map((band, i) => (
         <circle
           key={i}
           className={"eqm-dot" + (i === selected ? " sel" : "")}
+          style={{ fill: bandColor(i) }}
           cx={fxToX(freqToX(band.freq_hz))}
           cy={gainless(band) ? zeroY : dbToY(band.gain_db)}
           r={i === selected ? 8 : 6}

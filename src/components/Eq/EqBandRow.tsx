@@ -15,6 +15,8 @@ const isPass = (kind: EqBandKind) => kind === "low_pass" || kind === "high_pass"
 
 interface EqBandRowProps {
   band: EqBand;
+  /** Dot color on the curve — repeated here so row and dot read as one. */
+  color: string;
   selected: boolean;
   onSelect: () => void;
   onChange: (patch: Partial<EqBand>) => void;
@@ -23,7 +25,7 @@ interface EqBandRowProps {
 
 /** Numeric editor for one band — the keyboard-accessible twin of the
  *  curve dot (drag isn't reachable for everyone). */
-export function EqBandRow({ band, selected, onSelect, onChange, onRemove }: EqBandRowProps) {
+export function EqBandRow({ band, color, selected, onSelect, onChange, onRemove }: EqBandRowProps) {
   const clampNum = (v: string, lo: number, hi: number, fallback: number) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;
@@ -31,6 +33,7 @@ export function EqBandRow({ band, selected, onSelect, onChange, onRemove }: EqBa
 
   return (
     <div className={"eqm-band" + (selected ? " sel" : "")} onPointerDown={onSelect}>
+      <span className="eqm-chip" style={{ background: color }} aria-hidden="true" />
       <select
         className="eqm-kind"
         value={band.kind}
