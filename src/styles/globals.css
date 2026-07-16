@@ -1209,10 +1209,11 @@ body,
   font-size: 16px;
 }
 
-/* popover menu */
+/* popover menu — layered above modals (z 50): the EQ modal opens its
+   preset menu as a popover, which must never render under the scrim. */
 .menu {
   position: absolute;
-  z-index: 40;
+  z-index: 60;
   min-width: 220px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -1335,7 +1336,9 @@ body,
 .scrim {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  /* Between modal-scrim (50) and .menu (60): closes the popover on
+     outside-click even when the popover was opened from inside a modal. */
+  z-index: 55;
 }
 
 /* ---------- Modal dialogs ---------- */
@@ -1861,13 +1864,23 @@ body,
   flex: 1;
   min-width: 0;
   height: 26px;
-  padding: 0 var(--sp-2);
+  padding: 0 22px 0 var(--sp-2);
   border-radius: var(--r-sm);
-  background: var(--bg-main);
+  /* Native select chrome ignores color styling under GTK webkit and
+     renders white-on-white; draw it ourselves with a chevron. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-main)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ababb0' stroke-width='1.5'/%3E%3C/svg%3E")
+    no-repeat right 7px center;
   border: 1px solid var(--border);
   color: var(--fg-primary);
   font-family: inherit;
   font-size: var(--fs-meta);
+}
+.eqm-kind option {
+  background: var(--bg-surface);
+  color: var(--fg-primary);
 }
 .eqm-field {
   display: inline-flex;
@@ -1886,6 +1899,14 @@ body,
   color: var(--fg-primary);
   font-family: inherit;
   font-size: var(--fs-meta);
+  /* The native number spinners render as white boxes under GTK webkit. */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.eqm-field input::-webkit-inner-spin-button,
+.eqm-field input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .eqm-field input:disabled {
   opacity: 0.4;
