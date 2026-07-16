@@ -162,13 +162,18 @@ pub fn init_virtual_devices(
             .map_err(|e| e.to_string())?;
     }
 
-    let (outputs, mic, buses) = {
+    let (outputs, eq, mic, buses) = {
         let mut mixer = state.lock_mixer()?;
         mixer.init_defaults();
         // The master mix always carries the full channel set.
         let names: Vec<String> = defs.channels.iter().map(|c| c.name.clone()).collect();
         mixer.buses.sync_master(&names);
-        (mixer.outputs.clone(), mixer.mic.clone(), mixer.buses.clone())
+        (
+            mixer.outputs.clone(),
+            mixer.eq.clone(),
+            mixer.mic.clone(),
+            mixer.buses.clone(),
+        )
     };
     if let Err(e) = buses.save() {
         eprintln!("sink: saving mixes failed: {e}");
@@ -187,6 +192,13 @@ pub fn init_virtual_devices(
         if !outputs.failover(&def.name) {
             if let Err(e) = state.backend.set_channel_failover(&def.name, false) {
                 eprintln!("sink: failover setting for {} failed: {e}", def.name);
+            }
+        }
+        // Restore saved EQ (only channels that were ever configured; the
+        // loop builds the insert when the sink node appears).
+        if let Some(config) = eq.configs.get(&def.name) {
+            if let Err(e) = state.backend.set_channel_eq(&def.name, config) {
+                eprintln!("sink: eq restore for {} failed: {e}", def.name);
             }
         }
     }
