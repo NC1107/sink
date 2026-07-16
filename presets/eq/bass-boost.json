@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "name": "Bass Boost",
+  "author": "Sink",
+  "description": "Warm low-end lift for music, with headroom trimmed to match.",
+  "preamp_db": -4,
+  "bands": [
+    { "kind": "low_shelf", "freq_hz": 110, "gain_db": 6, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 250, "gain_db": 1.5, "q": 1.0 },
+    { "kind": "peaking", "freq_hz": 800, "gain_db": -1, "q": 1.2 },
+    { "kind": "high_shelf", "freq_hz": 9000, "gain_db": 1, "q": 0.71 }
+  ]
+}

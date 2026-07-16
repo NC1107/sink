@@ -8,6 +8,7 @@ import { Toggle } from "../Toggle";
 import { DspSlider } from "../Mic/DspSlider";
 import { EqBandRow } from "./EqBandRow";
 import { EqCurve } from "./EqCurve";
+import { EqPresetMenu } from "./EqPresetMenu";
 
 interface EqModalProps {
   channel: VirtualSink;
@@ -23,6 +24,9 @@ export function EqModal({ channel, open, onClose }: EqModalProps) {
   const setChannelEq = useMixerStore((s) => s.setChannelEq);
   const backendNative = useMixerStore((s) => s.backendNative);
   const [selected, setSelected] = useState(0);
+
+  // Surface preset/import failures on the app's global error banner.
+  const setError = (message: string) => useMixerStore.setState({ error: message });
 
   const apply = (next: EqConfig) => void setChannelEq(channel.name, next);
 
@@ -72,10 +76,18 @@ export function EqModal({ channel, open, onClose }: EqModalProps) {
           />
           <span>{config.enabled ? "On" : "Off"}</span>
         </div>
-        <button className="select" onClick={reset} title="Back to the flat 5-band layout">
-          <Ms name="restart_alt" style={{ fontSize: 15 }} />
-          <span>Reset</span>
-        </button>
+        <div className="eqm-head-actions">
+          <EqPresetMenu
+            sinkName={channel.name}
+            config={config}
+            onApply={apply}
+            onError={setError}
+          />
+          <button className="select" onClick={reset} title="Back to the flat 5-band layout">
+            <Ms name="restart_alt" style={{ fontSize: 15 }} />
+            <span>Reset</span>
+          </button>
+        </div>
       </div>
 
       <EqCurve

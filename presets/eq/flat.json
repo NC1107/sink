@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "Flat",
+  "author": "Sink",
+  "description": "The neutral 5-band starting point. Apply to undo any preset.",
+  "preamp_db": 0,
+  "bands": [
+    { "kind": "low_shelf", "freq_hz": 100, "gain_db": 0, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 500, "gain_db": 0, "q": 1.0 },
+    { "kind": "peaking", "freq_hz": 1500, "gain_db": 0, "q": 1.0 },
+    { "kind": "peaking", "freq_hz": 5000, "gain_db": 0, "q": 1.0 },
+    { "kind": "high_shelf", "freq_hz": 10000, "gain_db": 0, "q": 0.71 }
+  ]
+}

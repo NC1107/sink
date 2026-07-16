@@ -11,6 +11,8 @@
     "core:window:allow-show",
     "core:window:allow-close",
     "core:window:allow-set-focus",
-    "core:window:allow-toggle-maximize"
+    "core:window:allow-toggle-maximize",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

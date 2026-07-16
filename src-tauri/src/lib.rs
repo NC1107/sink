@@ -39,6 +39,7 @@ pub fn run() {
     let app_state = AppState::new(backend, backend_native);
 
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::devices::get_virtual_devices,
@@ -77,6 +78,13 @@ pub fn run() {
             commands::mic::get_input_devices,
             commands::eq::get_channel_eq_configs,
             commands::eq::set_channel_eq,
+            commands::eq::list_eq_presets,
+            commands::eq::save_user_eq_preset,
+            commands::eq::delete_user_eq_preset,
+            commands::eq::export_channel_eq,
+            commands::eq::export_channel_eq_to_file,
+            commands::eq::import_eq_config,
+            commands::eq::import_eq_file,
             commands::profiles::list_profiles,
             commands::profiles::load_profile,
             commands::profiles::delete_profile,

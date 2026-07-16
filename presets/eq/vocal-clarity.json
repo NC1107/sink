@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "name": "Vocal Clarity",
+  "author": "Sink",
+  "description": "Presence lift for chat and podcasts; rumble rolled off.",
+  "preamp_db": -2,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 90, "gain_db": 0, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 2500, "gain_db": 3, "q": 1.0 },
+    { "kind": "peaking", "freq_hz": 5000, "gain_db": 2, "q": 1.4 },
+    { "kind": "high_shelf", "freq_hz": 10000, "gain_db": 1, "q": 0.71 }
+  ]
+}

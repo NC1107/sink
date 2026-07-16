@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "name": "FPS Footsteps",
+  "author": "Sink",
+  "description": "Boosts the footstep band and tames explosions and rumble.",
+  "preamp_db": -3,
+  "bands": [
+    { "kind": "low_shelf", "freq_hz": 120, "gain_db": -4, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 2000, "gain_db": 2.5, "q": 1.0 },
+    { "kind": "peaking", "freq_hz": 4000, "gain_db": 4, "q": 1.4 },
+    { "kind": "high_shelf", "freq_hz": 8000, "gain_db": 1.5, "q": 0.71 }
+  ]
+}

@@ -1923,3 +1923,40 @@ body,
   color: var(--fg-primary);
   border-color: var(--fg-secondary);
 }
+.eqm-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.eqm-save-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 4px 6px;
+}
+.eqm-save-row .menu-input {
+  flex: 1;
+  min-width: 0;
+}
+.eqm-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: 4px 6px;
+}
+.eqm-import-text {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  color: var(--fg-primary);
+  font-family: inherit;
+  font-size: 11px;
+}
+.eqm-import-btns {
+  display: flex;
+  gap: var(--sp-1);
+}
