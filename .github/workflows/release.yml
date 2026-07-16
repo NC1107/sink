@@ -183,7 +183,8 @@ jobs:
     container: archlinux:latest
     steps:
       - name: Install build tooling
-        run: pacman -Syu --noconfirm --needed base-devel git github-cli
+        # openssh: git's ssh:// transport for the AUR push (not in base-devel).
+        run: pacman -Syu --noconfirm --needed base-devel git github-cli openssh
 
       - uses: actions/checkout@v7
 
