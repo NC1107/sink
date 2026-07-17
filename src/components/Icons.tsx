@@ -5,11 +5,11 @@ export function Ms({
   name,
   className,
   style,
-}: {
+}: Readonly<{
   name: string;
   className?: string;
   style?: CSSProperties;
-}) {
+}>) {
   return (
     <span
       className={"ms material-symbols-outlined" + (className ? " " + className : "")}

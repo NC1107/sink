@@ -35,6 +35,12 @@ export default function App() {
       ? { label: "Settings" }
       : (NAV.find((n) => n.id === nav) ?? NAV[0]);
 
+  let screen;
+  if (nav === "mixer") screen = <MixerBoard />;
+  else if (nav === "apps") screen = <AppList />;
+  else if (nav === "mic") screen = <MicScreen />;
+  else screen = <SettingsScreen />;
+
   return (
     <div className="window">
       <TitleBar screen={current.label} />
@@ -78,15 +84,7 @@ export default function App() {
           {version && <div className="rail-version">v{version}</div>}
         </nav>
 
-        {nav === "mixer" ? (
-          <MixerBoard />
-        ) : nav === "apps" ? (
-          <AppList />
-        ) : nav === "mic" ? (
-          <MicScreen />
-        ) : (
-          <SettingsScreen />
-        )}
+        {screen}
       </div>
 
       <OnboardingModal />

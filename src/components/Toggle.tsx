@@ -1,7 +1,7 @@
 import { Ms } from "./Icons";
 
 /** Design-system switch. */
-export function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+export function Toggle({ on, onClick }: Readonly<{ on: boolean; onClick: () => void }>) {
   return <button className={"toggle" + (on ? " on" : "")} onClick={onClick} aria-pressed={on} />;
 }
 
@@ -12,13 +12,13 @@ export function ToggleRow({
   sub,
   on,
   onToggle,
-}: {
+}: Readonly<{
   icon: string;
   title: string;
   sub: string;
   on: boolean;
   onToggle: () => void;
-}) {
+}>) {
   return (
     <div className="row">
       <div className="ricon">

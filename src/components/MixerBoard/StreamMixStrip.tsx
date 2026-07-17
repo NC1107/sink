@@ -15,7 +15,14 @@ import { VuMeter } from "./VuMeter";
  * it and OBS sees the new name. Volume/mute shape what recorders hear,
  * not what you hear.
  */
-export function BusStrip({ bus }: { bus: BusDef }) {
+/** Compact "what this mix carries" label for the membership button. */
+function memberLabel(exclude: boolean, carried: number, all: number): string {
+  if (!exclude) return `${carried} ${carried === 1 ? "channel" : "channels"}`;
+  if (carried === all) return "all channels";
+  return `all but ${all - carried}`;
+}
+
+export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const channels = useMixerStore((s) => s.channels);
   const setBusMembers = useMixerStore((s) => s.setBusMembers);
   const setBusExclude = useMixerStore((s) => s.setBusExclude);
@@ -113,11 +120,7 @@ export function BusStrip({ bus }: { bus: BusDef }) {
               title="Choose which channels this mix carries"
               onClick={() => setManaging(true)}
             >
-              {bus.exclude
-                ? carried.length === allNames.length
-                  ? "all channels"
-                  : `all but ${allNames.length - carried.length}`
-                : `${carried.length} ${carried.length === 1 ? "channel" : "channels"}`}
+              {memberLabel(bus.exclude, carried.length, allNames.length)}
               <Ms name="expand_more" style={{ fontSize: 13 }} />
             </button>
             <Popover

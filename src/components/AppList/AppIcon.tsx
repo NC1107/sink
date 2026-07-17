@@ -9,7 +9,7 @@ interface AppIconProps {
 }
 
 /** App icon via the asset protocol, generic glyph fallback. */
-export function AppIcon({ iconPath }: AppIconProps) {
+export function AppIcon({ iconPath }: Readonly<AppIconProps>) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [iconPath]);
 

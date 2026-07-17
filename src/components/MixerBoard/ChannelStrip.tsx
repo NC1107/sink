@@ -29,7 +29,7 @@ export function ChannelStrip({
   onGripDragStart,
   onGripDragEnd,
   onStripDragOver,
-}: ChannelStripProps) {
+}: Readonly<ChannelStripProps>) {
   const setChannelVolume = useMixerStore((s) => s.setChannelVolume);
   const toggleMute = useMixerStore((s) => s.toggleMute);
   const level = useMixerStore((s) => s.levels[channel.name]);

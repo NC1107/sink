@@ -23,7 +23,7 @@ const GAP = 6;
  * the parent element of the marker span (call sites wrap trigger+Popover
  * in a relative container, which keeps working unchanged).
  */
-export function Popover({ open, onClose, children, side = "bottom", align = "start", style }: PopoverProps) {
+export function Popover({ open, onClose, children, side = "bottom", align = "start", style }: Readonly<PopoverProps>) {
   const markerRef = useRef<HTMLSpanElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<CSSProperties | null>(null);

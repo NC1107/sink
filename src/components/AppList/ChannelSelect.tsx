@@ -11,7 +11,7 @@ interface ChannelSelectProps {
 }
 
 /** Dropdown to route an app stream onto a channel. */
-export function ChannelSelect({ value, onChange }: ChannelSelectProps) {
+export function ChannelSelect({ value, onChange }: Readonly<ChannelSelectProps>) {
   const [open, setOpen] = useState(false);
   const channels = useMixerStore((s) => s.channels);
 

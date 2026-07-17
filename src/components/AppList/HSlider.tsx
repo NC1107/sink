@@ -7,7 +7,7 @@ interface HSliderProps {
 }
 
 /** Horizontal per-app volume slider. */
-export function HSlider({ value, max, onChange }: HSliderProps) {
+export function HSlider({ value, max, onChange }: Readonly<HSliderProps>) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 

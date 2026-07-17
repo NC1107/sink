@@ -17,7 +17,7 @@ interface EqModalProps {
 }
 
 /** Per-channel parametric EQ editor: response curve, band list, preamp. */
-export function EqModal({ channel, open, onClose }: EqModalProps) {
+export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
   const config = useMixerStore(
     (s) => s.eqConfigs[channel.name] ?? null,
   ) ?? defaultEqConfig();

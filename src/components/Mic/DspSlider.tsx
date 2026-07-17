@@ -13,7 +13,7 @@ interface DspSliderProps {
 }
 
 /** Horizontal parameter slider with a default-value tick. */
-export function DspSlider({ label, min, max, step, value, defaultValue, unit, onChange }: DspSliderProps) {
+export function DspSlider({ label, min, max, step, value, defaultValue, unit, onChange }: Readonly<DspSliderProps>) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 

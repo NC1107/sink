@@ -59,6 +59,13 @@ export const bandColor = (index: number) => BAND_COLORS[index % BAND_COLORS.leng
 /** Bands without a gain axis: their dot rides the 0 dB line. */
 const gainless = (band: EqBand) => band.kind === "low_pass" || band.kind === "high_pass";
 
+/** Edge frequency labels hug inward so they don't clip at the plot borders. */
+function edgeAnchor(i: number, n: number): "start" | "end" | "middle" {
+  if (i === 0) return "start";
+  if (i === n - 1) return "end";
+  return "middle";
+}
+
 interface EqCurveProps {
   config: EqConfig;
   selected: number;
@@ -68,7 +75,7 @@ interface EqCurveProps {
 
 /** The interactive response curve: drag a dot to set freq/gain, scroll on
  *  it to tighten/widen Q, double-click to zero the band. */
-export function EqCurve({ config, selected, onSelect, onBandChange }: EqCurveProps) {
+export function EqCurve({ config, selected, onSelect, onBandChange }: Readonly<EqCurveProps>) {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragIndex = useRef<number>(-1);
 
@@ -164,15 +171,16 @@ export function EqCurve({ config, selected, onSelect, onBandChange }: EqCurvePro
       {/* vertical grid + frequency labels (below the plot) */}
       {GRID_FREQS.map((f, i) => {
         const x = fxToX(freqToX(f));
-        // Edge labels hug inward so they don't clip at the borders.
-        const edge =
-          i === 0 ? "start" : i === GRID_FREQS.length - 1 ? "end" : "middle";
+        const edge = edgeAnchor(i, GRID_FREQS.length);
+        let labelX = x;
+        if (edge === "start") labelX = x - 4;
+        else if (edge === "end") labelX = x + 4;
         return (
           <g key={f}>
             <line className="eqm-grid" x1={x} x2={x} y1={TOP} y2={BOTTOM} />
             <text
               className="eqm-axis-label freq"
-              x={edge === "start" ? x - 4 : edge === "end" ? x + 4 : x}
+              x={labelX}
               y={H - 5}
               style={{ textAnchor: edge }}
             >

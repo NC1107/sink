@@ -43,7 +43,7 @@ export function OutputSelect({
   onChange,
   compact,
   popoverStyle,
-}: OutputSelectProps) {
+}: Readonly<OutputSelectProps>) {
   const [open, setOpen] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
 
@@ -54,20 +54,19 @@ export function OutputSelect({
     value === null && resolved ? outputDevices.find((d) => d.name === resolved) : undefined;
   const shown = current ?? resolvedDevice;
 
-  const label = mixed
-    ? "Per-channel"
-    : value === null
-      ? resolvedDevice
-        ? `System default (${resolvedDevice.description})`
-        : "System default"
-      : (current?.description ?? value);
+  let label: string;
+  if (mixed) label = "Per-channel";
+  else if (value !== null) label = current?.description ?? value;
+  else if (resolvedDevice) label = `System default (${resolvedDevice.description})`;
+  else label = "System default";
+
   // Compact footer label: a single meaningful word that fits a 122px strip.
   // Following default shows the live device so the user sees where it lands.
-  const shortLabel = mixed
-    ? "Mixed"
-    : value === null
-      ? (resolvedDevice ? resolvedDevice.description.split(" ")[0] : "Default")
-      : label.split(" ")[0];
+  let shortLabel: string;
+  if (mixed) shortLabel = "Mixed";
+  else if (value !== null) shortLabel = label.split(" ")[0];
+  else if (resolvedDevice) shortLabel = resolvedDevice.description.split(" ")[0];
+  else shortLabel = "Default";
 
   const items = (
     <>

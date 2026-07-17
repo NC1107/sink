@@ -29,7 +29,7 @@ interface EqBandRowProps {
 
 /** Numeric editor for one band - the keyboard-accessible twin of the
  *  curve dot (drag isn't reachable for everyone). */
-export function EqBandRow({ index, band, color, selected, canRemove, onSelect, onChange, onRemove }: EqBandRowProps) {
+export function EqBandRow({ index, band, color, selected, canRemove, onSelect, onChange, onRemove }: Readonly<EqBandRowProps>) {
   const clampNum = (v: string, lo: number, hi: number, fallback: number) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;

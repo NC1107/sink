@@ -451,6 +451,7 @@ body,
   }
 }
 .strip {
+  position: relative;
   width: 132px;
   flex: 0 0 132px;
   display: flex;
@@ -464,9 +465,6 @@ body,
 }
 .strip.muted {
   opacity: 0.62;
-}
-.strip {
-  position: relative;
 }
 /* delete ×: corner-anchored, appears on strip hover (design .strip-x) */
 .strip-x {

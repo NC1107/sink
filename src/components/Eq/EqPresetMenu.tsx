@@ -26,7 +26,7 @@ interface EqPresetMenuProps {
 
 /** Preset picker + import/export. Bundled presets ship inside the binary
  *  (repo presets/eq/); user presets live in ~/.config/sink/eq_presets. */
-export function EqPresetMenu({ sinkName, config, onApply, onError }: EqPresetMenuProps) {
+export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<EqPresetMenuProps>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [presets, setPresets] = useState<EqPresetEntry[]>([]);
   const [saveName, setSaveName] = useState("");
