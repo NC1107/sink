@@ -8,14 +8,14 @@ export function Modal({
   title,
   children,
   className,
-}: {
+}: Readonly<{
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   /** Extra class on the dialog (e.g. a width variant). */
   className?: string;
-}) {
+}>) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {

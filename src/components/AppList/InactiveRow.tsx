@@ -9,7 +9,7 @@ import { ChannelSelect } from "./ChannelSelect";
  * A previously-seen app that isn't currently playing. Routing edits here
  * are "pre-routing": they take effect the moment the app next plays audio.
  */
-export function InactiveRow({ app }: { app: SeenApp }) {
+export function InactiveRow({ app }: Readonly<{ app: SeenApp }>) {
   const setAppAssignment = useMixerStore((s) => s.setAppAssignment);
   const setAppIgnored = useMixerStore((s) => s.setAppIgnored);
   const forgetApp = useMixerStore((s) => s.forgetApp);

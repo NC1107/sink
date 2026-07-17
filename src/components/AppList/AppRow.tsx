@@ -10,7 +10,7 @@ interface AppRowProps {
   stream: AppStream;
 }
 
-export function AppRow({ stream }: AppRowProps) {
+export function AppRow({ stream }: Readonly<AppRowProps>) {
   const routeApp = useMixerStore((s) => s.routeApp);
   const setAppVolume = useMixerStore((s) => s.setAppVolume);
   const renameApp = useMixerStore((s) => s.renameApp);

@@ -9,12 +9,14 @@ import { ProfileMenu } from "./ProfileMenu";
  * controls. The close button triggers the normal close-requested flow,
  * which the Rust side intercepts to hide to tray.
  */
-export function TitleBar({ screen }: { screen: string }) {
+export function TitleBar({ screen }: Readonly<{ screen: string }>) {
   const win = getCurrentWindow();
   const error = useMixerStore((s) => s.error);
   const initialized = useMixerStore((s) => s.initialized);
 
-  const status = error ? "Engine error" : initialized ? "Engine running" : "Starting…";
+  let status = "Starting…";
+  if (error) status = "Engine error";
+  else if (initialized) status = "Engine running";
 
   return (
     <header data-tauri-drag-region className="headerbar">

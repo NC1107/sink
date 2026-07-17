@@ -23,7 +23,7 @@ function MixGroup({
   onAdd,
   addTitle,
   children,
-}: {
+}: Readonly<{
   kind: string;
   icon: string;
   label: string;
@@ -33,7 +33,7 @@ function MixGroup({
   onAdd?: () => void;
   addTitle?: string;
   children: ReactNode;
-}) {
+}>) {
   return (
     <div className={"mix-group is-" + kind}>
       <div className="group-head" title={hint}>

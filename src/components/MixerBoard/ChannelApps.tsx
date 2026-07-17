@@ -25,11 +25,11 @@ export function ChannelApps({
   channel,
   open,
   onClose,
-}: {
+}: Readonly<{
   channel: VirtualSink;
   open: boolean;
   onClose: () => void;
-}) {
+}>) {
   const appStreams = useMixerStore((s) => s.appStreams);
   const seenApps = useMixerStore((s) => s.seenApps);
   const routeApp = useMixerStore((s) => s.routeApp);

@@ -23,7 +23,7 @@ const CLIP_AT = heightForDb(-0.2);
  * touches 0 dBFS. The readout shows the held peak in dBFS.
  * Under the pactl fallback no events arrive and the meter rests at zero.
  */
-export function VuMeter({ target }: VuMeterProps) {
+export function VuMeter({ target }: Readonly<VuMeterProps>) {
   const fillRef = useRef<HTMLDivElement>(null);
   const peakRef = useRef<HTMLDivElement>(null);
   const clipRef = useRef<HTMLDivElement>(null);

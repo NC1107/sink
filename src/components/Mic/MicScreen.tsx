@@ -36,6 +36,12 @@ function MicLevel() {
   );
 }
 
+function micStatusLabel(enabled: boolean, muted: boolean): string {
+  if (!enabled) return "Off";
+  if (muted) return "Muted";
+  return "Live";
+}
+
 export function MicScreen() {
   const micConfig = useMixerStore((s) => s.micConfig);
   const inputDevices = useMixerStore((s) => s.inputDevices);
@@ -71,7 +77,7 @@ export function MicScreen() {
             }
           >
             <Ms name="fiber_manual_record" style={{ fontSize: 11 }} />
-            {!micConfig.enabled ? "Off" : micConfig.muted ? "Muted" : "Live"}
+            {micStatusLabel(micConfig.enabled, micConfig.muted)}
           </span>
           <Toggle
             on={micConfig.enabled}

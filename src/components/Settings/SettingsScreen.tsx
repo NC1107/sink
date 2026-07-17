@@ -29,7 +29,7 @@ function DeviceRow({
   devices,
   current,
   onPick,
-}: {
+}: Readonly<{
   icon: string;
   title: string;
   /** What this default is used for. */
@@ -37,7 +37,7 @@ function DeviceRow({
   devices: OutputDevice[];
   current: string | null;
   onPick: (name: string) => void;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const currentDesc = devices.find((d) => d.name === current)?.description ?? current ?? "-";
 
@@ -74,6 +74,13 @@ function DeviceRow({
       </div>
     </div>
   );
+}
+
+function engineDesc(native: boolean | null): string {
+  if (native === null) return "…";
+  return native
+    ? "Native PipeWire (pipewire-rs) - live metering, passive routing"
+    : "pactl fallback - native engine unavailable on this system";
 }
 
 export function SettingsScreen() {
@@ -250,11 +257,7 @@ export function SettingsScreen() {
             <div className="rmain">
               <div className="rtitle">Audio engine</div>
               <div className="rsub">
-                {backendNative === null
-                  ? "…"
-                  : backendNative
-                    ? "Native PipeWire (pipewire-rs) - live metering, passive routing"
-                    : "pactl fallback - native engine unavailable on this system"}
+                {engineDesc(backendNative)}
               </div>
             </div>
             {backendNative !== null && (

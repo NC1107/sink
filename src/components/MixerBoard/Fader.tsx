@@ -7,7 +7,7 @@ interface FaderProps {
 }
 
 /** Vertical channel fader (pointer-driven, design-system styling). */
-export function Fader({ value, max, onChange }: FaderProps) {
+export function Fader({ value, max, onChange }: Readonly<FaderProps>) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
