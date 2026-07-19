@@ -65,6 +65,13 @@ export function Popover({ open, onClose, children, side = "bottom", align = "sta
     setPosition({ left, top });
   }, [open, side, align]);
 
+  // Latest onClose without making it an effect dependency: callers pass an
+  // inline arrow, so depending on it would re-run the effect on every parent
+  // render and steal focus back into the menu (breaking typing in menu
+  // inputs). The effect must run only when `open` flips.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // Keyboard handling while open: Escape closes (like the scrim click)
   // and Tab is contained inside the menu so focus can't wander into the
   // UI underneath. Focus moves into the menu on open and back to the
@@ -76,7 +83,7 @@ export function Popover({ open, onClose, children, side = "bottom", align = "sta
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab") return;
@@ -106,7 +113,9 @@ export function Popover({ open, onClose, children, side = "bottom", align = "sta
       window.removeEventListener("keydown", onKey);
       previous?.focus?.();
     };
-  }, [open, onClose]);
+    // Intentionally only `open`: onClose is read via ref (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   return (
     <>

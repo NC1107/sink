@@ -1825,7 +1825,9 @@ body,
   color: var(--on-accent);
 }
 .modal.eqm-modal {
-  width: min(640px, calc(100vw - 48px));
+  /* Grow with the window (bigger curve + roomier rows) up to a cap, so a
+     wide window isn't wasted; shrink to fit narrow ones. */
+  width: min(900px, calc(100vw - 48px));
   /* Never taller than the window; scroll the whole panel on short screens. */
   max-height: calc(100vh - 48px);
   overflow-y: auto;
@@ -1878,9 +1880,9 @@ body,
 }
 .eqm-region-label {
   fill: var(--fg-secondary);
-  font-size: 8.5px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.7px;
   text-anchor: middle;
   dominant-baseline: middle;
   font-family: inherit;
