@@ -37,6 +37,7 @@ processed virtual microphone for voice chat.
   noise suppression before the chain.
 - **Profiles** - save and switch full layouts from the tray
 
+![Equalizer](docs/eq.png)
 ![Mic](docs/mic.png)
 ![Apps](docs/apps.png)
 
