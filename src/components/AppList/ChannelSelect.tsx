@@ -35,6 +35,7 @@ export function ChannelSelect({ value, onChange }: Readonly<ChannelSelectProps>)
   return (
     <div style={{ position: "relative" }}>
       <button
+        type="button"
         className="select"
         onClick={() => setOpen((o) => !o)}
         title={

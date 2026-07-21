@@ -84,6 +84,7 @@ export function ChannelStrip({
       )}
       {channelCount > 1 && (
         <button
+          type="button"
           className="strip-x"
           aria-label={`Delete channel ${channel.label}`}
           title="Delete channel"
@@ -96,6 +97,7 @@ export function ChannelStrip({
       <div className="strip-head">
         <div style={{ position: "relative" }}>
           <button
+            type="button"
             className="strip-icon strip-icon-btn"
             title="Change icon"
             aria-label={`Change icon for ${channel.label}`}
@@ -113,6 +115,7 @@ export function ChannelStrip({
             <div className="icon-grid">
               {ICON_CHOICES.map((icon) => (
                 <button
+                  type="button"
                   key={icon}
                   className={"icon-cell" + (channelIcon(channel) === icon ? " sel" : "")}
                   onClick={() => {
@@ -153,6 +156,7 @@ export function ChannelStrip({
         )}
         <div style={{ position: "relative" }}>
           <button
+            type="button"
             className="strip-meta strip-meta-btn"
             title="Choose which apps play through this channel"
             onClick={() => setManagingApps(true)}
@@ -185,6 +189,7 @@ export function ChannelStrip({
 
       <div className="strip-btns">
         <button
+          type="button"
           className={"sbtn" + (channel.muted ? " on-mute" : "")}
           onClick={() => void toggleMute(channel.name, !channel.muted)}
           aria-pressed={channel.muted}
@@ -193,6 +198,7 @@ export function ChannelStrip({
           <Ms name={channel.muted ? "volume_off" : "volume_up"} style={{ fontSize: 16 }} />
         </button>
         <button
+          type="button"
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(channel.name)}
           aria-pressed={monitoring}
@@ -201,6 +207,7 @@ export function ChannelStrip({
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>
         <button
+          type="button"
           className={"sbtn" + (eqEnabled ? " on-eq" : "")}
           onClick={() => setEditingEq(true)}
           aria-pressed={eqEnabled}

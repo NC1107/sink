@@ -42,7 +42,7 @@ export function ProfileMenu() {
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="select" onClick={() => setOpen((o) => !o)} title="Profiles">
+      <button type="button" className="select" onClick={() => setOpen((o) => !o)} title="Profiles">
         <Ms name="bookmarks" />
         <span>{activeProfile ?? "Profiles"}</span>
         <Ms name="expand_more" />
@@ -143,6 +143,7 @@ export function ProfileMenu() {
             }}
           />
           <button
+            type="button"
             className="select"
             onClick={create}
             disabled={!newName.trim()}

@@ -72,6 +72,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
     <div className={"strip bus-strip" + (muted ? " muted" : "")}>
       {!isMaster && (
         <button
+          type="button"
           className="strip-x"
           aria-label={`Delete mix ${bus.label}`}
           title="Delete mix"
@@ -117,6 +118,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         ) : (
           <div style={{ position: "relative" }}>
             <button
+              type="button"
               className="strip-meta strip-meta-btn"
               title="Choose which channels this mix carries"
               onClick={() => setManaging(true)}
@@ -165,6 +167,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
 
       <div className="strip-btns">
         <button
+          type="button"
           className={"sbtn" + (muted ? " on-mute" : "")}
           onClick={toggleMute}
           aria-pressed={muted}
@@ -173,6 +176,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
           <Ms name={muted ? "volume_off" : "volume_up"} style={{ fontSize: 16 }} />
         </button>
         <button
+          type="button"
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(bus.name)}
           aria-pressed={monitoring}

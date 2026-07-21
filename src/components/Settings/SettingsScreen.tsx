@@ -52,7 +52,7 @@ function DeviceRow({
         <div className="rsub">{sub}</div>
       </div>
       <div style={{ position: "relative" }}>
-        <button className="select device-select" onClick={() => setOpen((o) => !o)}>
+        <button type="button" className="select device-select" onClick={() => setOpen((o) => !o)}>
           <span className="device-select-name">{currentDesc}</span>
           <Ms name="expand_more" />
         </button>
@@ -175,7 +175,7 @@ export function SettingsScreen() {
               <div className="rsub">Naming scheme for Sink-managed devices</div>
             </div>
             <div style={{ position: "relative" }}>
-              <button className="select" onClick={() => setLabelStyleOpen((o) => !o)}>
+              <button type="button" className="select" onClick={() => setLabelStyleOpen((o) => !o)}>
                 <span>{LABEL_STYLES.find((s) => s.value === labelStyle)?.label}</span>
                 <Ms name="expand_more" />
               </button>
@@ -284,7 +284,7 @@ export function SettingsScreen() {
               <div className="rtitle">Tutorial</div>
               <div className="rsub">Replay the first-run tour</div>
             </div>
-            <button className="select" onClick={replayOnboarding}>
+            <button type="button" className="select" onClick={replayOnboarding}>
               <span>Replay</span>
             </button>
           </div>
@@ -298,7 +298,7 @@ export function SettingsScreen() {
                 Erase all channels, mixes, profiles, app history and preferences
               </div>
             </div>
-            <button className="select" onClick={() => setConfirmingReset(true)}>
+            <button type="button" className="select" onClick={() => setConfirmingReset(true)}>
               <span>Reset…</span>
             </button>
           </div>

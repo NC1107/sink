@@ -84,6 +84,7 @@ export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
             onError={setError}
           />
           <button
+            type="button"
             className="select eqm-iconbtn"
             onClick={reset}
             title="Reset to the flat 5-band layout"
@@ -135,7 +136,7 @@ export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
           </div>
         </div>
         {config.bands.length < MAX_EQ_BANDS && (
-          <button className="eqm-add" onClick={addBand}>
+          <button type="button" className="eqm-add" onClick={addBand}>
             <Ms name="add" style={{ fontSize: 15 }} />
             Add band
           </button>

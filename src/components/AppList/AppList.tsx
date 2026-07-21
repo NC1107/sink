@@ -82,7 +82,7 @@ export function AppList() {
 
         {ignored.length > 0 && (
           <>
-            <button className="ignored-toggle" onClick={() => setShowIgnored((v) => !v)}>
+            <button type="button" className="ignored-toggle" onClick={() => setShowIgnored((v) => !v)}>
               <Ms name={showIgnored ? "expand_less" : "expand_more"} />
               {ignored.length} ignored {ignored.length === 1 ? "app" : "apps"}
             </button>

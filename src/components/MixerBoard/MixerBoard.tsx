@@ -40,7 +40,7 @@ function MixGroup({
         <span className="gh-count">{count}</span>
         {onAdd && (
           <div className="gh-add-wrap">
-            <button className="gh-add" onClick={onAdd} title={addTitle}>
+            <button type="button" className="gh-add" onClick={onAdd} title={addTitle}>
               <Ms name="add" />
             </button>
           </div>
@@ -208,6 +208,7 @@ export function MixerBoard() {
         <div className="icon-grid">
           {ICON_CHOICES.map((choice) => (
             <button
+              type="button"
               key={choice}
               className={"icon-cell" + (choice === channelIcon ? " sel" : "")}
               onClick={() => setChannelIcon(choice)}
@@ -218,10 +219,10 @@ export function MixerBoard() {
           ))}
         </div>
         <div className="modal-btns">
-          <button className="modal-btn primary" onClick={createChannel} disabled={!channelLabel.trim()}>
+          <button type="button" className="modal-btn primary" onClick={createChannel} disabled={!channelLabel.trim()}>
             Create channel
           </button>
-          <button className="modal-btn" onClick={closeChannelModal}>
+          <button type="button" className="modal-btn" onClick={closeChannelModal}>
             Cancel
           </button>
         </div>
@@ -244,10 +245,10 @@ export function MixerBoard() {
           }}
         />
         <div className="modal-btns">
-          <button className="modal-btn primary" onClick={createMix} disabled={!mixLabel.trim()}>
+          <button type="button" className="modal-btn primary" onClick={createMix} disabled={!mixLabel.trim()}>
             Create mix
           </button>
-          <button className="modal-btn" onClick={() => setAddingMix(false)}>
+          <button type="button" className="modal-btn" onClick={() => setAddingMix(false)}>
             Cancel
           </button>
         </div>

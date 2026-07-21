@@ -84,6 +84,7 @@ export function BalanceBar() {
   ) => (
     <div style={{ position: "relative", display: "flex" }}>
       <button
+        type="button"
         className="bal-side"
         onClick={() => setOpen(!open)}
         title={`${channel.label} - click to pick the channel on this side`}

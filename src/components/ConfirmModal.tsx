@@ -26,6 +26,7 @@ export function ConfirmModal({
       <p className="modal-text">{children}</p>
       <div className="modal-btns">
         <button
+          type="button"
           className="modal-btn danger"
           onClick={() => {
             onClose();
@@ -34,7 +35,7 @@ export function ConfirmModal({
         >
           {confirmLabel}
         </button>
-        <button className="modal-btn" onClick={onClose}>
+        <button type="button" className="modal-btn" onClick={onClose}>
           Cancel
         </button>
       </div>

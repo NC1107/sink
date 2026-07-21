@@ -118,6 +118,7 @@ export function OutputSelect({
     return (
       <div style={{ position: "relative" }}>
         <button
+          type="button"
           className="strip-route strip-route-btn"
           onClick={() => setOpen((o) => !o)}
           title={`Output: ${label}`}
@@ -141,7 +142,7 @@ export function OutputSelect({
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="out-pill" onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="out-pill" onClick={() => setOpen((o) => !o)}>
         <Ms name={shown ? deviceIcon(shown.description) : "speaker_group"} />
         <span>{label}</span>
         <Ms name="expand_more" className="chev" />

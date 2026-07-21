@@ -107,7 +107,7 @@ export function MicScreen() {
                   <Ms name="settings_voice" />
                 </div>
                 <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
-                  <button className="select mic-device-select" onClick={() => setDeviceOpen((o) => !o)}>
+                  <button type="button" className="select mic-device-select" onClick={() => setDeviceOpen((o) => !o)}>
                     <span className="mic-device-name">{deviceLabel}</span>
                     <Ms name="expand_more" />
                   </button>
@@ -143,6 +143,7 @@ export function MicScreen() {
                   </Popover>
                 </div>
                 <button
+                  type="button"
                   className={"sbtn" + (micConfig.muted ? " on-mute" : "")}
                   style={{ width: 34, flex: "0 0 34px" }}
                   title={micConfig.muted ? "Unmute mic" : "Mute mic"}
@@ -151,6 +152,7 @@ export function MicScreen() {
                   <Ms name={micConfig.muted ? "mic_off" : "mic"} style={{ fontSize: 18 }} />
                 </button>
                 <button
+                  type="button"
                   className={"sbtn" + (listening ? " on-mon" : "")}
                   style={{ width: 34, flex: "0 0 34px" }}
                   title="Listen to yourself - hear the processed mic to tune the chain (wear headphones)"

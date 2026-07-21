@@ -17,7 +17,7 @@ interface MenuItemProps {
 }
 
 /**
- * One choice in a Popover menu. A real `<button>`, so every menu is
+ * One choice in a Popover menu. A real button element, so every menu is
  * reachable by keyboard and announced as a control rather than as text.
  */
 export function MenuItem({
