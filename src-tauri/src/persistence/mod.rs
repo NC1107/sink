@@ -13,6 +13,14 @@ pub mod seen;
 pub mod profiles;
 pub mod wireplumber;
 
+/// Seconds since the Unix epoch, or 0 if the clock predates it.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Create Sink's config directory (and parents) with owner-only access -
 /// routing rules and app history are nobody else's business. Used by every
 /// save path that writes under `$XDG_CONFIG_HOME/sink`.

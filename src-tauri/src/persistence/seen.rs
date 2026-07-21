@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::SinkError;
 
+/// How long an app the user never touched stays in the history before it is
+/// forgotten. Entries carrying user intent (an assignment, an alias, or the
+/// ignore flag) are exempt and kept indefinitely.
+pub const MAX_SEEN_AGE_SECS: u64 = 7 * 24 * 60 * 60;
+
 /// One app identity Sink has ever observed playing audio.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeenEntry {
@@ -130,6 +135,24 @@ impl SeenApps {
         self.apps
             .retain(|a| !(a.match_prop == match_prop && a.match_value == match_value));
     }
+
+    /// Drop history entries last seen over `max_age_secs` ago that the user
+    /// never acted on. `has_intent` reports whether an identity carries an
+    /// assignment or an alias; those and ignored entries survive forever, so
+    /// a game played once a month keeps its channel. Returns true when
+    /// anything was removed (i.e. the caller should persist).
+    pub fn prune<F>(&mut self, now: u64, max_age_secs: u64, has_intent: F) -> bool
+    where
+        F: Fn(&str, &str) -> bool,
+    {
+        let before = self.apps.len();
+        self.apps.retain(|a| {
+            a.ignored
+                || now.saturating_sub(a.last_seen) <= max_age_secs
+                || has_intent(&a.match_prop, &a.match_value)
+        });
+        self.apps.len() != before
+    }
 }
 
 #[cfg(test)]
@@ -156,5 +179,38 @@ mod tests {
         assert!(!seen.set_ignored("media.name", "nope", true));
         seen.forget("media.name", "audio-src");
         assert!(seen.get("media.name", "audio-src").is_none());
+    }
+
+    #[test]
+    fn prune_drops_only_stale_untouched_entries() {
+        const DAY: u64 = 24 * 60 * 60;
+        let now = 100 * DAY;
+        let mut seen = SeenApps::default();
+        seen.upsert("application.name", "recent", "Recent", None, now - DAY);
+        seen.upsert("application.name", "stale", "Stale", None, now - 8 * DAY);
+        seen.upsert("application.name", "routed", "Routed", None, now - 60 * DAY);
+        seen.upsert("application.name", "hidden", "Hidden", None, now - 60 * DAY);
+        seen.set_ignored("application.name", "hidden", true);
+
+        let routed = |_prop: &str, value: &str| value == "routed";
+        assert!(seen.prune(now, MAX_SEEN_AGE_SECS, routed));
+
+        assert!(seen.get("application.name", "recent").is_some());
+        assert!(seen.get("application.name", "stale").is_none());
+        // Assigned and ignored entries outlive the window.
+        assert!(seen.get("application.name", "routed").is_some());
+        assert!(seen.get("application.name", "hidden").is_some());
+
+        // Nothing left to drop - the caller shouldn't be told to save.
+        assert!(!seen.prune(now, MAX_SEEN_AGE_SECS, routed));
+    }
+
+    #[test]
+    fn prune_tolerates_timestamps_from_the_future() {
+        let mut seen = SeenApps::default();
+        // A clock jump backwards must not make every entry look ancient.
+        seen.upsert("application.name", "ahead", "Ahead", None, 5_000);
+        assert!(!seen.prune(1_000, MAX_SEEN_AGE_SECS, |_, _| false));
+        assert!(seen.get("application.name", "ahead").is_some());
     }
 }

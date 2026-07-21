@@ -32,7 +32,8 @@ impl AppState {
             .as_deref()
             .and_then(|name| crate::persistence::profiles::load(name).ok())
             .and_then(|p| p.trigger_device);
-        let mixer = MixerState {
+        let now = crate::persistence::unix_now();
+        let mut mixer = MixerState {
             assignments: crate::persistence::assignments::Assignments::load(),
             aliases: crate::persistence::aliases::Aliases::load(),
             outputs: crate::persistence::outputs::ChannelOutputs::load(),
@@ -44,8 +45,14 @@ impl AppState {
             active_profile,
             active_trigger,
             prefs: crate::persistence::prefs::Prefs::load(),
+            seen_saved_at: now,
             ..MixerState::default()
         };
+        if mixer.prune_stale_apps(now) {
+            if let Err(e) = mixer.seen.save() {
+                eprintln!("sink: pruning app history failed: {e}");
+            }
+        }
         Self {
             backend,
             backend_native,
