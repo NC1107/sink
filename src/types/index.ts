@@ -48,7 +48,7 @@ export interface MicConfig {
   input_device: string | null;
   /** What other apps list the processed mic as. */
   output_label: string;
-  /** 0–200; 100 = unity. */
+  /** 0-200; 100 = unity. */
   gain_percent: number;
   gate_enabled: boolean;
   comp_enabled: boolean;

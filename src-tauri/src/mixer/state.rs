@@ -26,6 +26,11 @@ pub struct MixerState {
     pub mic: crate::audio::types::MicConfig,
     /// Every app identity ever observed (history + ignore list).
     pub seen: crate::persistence::seen::SeenApps,
+    /// Unix seconds of the last `seen` write. The poll only saves on
+    /// structural changes, so this drives a slow flush that bounds how stale
+    /// on-disk `last_seen` timestamps can get if Sink dies without a clean
+    /// quit - the age-based prune trusts them.
+    pub seen_saved_at: u64,
     /// Profile changes autosave into this profile (live-bound, not a
     /// snapshot). None = unmanaged state.
     pub active_profile: Option<String>,
@@ -67,6 +72,27 @@ impl MixerState {
         self.channels.iter_mut().find(|c| c.name == sink_name)
     }
 
+    /// Forget history entries the user never acted on and hasn't seen in a
+    /// week, so the "not running" list stays about apps they actually use.
+    /// Returns true when the history changed and should be saved.
+    pub fn prune_stale_apps(&mut self, now: u64) -> bool {
+        // Disjoint field borrows: `prune` needs `seen` mutably while the
+        // intent test reads the other two.
+        let Self {
+            seen,
+            assignments,
+            aliases,
+            ..
+        } = self;
+        seen.prune(
+            now,
+            crate::persistence::seen::MAX_SEEN_AGE_SECS,
+            |prop, value| {
+                assignments.sink_for(prop, value).is_some() || aliases.get(prop, value).is_some()
+            },
+        )
+    }
+
     pub fn reset(&mut self) {
         self.channels.clear();
         self.initialized = false;
@@ -86,6 +112,26 @@ mod tests {
         assert_eq!(state.channels[0].name, "sink_game");
         assert_eq!(state.channels[0].label, "Game");
         assert!(state.channels.iter().all(|c| c.volume_percent == 100 && !c.muted));
+    }
+
+    #[test]
+    fn prune_stale_apps_exempts_assigned_and_aliased() {
+        const DAY: u64 = 24 * 60 * 60;
+        let now = 100 * DAY;
+        let old = now - 30 * DAY;
+        let mut state = MixerState::default();
+        for value in ["plain", "assigned", "aliased"] {
+            state.seen.upsert("application.name", value, value, None, old);
+        }
+        state
+            .assignments
+            .set("application.name", "assigned", "sink_game");
+        state.aliases.set("application.name", "aliased", "My App");
+
+        assert!(state.prune_stale_apps(now));
+        assert!(state.seen.get("application.name", "plain").is_none());
+        assert!(state.seen.get("application.name", "assigned").is_some());
+        assert!(state.seen.get("application.name", "aliased").is_some());
     }
 
     #[test]

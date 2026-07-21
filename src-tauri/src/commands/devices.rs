@@ -3,6 +3,8 @@ use tauri::State;
 use crate::audio::types::{AppStream, OutputDevice, VirtualSink};
 use crate::state::AppState;
 
+/// How often the poll force-saves app history to refresh `last_seen` on disk.
+const SEEN_FLUSH_SECS: u64 = 15 * 60;
 
 /// Current channel state (volume/mute as tracked by MixerState).
 #[tauri::command]
@@ -38,10 +40,7 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
         }
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = crate::persistence::unix_now();
 
     // Phase 1: under the lock, update history and *plan* auto-routing - but do
     // no blocking work. Holding the mixer mutex across the disk save or the
@@ -61,6 +60,18 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
                 now,
             );
         }
+        // A pure last_seen bump never reports a structural change, so without
+        // this the freshest timestamps only reach disk on a clean tray-quit -
+        // and an unclean exit would leave a daily-used app looking stale
+        // enough for the prune to forget it. Flushing on a slow cadence
+        // bounds that drift, and re-runs the prune for sessions that outlive
+        // the window.
+        if now.saturating_sub(mixer.seen_saved_at) >= SEEN_FLUSH_SECS {
+            mixer.prune_stale_apps(now);
+            mixer.seen_saved_at = now;
+            structural_change = true;
+        }
+
         // Hide ignored identities (also exempts them from auto-routing).
         streams.retain(|s| !mixer.seen.is_ignored(&s.match_prop, &s.match_value));
 

@@ -27,7 +27,7 @@ function debouncedInvoke(key: string, cmd: string, args: Record<string, unknown>
   );
 }
 
-/** Per-sink [left, right] peak amplitudes (0–1), streamed from the native backend. */
+/** Per-sink [left, right] peak amplitudes (0-1), streamed from the native backend. */
 export type Levels = Record<string, [number, number]>;
 
 interface MixerStore {

@@ -62,8 +62,16 @@
   --accent-light: rgba(85, 87, 224, 0.1);
   --on-accent: #ffffff;
 
+  /* Floating layers (menus, popovers). Deliberately lighter than
+     --bg-surface: a menu opens on top of cards and strips that are already
+     --bg-surface, and matching them left the panel with no visible edge. */
+  --bg-popover: #2b2b31;
+  --bg-popover-hover: #38383f;
+
   /* Lines */
   --border: #27272a;
+  /* Edge for floating layers, light enough to read against a surface. */
+  --border-popover: #45454e;
 
   /* Semantic */
   --online: #22c55e;
@@ -94,7 +102,8 @@
   --r-xl: 12px;
   --r-pill: 9999px;
 
-  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.18);
+  /* Strong enough to separate a panel from an equally dark surface below. */
+  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -298,15 +307,24 @@ body,
 
 /* ---------- Content ---------- */
 .content {
+  /* Width of the readable column. Head and scroll body both centre on it so
+     a wide window doesn't stretch a row's controls half a screen from its
+     name; the head's bottom border still spans full width. */
+  --content-w: 900px;
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-main);
 }
+/* Form-like screens (mic, settings) read better in a tighter column. */
+.content.narrow {
+  --content-w: 720px;
+}
 .screen-head {
   flex: 0 0 auto;
   padding: var(--sp-6) var(--sp-7) var(--sp-4);
+  padding-inline: max(var(--sp-7), calc((100% - var(--content-w)) / 2));
   display: flex;
   align-items: flex-end;
   gap: var(--sp-4);
@@ -333,6 +351,18 @@ body,
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--sp-6) var(--sp-7);
+  /* Matches .screen-head so rows line up under the title. The mixer opts out
+     with an inline padding of 0 - its strips centre themselves. */
+  padding-inline: max(var(--sp-7), calc((100% - var(--content-w)) / 2));
+}
+
+/* Shown when a list has nothing in it yet. */
+.empty-hint {
+  padding: var(--sp-7) var(--sp-6);
+  text-align: center;
+  font-size: var(--fs-meta);
+  line-height: 1.6;
+  color: var(--fg-muted);
 }
 .screen-scroll::-webkit-scrollbar {
   width: 10px;
@@ -372,6 +402,11 @@ body,
 .mix-scroll {
   display: flex;
   align-items: stretch;
+  /* Centre the groups so a wide window isn't dead space on the right. The
+     `safe` keyword keeps the left edge reachable when they overflow instead
+     of clipping both sides; where it's unsupported the whole declaration is
+     dropped and this falls back to flex-start. */
+  justify-content: safe center;
   padding: var(--sp-5) var(--sp-6);
   height: 100%;
   min-height: 0;
@@ -574,6 +609,9 @@ body,
   margin-left: auto;
   font-size: var(--fs-caption);
   color: var(--fg-muted);
+}
+.channel-apps-eq {
+  margin-left: auto;
 }
 
 .strip-head {
@@ -945,7 +983,9 @@ body,
   }
 }
 
-.rename-btn {
+/* Borderless icon action (IconButton.tsx). `.reveal` hides until the row is
+   hovered; `.boxed` is an always-visible 24px hit area with a hover fill. */
+.icon-btn {
   border: none;
   background: none;
   color: var(--fg-muted);
@@ -954,14 +994,29 @@ body,
   border-radius: var(--r-xs);
   display: grid;
   place-items: center;
-  opacity: 0;
-  transition: opacity 0.12s, color 0.12s;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
-.row:hover .rename-btn {
+.icon-btn:hover {
+  color: var(--fg-primary);
+}
+.icon-btn.reveal {
+  opacity: 0;
+}
+.row:hover .icon-btn.reveal,
+.icon-btn.reveal:focus-visible {
   opacity: 1;
 }
-.rename-btn:hover {
-  color: var(--fg-primary);
+.icon-btn.boxed {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+.icon-btn.boxed:hover {
+  background: var(--bg-active);
+}
+.icon-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: var(--danger);
 }
 .row .rtrail {
   display: flex;
@@ -1181,12 +1236,6 @@ body,
 .row-inactive .rname {
   color: var(--fg-secondary);
 }
-.row-action {
-  opacity: 0;
-}
-.row:hover .row-action {
-  opacity: 1;
-}
 .ignored-toggle {
   display: flex;
   align-items: center;
@@ -1213,38 +1262,70 @@ body,
   position: absolute;
   z-index: 60;
   min-width: 220px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  /* Long device names would otherwise stretch a menu across the window. */
+  max-width: min(420px, calc(100vw - 32px));
+  background: var(--bg-popover);
+  border: 1px solid var(--border-popover);
   border-radius: var(--r-lg);
   padding: var(--sp-2);
   box-shadow: var(--shadow-popover);
 }
+/* Menu rows are real <button>s (see MenuItem.tsx) so menus are keyboard
+   reachable; the reset here strips UA button chrome. Static rows stay divs:
+   they host their own control (a Toggle) or are plain text. */
 .menu-item {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   padding: 8px var(--sp-3);
+  border: none;
   border-radius: var(--r-sm);
+  background: none;
+  font-family: inherit;
   font-size: var(--fs-meta);
+  text-align: left;
   color: var(--fg-primary);
   cursor: pointer;
 }
 .menu-item:hover {
-  background: var(--bg-surface-hover);
+  background: var(--bg-popover-hover);
+}
+.menu-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .menu-item.sel {
   color: var(--accent-hover);
+}
+.menu-item.static {
+  cursor: default;
+}
+.menu-item.static:hover {
+  background: none;
+}
+.menu-item.muted {
+  color: var(--fg-muted);
 }
 .menu-item .ms {
   font-size: 18px;
   color: var(--fg-muted);
 }
-.menu-item.sel .ms {
+.menu-item.sel .ms,
+.menu-item .ms.menu-check-on {
   color: var(--accent-hover);
+}
+/* Takes the slack so trailing content (check, toggle, badge) sits right. */
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .menu-sep {
   height: 1px;
-  background: var(--border);
+  background: var(--border-popover);
   margin: var(--sp-2) 0;
 }
 .menu-save {
@@ -1274,6 +1355,16 @@ body,
 }
 
 /* profile menu */
+/* Wrapper, not a menu row: the load button and the action buttons are
+   siblings so no button is ever nested inside another. */
+.profile-row {
+  display: flex;
+  align-items: center;
+}
+.profile-row-btn {
+  flex: 1;
+  min-width: 0;
+}
 .profile-row-main {
   flex: 1;
   min-width: 0;
@@ -1285,9 +1376,17 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
   font-size: var(--fs-caption);
   color: var(--warning);
   opacity: 0.85;
+}
+/* Device names are unbounded; ellipsis rather than stretch the menu. */
+.profile-row-trigger-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .profile-row-actions {
   display: flex;
@@ -1298,32 +1397,11 @@ body,
 .profile-row:hover .profile-row-actions {
   opacity: 1;
 }
-.row-icon-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: var(--r-xs);
-  background: none;
-  color: var(--fg-muted);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  transition: background 0.12s, color 0.12s;
-}
-.row-icon-btn:hover {
-  background: var(--bg-active);
-  color: var(--fg-primary);
-}
-.row-icon-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.16);
-  color: var(--danger);
-}
-
 /* profile trigger sub-panel */
 .trigger-panel {
   margin: 2px 0 var(--sp-2) var(--sp-6);
   padding-left: var(--sp-2);
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--border-popover);
 }
 .trigger-hint {
   font-size: var(--fs-caption);
@@ -1350,7 +1428,12 @@ body,
   justify-content: center;
 }
 .modal {
-  width: min(380px, calc(100vw - 48px));
+  /* Grow with the window up to --modal-w, shrink to fit narrow ones, and
+     never exceed the window height - scroll the panel instead. */
+  --modal-w: 380px;
+  width: min(var(--modal-w), calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
@@ -1360,9 +1443,23 @@ body,
   flex-direction: column;
   gap: var(--sp-4);
 }
+/* Title row with the close affordance; flex: 0 0 auto so it survives the
+   EQ panel turning its body into a flex column. */
+.modal-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
 .modal-title {
+  flex: 1;
+  min-width: 0;
   font-size: var(--fs-title-lg, 16px);
   font-weight: 600;
+}
+/* Pull the close button out to the panel's padding edge. */
+.modal-head .icon-btn {
+  margin-right: -4px;
 }
 .modal-text {
   font-size: var(--fs-meta);
@@ -1712,7 +1809,7 @@ body,
 /* divider inside popover menus */
 .menu-div {
   height: 1px;
-  background: var(--border);
+  background: var(--border-popover);
   margin: var(--sp-1) var(--sp-2);
 }
 
@@ -1825,12 +1922,14 @@ body,
   color: var(--on-accent);
 }
 .modal.eqm-modal {
-  /* Grow with the window (bigger curve + roomier rows) up to a cap, so a
-     wide window isn't wasted; shrink to fit narrow ones. */
-  width: min(900px, calc(100vw - 48px));
-  /* Never taller than the window; scroll the whole panel on short screens. */
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  --modal-w: 860px;
+  /* The band list is the scroller, not the panel, so the curve stays put
+     while you work through the rows. */
+  overflow: hidden;
+}
+/* Everything above the list keeps its natural height; only the list flexes. */
+.modal.eqm-modal > * {
+  flex-shrink: 0;
 }
 .eqm-head {
   display: flex;
@@ -1848,6 +1947,12 @@ body,
 .eqm-curve {
   width: 100%;
   height: auto;
+  /* A wider window should buy more band rows, not a taller graph - past this
+     the plot stops growing and centres, and the freed height goes to the
+     list below. */
+  max-width: 640px;
+  margin-inline: auto;
+  display: block;
   /* Labels live in gutters outside the plot; the rect carries the frame. */
   background: transparent;
   touch-action: none;
@@ -1934,9 +2039,16 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  /* Claim the panel's leftover height so the rows only scroll when they
+     genuinely do not fit. */
+  flex: 1;
+  min-height: 0;
 }
 .eqm-bands-viewport {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 /* Fade the bottom edge so a clipped row reads as "scroll for more", not a bug. */
 .eqm-bands-viewport::after {
@@ -1953,7 +2065,10 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  max-height: 220px;
+  flex: 1;
+  /* Two rows, so a short window shrinks the list instead of clipping the
+     panel it lives in. */
+  min-height: 72px;
   overflow-y: auto;
   /* keep rows clear of the scrollbar and the bottom fade */
   padding-right: 4px;
@@ -2107,9 +2222,8 @@ body,
   display: flex;
   gap: var(--sp-1);
 }
-/* menu-item as a real button (a11y): strip UA button chrome, keep the
-   menu look; the row wrapper hosts the apply button + a delete sibling
-   so no button ever nests inside another. */
+/* The row wrapper hosts the apply button plus a delete sibling, so no
+   button ever nests inside another (same shape as .profile-row). */
 .eqm-preset-row {
   display: flex;
   align-items: center;
@@ -2117,13 +2231,6 @@ body,
 .eqm-preset-row .eqm-remove {
   margin-left: auto;
   margin-right: 4px;
-}
-button.menu-item {
-  width: 100%;
-  background: none;
-  border: none;
-  font-family: inherit;
-  text-align: left;
 }
 .eqm-preset-apply {
   flex: 1;
@@ -2235,4 +2342,18 @@ button.menu-item {
 .eqm-preset-row .eqm-preset-confirm .eqm-remove {
   margin-left: 0;
   margin-right: 0;
+}
+
+/* ---------- Reduced motion ---------- */
+/* Entrance animations and hover transitions are decoration; honour the OS
+   setting rather than moving things for people who asked us not to. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

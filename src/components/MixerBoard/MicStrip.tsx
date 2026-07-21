@@ -79,6 +79,7 @@ export function MicStrip() {
 
       <div className="strip-btns">
         <button
+          type="button"
           className={"sbtn" + (micConfig.muted ? " on-mute" : "")}
           onClick={() => void setMicConfig({ muted: !micConfig.muted })}
           aria-pressed={micConfig.muted}
@@ -87,6 +88,7 @@ export function MicStrip() {
           <Ms name={micConfig.muted ? "mic_off" : "mic"} style={{ fontSize: 16 }} />
         </button>
         <button
+          type="button"
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(MIC_LEVEL_KEY)}
           aria-pressed={monitoring}

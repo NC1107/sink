@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import type { VirtualSink } from "../../types";
 import { Ms } from "../Icons";
+import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 
 /**
@@ -83,6 +84,7 @@ export function BalanceBar() {
   ) => (
     <div style={{ position: "relative", display: "flex" }}>
       <button
+        type="button"
         className="bal-side"
         onClick={() => setOpen(!open)}
         title={`${channel.label} - click to pick the channel on this side`}
@@ -93,17 +95,17 @@ export function BalanceBar() {
         {channels
           .filter((c) => c.name !== other.name)
           .map((c) => (
-            <div
+            <MenuItem
               key={c.name}
-              className={"menu-item" + (c.name === channel.name ? " sel" : "")}
+              icon={c.icon ?? "graphic_eq"}
+              selected={c.name === channel.name}
               onClick={() => {
                 pick(c.name);
                 setOpen(false);
               }}
             >
-              <Ms name={c.icon ?? "graphic_eq"} />
-              <span>{c.label}</span>
-            </div>
+              {c.label}
+            </MenuItem>
           ))}
       </Popover>
     </div>

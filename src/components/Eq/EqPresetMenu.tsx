@@ -146,6 +146,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   const presetRow = (entry: EqPresetEntry) => (
     <div key={`${entry.source}:${entry.preset.name}`} className="eqm-preset-row">
       <button
+        type="button"
         className={"menu-item eqm-preset-apply" + (entry === activePreset ? " sel" : "")}
         title={entry.preset.description ?? undefined}
         onClick={() => applyPreset(entry)}
@@ -157,6 +158,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
         (confirmDelete === entry.preset.name ? (
           <span className="eqm-preset-confirm">
             <button
+              type="button"
               className="eqm-remove danger"
               title="Delete this preset"
               aria-label={`Confirm delete ${entry.preset.name}`}
@@ -165,6 +167,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
               <Ms name="check" style={{ fontSize: 14 }} />
             </button>
             <button
+              type="button"
               className="eqm-remove"
               title="Keep it"
               aria-label="Cancel delete"
@@ -175,6 +178,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
           </span>
         ) : (
           <button
+            type="button"
             className="eqm-remove"
             title="Delete preset"
             aria-label={`Delete preset ${entry.preset.name}`}
@@ -189,6 +193,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   return (
     <div style={{ position: "relative" }}>
       <button
+        type="button"
         className="select"
         onClick={() => setMenuOpen((o) => !o)}
         title={activePreset ? `Preset: ${activePreset.preset.name}` : undefined}
@@ -239,6 +244,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
             }}
           />
           <button
+            type="button"
             className="select"
             disabled={!saveName.trim()}
             title="Save current curve as a preset"
@@ -251,6 +257,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
         <div className="menu-sep" />
         <div className="eqm-io-row">
           <button
+            type="button"
             className={"select eqm-io-btn" + (importing ? " on" : "")}
             aria-expanded={importing}
             title="Import a preset (paste JSON / AutoEq, or a file)"
@@ -260,6 +267,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
             <span>Import</span>
           </button>
           <button
+            type="button"
             className="select eqm-io-btn"
             title="Export this curve to a JSON file"
             onClick={() => void exportToFile()}
@@ -279,13 +287,14 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
             />
             <div className="eqm-import-btns">
               <button
+                type="button"
                 className="select"
                 disabled={!importText.trim()}
                 onClick={() => void importPasted()}
               >
                 Apply pasted
               </button>
-              <button className="select" onClick={() => void importFromFile()}>
+              <button type="button" className="select" onClick={() => void importFromFile()}>
                 From file…
               </button>
             </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useMixerStore } from "../../store/mixer";
 import { Ms } from "../Icons";
+import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Toggle } from "../Toggle";
 
@@ -70,41 +71,42 @@ export function OutputSelect({
 
   const items = (
     <>
-      <div
-        className={"menu-item" + (!mixed && value === null ? " sel" : "")}
+      <MenuItem
+        icon="speaker_group"
+        selected={!mixed && value === null}
+        showCheck
         onClick={() => {
           onChange(null);
           setOpen(false);
         }}
       >
-        <Ms name="speaker_group" />
-        <span>System default</span>
-        {!mixed && value === null && <Ms name="check" style={{ marginLeft: "auto" }} />}
-      </div>
+        System default
+      </MenuItem>
       {outputDevices.map((d) => (
-        <div
+        <MenuItem
           key={d.name}
-          className={"menu-item" + (!mixed && d.name === value ? " sel" : "")}
+          icon={deviceIcon(d.description)}
+          selected={!mixed && d.name === value}
+          showCheck
           onClick={() => {
             onChange(d.name);
             setOpen(false);
           }}
         >
-          <Ms name={deviceIcon(d.description)} />
-          <span>{d.description}</span>
-          {!mixed && d.name === value && <Ms name="check" style={{ marginLeft: "auto" }} />}
-        </div>
+          {d.description}
+        </MenuItem>
       ))}
       {onFailoverChange && !mixed && (
         <>
           <div className="menu-sep" />
+          {/* Static row: the Toggle is the control, so this must not be a
+              button of its own. */}
           <div
-            className="menu-item"
-            style={{ cursor: "default" }}
+            className="menu-item static"
             title="Off: this channel plays only on the device above (or the exact system default) and stays silent if it's gone, instead of failing over to another output."
           >
             <Ms name="sync_alt" />
-            <span style={{ marginRight: "auto" }}>Fail over to another device</span>
+            <span className="menu-item-label">Fail over to another device</span>
             <Toggle on={failover ?? true} onClick={() => onFailoverChange(!(failover ?? true))} />
           </div>
         </>
@@ -116,6 +118,7 @@ export function OutputSelect({
     return (
       <div style={{ position: "relative" }}>
         <button
+          type="button"
           className="strip-route strip-route-btn"
           onClick={() => setOpen((o) => !o)}
           title={`Output: ${label}`}
@@ -139,7 +142,7 @@ export function OutputSelect({
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="out-pill" onClick={() => setOpen((o) => !o)}>
+      <button type="button" className="out-pill" onClick={() => setOpen((o) => !o)}>
         <Ms name={shown ? deviceIcon(shown.description) : "speaker_group"} />
         <span>{label}</span>
         <Ms name="expand_more" className="chev" />

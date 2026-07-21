@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react";
 
 interface VuMeterProps {
-  /** Peak amplitude target 0–1 (real level from the native backend). */
+  /** Peak amplitude target 0-1 (real level from the native backend). */
   target: number;
 }
 
-/** Meter height (0–1) for a dBFS value, matching the sqrt display curve:
+/** Meter height (0-1) for a dBFS value, matching the sqrt display curve:
  * height = sqrt(amplitude) = 10^(dB/40). */
 const heightForDb = (db: number) => Math.pow(10, db / 40);
 

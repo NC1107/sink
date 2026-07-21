@@ -3,9 +3,7 @@ import { useMixerStore } from "../../store/mixer";
 import type { AppStream } from "../../types";
 import { Ms } from "../Icons";
 import { AppRow } from "./AppRow";
-import { AppIcon } from "./AppIcon";
 import { InactiveRow } from "./InactiveRow";
-import { relativeTime } from "../../lib/format";
 
 /** Apps screen: live apps grouped by channel, previously-seen apps below
  * (pre-routable while closed), ignored apps tucked away at the bottom. */
@@ -13,8 +11,6 @@ export function AppList() {
   const appStreams = useMixerStore((s) => s.appStreams);
   const channels = useMixerStore((s) => s.channels);
   const seenApps = useMixerStore((s) => s.seenApps);
-  const setAppIgnored = useMixerStore((s) => s.setAppIgnored);
-  const forgetApp = useMixerStore((s) => s.forgetApp);
   const [showIgnored, setShowIgnored] = useState(false);
 
   const byName = (a: AppStream, b: AppStream) =>
@@ -86,42 +82,14 @@ export function AppList() {
 
         {ignored.length > 0 && (
           <>
-            <button className="ignored-toggle" onClick={() => setShowIgnored((v) => !v)}>
+            <button type="button" className="ignored-toggle" onClick={() => setShowIgnored((v) => !v)}>
               <Ms name={showIgnored ? "expand_less" : "expand_more"} />
               {ignored.length} ignored {ignored.length === 1 ? "app" : "apps"}
             </button>
             {showIgnored && (
               <div className="card card-inactive">
                 {ignored.map((app) => (
-                  <div className="row row-inactive" key={`${app.match_prop}:${app.match_value}`}>
-                    <div className="ricon">
-                      <AppIcon iconPath={app.icon_path} />
-                    </div>
-                    <div className="rmain">
-                      <div className="rtitle">
-                        <span className="rname">{app.alias ?? app.display_name}</span>
-                      </div>
-                      <div className="rsub">last seen {relativeTime(app.last_seen)}</div>
-                    </div>
-                    <div className="rtrail">
-                      <button
-                        className="rename-btn row-action"
-                        title="Stop ignoring"
-                        aria-label={`Stop ignoring ${app.display_name}`}
-                        onClick={() => void setAppIgnored(app, false)}
-                      >
-                        <Ms name="visibility" style={{ fontSize: 16 }} />
-                      </button>
-                      <button
-                        className="rename-btn row-action"
-                        title="Forget - erase from history"
-                        aria-label={`Forget ${app.display_name}`}
-                        onClick={() => void forgetApp(app)}
-                      >
-                        <Ms name="delete" style={{ fontSize: 16 }} />
-                      </button>
-                    </div>
-                  </div>
+                  <InactiveRow key={`${app.match_prop}:${app.match_value}`} app={app} ignored />
                 ))}
               </div>
             )}

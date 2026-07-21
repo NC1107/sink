@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import type { AppStream } from "../../types";
-import { Ms } from "../Icons";
+import { IconButton } from "../IconButton";
 import { AppIcon } from "./AppIcon";
 import { ChannelSelect } from "./ChannelSelect";
 import { HSlider } from "./HSlider";
@@ -69,17 +69,22 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
                 {stream.app_name}
               </span>
             )}
-            <button className="rename-btn" aria-label={`Rename ${displayName}`} onClick={startEdit}>
-              <Ms name="edit" style={{ fontSize: 14 }} />
-            </button>
-            <button
-              className="rename-btn"
+            <IconButton
+              reveal
+              size={14}
+              icon="edit"
+              title="Rename"
+              label={`Rename ${displayName}`}
+              onClick={startEdit}
+            />
+            <IconButton
+              reveal
+              size={14}
+              icon="visibility_off"
               title="Ignore - hide this app from Sink"
-              aria-label={`Ignore ${displayName}`}
+              label={`Ignore ${displayName}`}
               onClick={() => void setAppIgnored(stream, true)}
-            >
-              <Ms name="visibility_off" style={{ fontSize: 14 }} />
-            </button>
+            />
           </div>
         )}
         <div className="rsub">stream #{stream.index}</div>

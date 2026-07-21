@@ -51,6 +51,7 @@ export default function App() {
             <strong>Audio error:</strong> {error}
           </span>
           <button
+            type="button"
             className="error-banner-x"
             aria-label="Dismiss error"
             title="Dismiss"
@@ -65,6 +66,7 @@ export default function App() {
         <nav className="rail">
           {NAV.map((n) => (
             <button
+              type="button"
               key={n.id}
               className={"nav-item" + (n.id === nav ? " active" : "")}
               onClick={() => setNav(n.id)}
@@ -75,6 +77,7 @@ export default function App() {
           ))}
           <div className="rail-spacer" />
           <button
+            type="button"
             className={"nav-item" + (nav === "settings" ? " active" : "")}
             onClick={() => setNav("settings")}
           >

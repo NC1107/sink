@@ -39,10 +39,11 @@ export function TitleBar({ screen }: Readonly<{ screen: string }>) {
         {status}
       </div>
       <div className="wctl">
-        <button className="wbtn" aria-label="Minimize" onClick={() => void win.minimize()}>
+        <button type="button" className="wbtn" aria-label="Minimize" onClick={() => void win.minimize()}>
           <Ms name="remove" />
         </button>
         <button
+          type="button"
           className="wbtn"
           aria-label="Maximize"
           onClick={() => void win.toggleMaximize()}
@@ -50,6 +51,7 @@ export function TitleBar({ screen }: Readonly<{ screen: string }>) {
           <Ms name="crop_square" style={{ fontSize: 13 }} />
         </button>
         <button
+          type="button"
           className="wbtn close"
           aria-label="Close (hide to tray)"
           title="Hides to tray - quit from the tray menu"

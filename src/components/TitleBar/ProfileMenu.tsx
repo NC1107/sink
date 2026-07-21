@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
+import { IconButton } from "../IconButton";
 import { Ms } from "../Icons";
+import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 
 /**
@@ -40,7 +42,7 @@ export function ProfileMenu() {
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="select" onClick={() => setOpen((o) => !o)} title="Profiles">
+      <button type="button" className="select" onClick={() => setOpen((o) => !o)} title="Profiles">
         <Ms name="bookmarks" />
         <span>{activeProfile ?? "Profiles"}</span>
         <Ms name="expand_more" />
@@ -51,75 +53,76 @@ export function ProfileMenu() {
           const trigger = triggerLabel(profile.trigger_device);
           return (
             <div key={profile.name}>
-              <div
-                className={"menu-item profile-row" + (isActive ? " sel" : "")}
-                onClick={() => {
-                  if (!isActive) void loadProfile(profile.name);
-                  close();
-                }}
-              >
-                <Ms name={isActive ? "check" : "bookmark"} />
-                <div className="profile-row-main">
-                  <span>{profile.name}</span>
-                  {trigger && (
-                    <span className="profile-row-trigger">
-                      <Ms name="bolt" style={{ fontSize: 12 }} />
-                      auto-loads with {trigger}
-                    </span>
-                  )}
-                </div>
+              {/* The actions are siblings of the load button, never children:
+                  a button inside a button is invalid, and the old nesting
+                  needed stopPropagation on every action to stay usable. */}
+              <div className="profile-row">
+                <MenuItem
+                  className="profile-row-btn"
+                  icon={isActive ? "check" : "bookmark"}
+                  selected={isActive}
+                  onClick={() => {
+                    if (!isActive) void loadProfile(profile.name);
+                    close();
+                  }}
+                >
+                  <span className="profile-row-main">
+                    <span>{profile.name}</span>
+                    {trigger && (
+                      <span className="profile-row-trigger">
+                        <Ms name="bolt" style={{ fontSize: 12 }} />
+                        <span className="profile-row-trigger-name">
+                          auto-loads with {trigger}
+                        </span>
+                      </span>
+                    )}
+                  </span>
+                </MenuItem>
                 <div className="profile-row-actions">
-                  <button
-                    className="row-icon-btn"
+                  <IconButton
+                    boxed
+                    size={15}
+                    icon="bolt"
                     title="Auto-load when a device connects"
-                    aria-label={`Auto-switch settings for ${profile.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTriggerFor((t) => (t === profile.name ? null : profile.name));
-                    }}
-                  >
-                    <Ms name="bolt" style={{ fontSize: 15 }} />
-                  </button>
-                  <button
-                    className="row-icon-btn danger"
+                    label={`Auto-switch settings for ${profile.name}`}
+                    onClick={() => setTriggerFor((t) => (t === profile.name ? null : profile.name))}
+                  />
+                  <IconButton
+                    boxed
+                    danger
+                    size={15}
+                    icon="delete"
                     title="Delete profile"
-                    aria-label={`Delete profile ${profile.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void deleteProfile(profile.name);
-                    }}
-                  >
-                    <Ms name="delete" style={{ fontSize: 15 }} />
-                  </button>
+                    label={`Delete profile ${profile.name}`}
+                    onClick={() => void deleteProfile(profile.name)}
+                  />
                 </div>
               </div>
               {triggerFor === profile.name && (
                 <div className="trigger-panel">
                   <div className="trigger-hint">Auto-load when this device connects:</div>
-                  <div
-                    className={"menu-item" + (profile.trigger_device === null ? " sel" : "")}
+                  <MenuItem
+                    icon="block"
+                    selected={profile.trigger_device === null}
                     onClick={() => {
                       void setProfileTrigger(profile.name, null);
                       setTriggerFor(null);
                     }}
                   >
-                    <Ms name="block" />
-                    <span>No auto-switch</span>
-                  </div>
+                    No auto-switch
+                  </MenuItem>
                   {outputDevices.map((d) => (
-                    <div
+                    <MenuItem
                       key={d.name}
-                      className={
-                        "menu-item" + (d.name === profile.trigger_device ? " sel" : "")
-                      }
+                      icon="speaker"
+                      selected={d.name === profile.trigger_device}
                       onClick={() => {
                         void setProfileTrigger(profile.name, d.name);
                         setTriggerFor(null);
                       }}
                     >
-                      <Ms name="speaker" />
-                      <span>{d.description}</span>
-                    </div>
+                      {d.description}
+                    </MenuItem>
                   ))}
                 </div>
               )}
@@ -140,6 +143,7 @@ export function ProfileMenu() {
             }}
           />
           <button
+            type="button"
             className="select"
             onClick={create}
             disabled={!newName.trim()}

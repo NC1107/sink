@@ -5,6 +5,7 @@ import { DspSlider } from "./DspSlider";
 import { perceptual } from "../../lib/audio";
 import { HSlider } from "../AppList/HSlider";
 import { Ms } from "../Icons";
+import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Toggle, ToggleRow } from "../Toggle";
 
@@ -67,7 +68,7 @@ export function MicScreen() {
       : (currentDevice?.description ?? micConfig.input_device);
 
   return (
-    <div className="content">
+    <div className="content narrow">
       <div className="screen-head">
         <h1>Microphone</h1>
         <div className="screen-head-actions">
@@ -85,7 +86,7 @@ export function MicScreen() {
           />
         </div>
       </div>
-      <div className="screen-scroll" style={{ maxWidth: 680 }}>
+      <div className="screen-scroll">
         <div className={micConfig.enabled ? undefined : "mic-disabled"}>
             <div className="section-label">Input</div>
             <div className="card mic-card">
@@ -106,7 +107,7 @@ export function MicScreen() {
                   <Ms name="settings_voice" />
                 </div>
                 <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
-                  <button className="select mic-device-select" onClick={() => setDeviceOpen((o) => !o)}>
+                  <button type="button" className="select mic-device-select" onClick={() => setDeviceOpen((o) => !o)}>
                     <span className="mic-device-name">{deviceLabel}</span>
                     <Ms name="expand_more" />
                   </button>
@@ -116,34 +117,33 @@ export function MicScreen() {
                     side="bottom"
                     align="start"
                   >
-                    <div
-                      className={"menu-item" + (micConfig.input_device === null ? " sel" : "")}
+                    <MenuItem
+                      icon="mic"
+                      selected={micConfig.input_device === null}
                       onClick={() => {
                         void setMicConfig({ input_device: null });
                         setDeviceOpen(false);
                       }}
                     >
-                      <Ms name="mic" />
-                      <span>System default</span>
-                    </div>
+                      System default
+                    </MenuItem>
                     {inputDevices.map((d) => (
-                      <div
+                      <MenuItem
                         key={d.name}
-                        className={
-                          "menu-item" + (d.name === micConfig.input_device ? " sel" : "")
-                        }
+                        icon="mic"
+                        selected={d.name === micConfig.input_device}
                         onClick={() => {
                           void setMicConfig({ input_device: d.name });
                           setDeviceOpen(false);
                         }}
                       >
-                        <Ms name="mic" />
-                        <span>{d.description}</span>
-                      </div>
+                        {d.description}
+                      </MenuItem>
                     ))}
                   </Popover>
                 </div>
                 <button
+                  type="button"
                   className={"sbtn" + (micConfig.muted ? " on-mute" : "")}
                   style={{ width: 34, flex: "0 0 34px" }}
                   title={micConfig.muted ? "Unmute mic" : "Mute mic"}
@@ -152,6 +152,7 @@ export function MicScreen() {
                   <Ms name={micConfig.muted ? "mic_off" : "mic"} style={{ fontSize: 18 }} />
                 </button>
                 <button
+                  type="button"
                   className={"sbtn" + (listening ? " on-mon" : "")}
                   style={{ width: 34, flex: "0 0 34px" }}
                   title="Listen to yourself - hear the processed mic to tune the chain (wear headphones)"

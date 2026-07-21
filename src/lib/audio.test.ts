@@ -14,7 +14,7 @@ describe("volToDb", () => {
 });
 
 describe("perceptual", () => {
-  it("clamps to the 0–1 meter range", () => {
+  it("clamps to the 0-1 meter range", () => {
     expect(perceptual(0)).toBe(0);
     expect(perceptual(1)).toBe(1);
     expect(perceptual(4)).toBe(1); // over-unity peaks don't overflow the bar

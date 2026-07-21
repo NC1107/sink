@@ -209,7 +209,7 @@ impl Buses {
     pub fn add(&mut self, label: &str) -> Result<BusDef, SinkError> {
         let label = label.trim();
         if label.is_empty() || label.len() > 24 {
-            return Err(SinkError::Config("mix label must be 1–24 characters".into()));
+            return Err(SinkError::Config("mix label must be 1-24 characters".into()));
         }
         // The master mix doesn't count against the user's mixes.
         if self.buses.iter().filter(|b| !is_master(&b.name)).count() >= MAX_BUSES {
@@ -242,7 +242,7 @@ impl Buses {
     pub fn rename(&mut self, name: &str, label: &str) -> Result<(), SinkError> {
         let label = label.trim();
         if label.is_empty() || label.len() > 24 {
-            return Err(SinkError::Config("mix label must be 1–24 characters".into()));
+            return Err(SinkError::Config("mix label must be 1-24 characters".into()));
         }
         let def = self
             .buses

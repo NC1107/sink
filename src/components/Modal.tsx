@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { IconButton } from "./IconButton";
 
 /** Centered modal dialog with a dimming scrim. Escape or scrim-click closes. */
 export function Modal({
@@ -34,7 +35,10 @@ export function Modal({
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-title">{title}</div>
+        <div className="modal-head">
+          <div className="modal-title">{title}</div>
+          <IconButton boxed icon="close" title="Close" onClick={onClose} size={18} />
+        </div>
         {children}
       </div>
     </div>

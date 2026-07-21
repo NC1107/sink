@@ -3,7 +3,7 @@ import { useMixerStore } from "../../store/mixer";
 import type { VirtualSink } from "../../types";
 import { MAX_VOLUME } from "../../types";
 import { channelIcon, Ms, ICON_CHOICES } from "../Icons";
-import { Modal } from "../Modal";
+import { ConfirmModal } from "../ConfirmModal";
 import { Popover } from "../Popover";
 import { perceptual, volToDb } from "../../lib/audio";
 import { EqModal } from "../Eq/EqModal";
@@ -84,6 +84,7 @@ export function ChannelStrip({
       )}
       {channelCount > 1 && (
         <button
+          type="button"
           className="strip-x"
           aria-label={`Delete channel ${channel.label}`}
           title="Delete channel"
@@ -96,6 +97,7 @@ export function ChannelStrip({
       <div className="strip-head">
         <div style={{ position: "relative" }}>
           <button
+            type="button"
             className="strip-icon strip-icon-btn"
             title="Change icon"
             aria-label={`Change icon for ${channel.label}`}
@@ -113,6 +115,7 @@ export function ChannelStrip({
             <div className="icon-grid">
               {ICON_CHOICES.map((icon) => (
                 <button
+                  type="button"
                   key={icon}
                   className={"icon-cell" + (channelIcon(channel) === icon ? " sel" : "")}
                   onClick={() => {
@@ -153,6 +156,7 @@ export function ChannelStrip({
         )}
         <div style={{ position: "relative" }}>
           <button
+            type="button"
             className="strip-meta strip-meta-btn"
             title="Choose which apps play through this channel"
             onClick={() => setManagingApps(true)}
@@ -185,6 +189,7 @@ export function ChannelStrip({
 
       <div className="strip-btns">
         <button
+          type="button"
           className={"sbtn" + (channel.muted ? " on-mute" : "")}
           onClick={() => void toggleMute(channel.name, !channel.muted)}
           aria-pressed={channel.muted}
@@ -193,6 +198,7 @@ export function ChannelStrip({
           <Ms name={channel.muted ? "volume_off" : "volume_up"} style={{ fontSize: 16 }} />
         </button>
         <button
+          type="button"
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(channel.name)}
           aria-pressed={monitoring}
@@ -201,6 +207,7 @@ export function ChannelStrip({
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>
         <button
+          type="button"
           className={"sbtn" + (eqEnabled ? " on-eq" : "")}
           onClick={() => setEditingEq(true)}
           aria-pressed={eqEnabled}
@@ -221,30 +228,16 @@ export function ChannelStrip({
         onChange={(o) => void setChannelOutput(channel.name, o)}
       />
 
-      <Modal
+      <ConfirmModal
         open={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         title={`Delete "${channel.label}"?`}
+        confirmLabel="Delete channel"
+        onConfirm={() => void removeChannel(channel.name)}
       >
-        <p className="modal-text">
-          Apps routed to this channel return to the default output. Its saved
-          routing is removed.
-        </p>
-        <div className="modal-btns">
-          <button
-            className="modal-btn danger"
-            onClick={() => {
-              setConfirmingDelete(false);
-              void removeChannel(channel.name);
-            }}
-          >
-            Delete channel
-          </button>
-          <button className="modal-btn" onClick={() => setConfirmingDelete(false)}>
-            Cancel
-          </button>
-        </div>
-      </Modal>
+        Apps routed to this channel return to the default output. Its saved
+        routing is removed.
+      </ConfirmModal>
     </div>
   );
 }

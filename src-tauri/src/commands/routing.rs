@@ -56,7 +56,7 @@ pub fn route_app_to_channel(
     Ok(())
 }
 
-/// Set a channel's volume (0–150%).
+/// Set a channel's volume (0-150%).
 #[tauri::command]
 pub fn set_channel_volume(
     state: State<'_, AppState>,
@@ -147,7 +147,7 @@ pub fn rename_app(
     aliases.save().map_err(|e| e.to_string())
 }
 
-/// Set the volume of a single app stream (0–150%).
+/// Set the volume of a single app stream (0-150%).
 #[tauri::command]
 pub fn set_app_volume(
     state: State<'_, AppState>,

@@ -105,6 +105,7 @@ export function EqBandRow({ index, band, color, selected, canRemove, onSelect, o
         />
       </label>
       <button
+        type="button"
         className="eqm-remove"
         disabled={!canRemove}
         title={canRemove ? "Remove band" : "The EQ keeps at least one band"}

@@ -15,7 +15,6 @@ const MAX_BUSES = 4;
 /** Signal-flow group: header row (icon, label, count, optional +) above
  * its strips - per the updated design. */
 function MixGroup({
-  kind,
   icon,
   label,
   count,
@@ -24,7 +23,6 @@ function MixGroup({
   addTitle,
   children,
 }: Readonly<{
-  kind: string;
   icon: string;
   label: string;
   count: string;
@@ -35,14 +33,14 @@ function MixGroup({
   children: ReactNode;
 }>) {
   return (
-    <div className={"mix-group is-" + kind}>
+    <div className="mix-group">
       <div className="group-head" title={hint}>
         <Ms name={icon} className="gh-icon" />
         <span className="gh-label">{label}</span>
         <span className="gh-count">{count}</span>
         {onAdd && (
           <div className="gh-add-wrap">
-            <button className="gh-add" onClick={onAdd} title={addTitle}>
+            <button type="button" className="gh-add" onClick={onAdd} title={addTitle}>
               <Ms name="add" />
             </button>
           </div>
@@ -125,7 +123,6 @@ export function MixerBoard() {
           {micConfig?.enabled && (
             <>
               <MixGroup
-                kind="capture"
                 icon="mic"
                 label="Capture"
                 count="1"
@@ -138,7 +135,6 @@ export function MixerBoard() {
           )}
 
           <MixGroup
-            kind="playback"
             icon="apps"
             label="Channels"
             count={`${channels.length}`}
@@ -177,7 +173,6 @@ export function MixerBoard() {
            * fallback instead of showing strips that can't work. */}
           {backendNative !== false && (
           <MixGroup
-            kind="mix"
             icon="podcasts"
             label="Mixes"
             count={`${buses.length}`}
@@ -213,6 +208,7 @@ export function MixerBoard() {
         <div className="icon-grid">
           {ICON_CHOICES.map((choice) => (
             <button
+              type="button"
               key={choice}
               className={"icon-cell" + (choice === channelIcon ? " sel" : "")}
               onClick={() => setChannelIcon(choice)}
@@ -223,10 +219,10 @@ export function MixerBoard() {
           ))}
         </div>
         <div className="modal-btns">
-          <button className="modal-btn primary" onClick={createChannel} disabled={!channelLabel.trim()}>
+          <button type="button" className="modal-btn primary" onClick={createChannel} disabled={!channelLabel.trim()}>
             Create channel
           </button>
-          <button className="modal-btn" onClick={closeChannelModal}>
+          <button type="button" className="modal-btn" onClick={closeChannelModal}>
             Cancel
           </button>
         </div>
@@ -249,10 +245,10 @@ export function MixerBoard() {
           }}
         />
         <div className="modal-btns">
-          <button className="modal-btn primary" onClick={createMix} disabled={!mixLabel.trim()}>
+          <button type="button" className="modal-btn primary" onClick={createMix} disabled={!mixLabel.trim()}>
             Create mix
           </button>
-          <button className="modal-btn" onClick={() => setAddingMix(false)}>
+          <button type="button" className="modal-btn" onClick={() => setAddingMix(false)}>
             Cancel
           </button>
         </div>

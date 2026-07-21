@@ -106,11 +106,11 @@ export function OnboardingModal() {
           Channels, apps and the mic are all live - your setup is untouched.
         </p>
         <div className="ob-foot">
-          <button className="modal-btn" onClick={() => setStep(step - 1)}>
+          <button type="button" className="modal-btn" onClick={() => setStep(step - 1)}>
             Back
           </button>
           <ObDots step={step} />
-          <button className="modal-btn primary" onClick={() => void finishOnboarding(false)}>
+          <button type="button" className="modal-btn primary" onClick={() => void finishOnboarding(false)}>
             Done
           </button>
         </div>
@@ -125,21 +125,21 @@ export function OnboardingModal() {
           lays out your first board.
         </p>
         <div className="ob-choices">
-          <button className="ob-choice" onClick={() => void finishOnboarding(false)}>
+          <button type="button" className="ob-choice" onClick={() => void finishOnboarding(false)}>
             <Ms name="dashboard" />
             <div className="ob-choice-title">Set up a board for me</div>
             <div className="ob-choice-sub">
               Game, Chat, Music and System - ready to drop apps onto
             </div>
           </button>
-          <button className="ob-choice" onClick={() => void finishOnboarding(true)}>
+          <button type="button" className="ob-choice" onClick={() => void finishOnboarding(true)}>
             <Ms name="check_box_outline_blank" />
             <div className="ob-choice-title">I'll build my own</div>
             <div className="ob-choice-sub">One Main channel - add the rest as you go</div>
           </button>
         </div>
         <div className="ob-foot">
-          <button className="modal-btn" onClick={() => setStep(step - 1)}>
+          <button type="button" className="modal-btn" onClick={() => setStep(step - 1)}>
             Back
           </button>
           <ObDots step={step} />
@@ -160,16 +160,16 @@ export function OnboardingModal() {
         {current.diagram && <FlowDiagram />}
         <div className="ob-foot">
           {step > 0 ? (
-            <button className="modal-btn" onClick={() => setStep(step - 1)}>
+            <button type="button" className="modal-btn" onClick={() => setStep(step - 1)}>
               Back
             </button>
           ) : (
-            <button className="modal-btn" onClick={() => void finishOnboarding(false)}>
+            <button type="button" className="modal-btn" onClick={() => void finishOnboarding(false)}>
               Skip
             </button>
           )}
           <ObDots step={step} />
-          <button className="modal-btn primary" onClick={() => setStep(step + 1)}>
+          <button type="button" className="modal-btn primary" onClick={() => setStep(step + 1)}>
             Next
           </button>
         </div>
