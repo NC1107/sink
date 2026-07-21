@@ -49,7 +49,7 @@ pub fn sanitize_name(name: &str) -> Result<String, SinkError> {
     let trimmed = name.trim();
     if trimmed.is_empty() || trimmed.len() > 64 {
         return Err(SinkError::Config(
-            "profile name must be 1–64 characters".into(),
+            "profile name must be 1-64 characters".into(),
         ));
     }
     if !trimmed

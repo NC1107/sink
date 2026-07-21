@@ -7,7 +7,7 @@ export function volToDb(v: number): string {
   return (db >= 0 ? "+" : "") + db.toFixed(1) + " dB";
 }
 
-/** Map a linear peak amplitude (0–1) to a perceptual meter height. */
+/** Map a linear peak amplitude (0-1) to a perceptual meter height. */
 export function perceptual(amplitude: number): number {
   return Math.min(1, Math.sqrt(Math.max(0, amplitude)));
 }

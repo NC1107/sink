@@ -4,7 +4,8 @@ import type { BusDef } from "../../types";
 import { busMembers, MASTER_BUS, MAX_VOLUME } from "../../types";
 import { perceptual, volToDb } from "../../lib/audio";
 import { Ms } from "../Icons";
-import { Modal } from "../Modal";
+import { ConfirmModal } from "../ConfirmModal";
+import { MenuCheckItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Fader } from "./Fader";
 import { VuMeter } from "./VuMeter";
@@ -130,30 +131,23 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
               align="center"
               style={{ minWidth: 220 }}
             >
-              {channels.map((c) => {
-                const checked = carried.includes(c.name);
-                return (
-                  <div key={c.name} className="menu-item" onClick={() => toggleMember(c.name)}>
-                    <Ms
-                      name={checked ? "check_box" : "check_box_outline_blank"}
-                      style={checked ? { color: "var(--accent-hover)" } : undefined}
-                    />
-                    <span>{c.label}</span>
-                  </div>
-                );
-              })}
+              {channels.map((c) => (
+                <MenuCheckItem
+                  key={c.name}
+                  checked={carried.includes(c.name)}
+                  onClick={() => toggleMember(c.name)}
+                >
+                  <span className="menu-item-label">{c.label}</span>
+                </MenuCheckItem>
+              ))}
               <div className="menu-div" />
-              <div
-                className="menu-item"
+              <MenuCheckItem
+                checked={bus.exclude}
                 title="New channels join this mix automatically - keep the ones you don't want unchecked"
                 onClick={() => void setBusExclude(bus.name, !bus.exclude)}
               >
-                <Ms
-                  name={bus.exclude ? "check_box" : "check_box_outline_blank"}
-                  style={bus.exclude ? { color: "var(--accent-hover)" } : undefined}
-                />
-                <span>Auto-include new channels</span>
-              </div>
+                <span className="menu-item-label">Auto-include new channels</span>
+              </MenuCheckItem>
             </Popover>
           </div>
         )}
@@ -193,29 +187,15 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         title={`Select "${bus.label}" as an audio source in OBS or any recorder`}
       />
 
-      <Modal
+      <ConfirmModal
         open={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         title={`Delete mix "${bus.label}"?`}
+        confirmLabel="Delete mix"
+        onConfirm={() => void removeBus(bus.name)}
       >
-        <p className="modal-text">
-          Recorders capturing "{bus.label}" will go silent. Channels are unaffected.
-        </p>
-        <div className="modal-btns">
-          <button
-            className="modal-btn danger"
-            onClick={() => {
-              setConfirmingDelete(false);
-              void removeBus(bus.name);
-            }}
-          >
-            Delete mix
-          </button>
-          <button className="modal-btn" onClick={() => setConfirmingDelete(false)}>
-            Cancel
-          </button>
-        </div>
-      </Modal>
+        Recorders capturing "{bus.label}" will go silent. Channels are unaffected.
+      </ConfirmModal>
     </div>
   );
 }

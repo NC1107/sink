@@ -161,7 +161,7 @@ impl Channels {
     pub fn add(&mut self, label: &str, icon: Option<String>) -> Result<ChannelDef, SinkError> {
         let label = label.trim();
         if label.is_empty() || label.len() > 24 {
-            return Err(SinkError::Config("channel label must be 1–24 characters".into()));
+            return Err(SinkError::Config("channel label must be 1-24 characters".into()));
         }
         if self.channels.len() >= MAX_CHANNELS {
             return Err(SinkError::Config(format!(
@@ -188,7 +188,7 @@ impl Channels {
     pub fn rename(&mut self, name: &str, label: &str) -> Result<(), SinkError> {
         let label = label.trim();
         if label.is_empty() || label.len() > 24 {
-            return Err(SinkError::Config("channel label must be 1–24 characters".into()));
+            return Err(SinkError::Config("channel label must be 1-24 characters".into()));
         }
         let def = self
             .channels

@@ -15,7 +15,6 @@ const MAX_BUSES = 4;
 /** Signal-flow group: header row (icon, label, count, optional +) above
  * its strips - per the updated design. */
 function MixGroup({
-  kind,
   icon,
   label,
   count,
@@ -24,7 +23,6 @@ function MixGroup({
   addTitle,
   children,
 }: Readonly<{
-  kind: string;
   icon: string;
   label: string;
   count: string;
@@ -35,7 +33,7 @@ function MixGroup({
   children: ReactNode;
 }>) {
   return (
-    <div className={"mix-group is-" + kind}>
+    <div className="mix-group">
       <div className="group-head" title={hint}>
         <Ms name={icon} className="gh-icon" />
         <span className="gh-label">{label}</span>
@@ -125,7 +123,6 @@ export function MixerBoard() {
           {micConfig?.enabled && (
             <>
               <MixGroup
-                kind="capture"
                 icon="mic"
                 label="Capture"
                 count="1"
@@ -138,7 +135,6 @@ export function MixerBoard() {
           )}
 
           <MixGroup
-            kind="playback"
             icon="apps"
             label="Channels"
             count={`${channels.length}`}
@@ -177,7 +173,6 @@ export function MixerBoard() {
            * fallback instead of showing strips that can't work. */}
           {backendNative !== false && (
           <MixGroup
-            kind="mix"
             icon="podcasts"
             label="Mixes"
             count={`${buses.length}`}

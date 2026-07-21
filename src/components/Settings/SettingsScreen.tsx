@@ -4,7 +4,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useMixerStore } from "../../store/mixer";
 import type { OutputDevice } from "../../types";
 import { Ms } from "../Icons";
-import { Modal } from "../Modal";
+import { ConfirmModal } from "../ConfirmModal";
+import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Toggle } from "../Toggle";
 
@@ -57,18 +58,18 @@ function DeviceRow({
         </button>
         <Popover open={open} onClose={() => setOpen(false)} side="bottom" align="end">
           {devices.map((d) => (
-            <div
+            <MenuItem
               key={d.name}
-              className={"menu-item" + (d.name === current ? " sel" : "")}
+              icon={icon}
+              selected={d.name === current}
+              showCheck
               onClick={() => {
                 onPick(d.name);
                 setOpen(false);
               }}
             >
-              <Ms name={icon} />
-              <span>{d.description}</span>
-              {d.name === current && <Ms name="check" style={{ marginLeft: "auto" }} />}
-            </div>
+              {d.description}
+            </MenuItem>
           ))}
         </Popover>
       </div>
@@ -156,11 +157,11 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="content">
+    <div className="content narrow">
       <div className="screen-head">
         <h1>Settings</h1>
       </div>
-      <div className="screen-scroll" style={{ maxWidth: 720 }}>
+      <div className="screen-scroll">
         {error && <div className="error-banner" style={{ borderRadius: 8 }}>{error}</div>}
 
         <div className="section-label">Preferences</div>
@@ -180,17 +181,17 @@ export function SettingsScreen() {
               </button>
               <Popover open={labelStyleOpen} onClose={() => setLabelStyleOpen(false)} side="bottom" align="end">
                 {LABEL_STYLES.map((s) => (
-                  <div
+                  <MenuItem
                     key={s.value}
-                    className={"menu-item" + (s.value === labelStyle ? " sel" : "")}
+                    selected={s.value === labelStyle}
+                    showCheck
                     onClick={() => {
                       void pickLabelStyle(s.value);
                       setLabelStyleOpen(false);
                     }}
                   >
-                    <span>{s.example}</span>
-                    {s.value === labelStyle && <Ms name="check" style={{ marginLeft: "auto" }} />}
-                  </div>
+                    {s.example}
+                  </MenuItem>
                 ))}
               </Popover>
             </div>
@@ -304,31 +305,17 @@ export function SettingsScreen() {
         </div>
       </div>
 
-      <Modal
+      <ConfirmModal
         open={confirmingReset}
         onClose={() => setConfirmingReset(false)}
         title="Reset Sink?"
+        confirmLabel="Reset everything"
+        onConfirm={() => void invoke("reset_app").catch((e) => setError(String(e)))}
       >
-        <p className="modal-text">
-          Everything you've set up - channels, mixes, profiles, app assignments,
-          history and preferences - is permanently deleted, and Sink relaunches
-          as if freshly installed.
-        </p>
-        <div className="modal-btns">
-          <button
-            className="modal-btn danger"
-            onClick={() => {
-              setConfirmingReset(false);
-              void invoke("reset_app").catch((e) => setError(String(e)));
-            }}
-          >
-            Reset everything
-          </button>
-          <button className="modal-btn" onClick={() => setConfirmingReset(false)}>
-            Cancel
-          </button>
-        </div>
-      </Modal>
+        Everything you've set up - channels, mixes, profiles, app assignments,
+        history and preferences - is permanently deleted, and Sink relaunches
+        as if freshly installed.
+      </ConfirmModal>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useMixerStore } from "../../store/mixer";
 import type { VirtualSink } from "../../types";
-import { Ms } from "../Icons";
 import { AppIcon } from "../AppList/AppIcon";
+import { MenuCheckItem } from "../MenuItem";
 import { Popover } from "../Popover";
 
 interface Entry {
@@ -81,32 +81,24 @@ export function ChannelApps({
   return (
     <Popover open={open} onClose={onClose} side="bottom" align="center" style={{ minWidth: 250 }}>
       {entries.length === 0 && (
-        <div className="menu-item" style={{ cursor: "default", color: "var(--fg-muted)" }}>
-          No apps discovered yet
-        </div>
+        <div className="menu-item static muted">No apps discovered yet</div>
       )}
       {entries.map((entry) => (
-        <div key={entry.key} className="menu-item" onClick={() => toggle(entry)}>
-          <Ms
-            name={entry.checked ? "check_box" : "check_box_outline_blank"}
-            style={entry.checked ? { color: "var(--accent-hover)" } : undefined}
-          />
+        <MenuCheckItem key={entry.key} checked={entry.checked} onClick={() => toggle(entry)}>
           <span className="channel-apps-icon">
             <AppIcon iconPath={entry.iconPath} />
           </span>
           <span className="channel-apps-name">{entry.name}</span>
           {entry.active ? (
-            <span className="eq on" style={{ marginLeft: "auto" }} aria-hidden="true">
+            <span className="eq on channel-apps-eq" aria-hidden="true">
               <i />
               <i />
               <i />
             </span>
           ) : (
-            entry.streamIndex === null && (
-              <span className="channel-apps-off">off</span>
-            )
+            entry.streamIndex === null && <span className="channel-apps-off">off</span>
           )}
-        </div>
+        </MenuCheckItem>
       ))}
     </Popover>
   );

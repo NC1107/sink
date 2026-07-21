@@ -3,7 +3,7 @@ import { useMixerStore } from "../../store/mixer";
 import type { VirtualSink } from "../../types";
 import { MAX_VOLUME } from "../../types";
 import { channelIcon, Ms, ICON_CHOICES } from "../Icons";
-import { Modal } from "../Modal";
+import { ConfirmModal } from "../ConfirmModal";
 import { Popover } from "../Popover";
 import { perceptual, volToDb } from "../../lib/audio";
 import { EqModal } from "../Eq/EqModal";
@@ -221,30 +221,16 @@ export function ChannelStrip({
         onChange={(o) => void setChannelOutput(channel.name, o)}
       />
 
-      <Modal
+      <ConfirmModal
         open={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         title={`Delete "${channel.label}"?`}
+        confirmLabel="Delete channel"
+        onConfirm={() => void removeChannel(channel.name)}
       >
-        <p className="modal-text">
-          Apps routed to this channel return to the default output. Its saved
-          routing is removed.
-        </p>
-        <div className="modal-btns">
-          <button
-            className="modal-btn danger"
-            onClick={() => {
-              setConfirmingDelete(false);
-              void removeChannel(channel.name);
-            }}
-          >
-            Delete channel
-          </button>
-          <button className="modal-btn" onClick={() => setConfirmingDelete(false)}>
-            Cancel
-          </button>
-        </div>
-      </Modal>
+        Apps routed to this channel return to the default output. Its saved
+        routing is removed.
+      </ConfirmModal>
     </div>
   );
 }

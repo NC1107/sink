@@ -282,7 +282,7 @@ pub struct MicConfig {
     /// What other apps list the processed mic as (node description).
     #[serde(default = "default_mic_label")]
     pub output_label: String,
-    /// 0–200; 100 = unity.
+    /// 0-200; 100 = unity.
     pub gain_percent: u8,
     pub gate_enabled: bool,
     pub comp_enabled: bool,
