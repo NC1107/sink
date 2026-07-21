@@ -62,8 +62,16 @@
   --accent-light: rgba(85, 87, 224, 0.1);
   --on-accent: #ffffff;
 
+  /* Floating layers (menus, popovers). Deliberately lighter than
+     --bg-surface: a menu opens on top of cards and strips that are already
+     --bg-surface, and matching them left the panel with no visible edge. */
+  --bg-popover: #2b2b31;
+  --bg-popover-hover: #38383f;
+
   /* Lines */
   --border: #27272a;
+  /* Edge for floating layers, light enough to read against a surface. */
+  --border-popover: #45454e;
 
   /* Semantic */
   --online: #22c55e;
@@ -94,7 +102,8 @@
   --r-xl: 12px;
   --r-pill: 9999px;
 
-  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.18);
+  /* Strong enough to separate a panel from an equally dark surface below. */
+  --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -1255,8 +1264,8 @@ body,
   min-width: 220px;
   /* Long device names would otherwise stretch a menu across the window. */
   max-width: min(420px, calc(100vw - 32px));
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: var(--bg-popover);
+  border: 1px solid var(--border-popover);
   border-radius: var(--r-lg);
   padding: var(--sp-2);
   box-shadow: var(--shadow-popover);
@@ -1280,7 +1289,7 @@ body,
   cursor: pointer;
 }
 .menu-item:hover {
-  background: var(--bg-surface-hover);
+  background: var(--bg-popover-hover);
 }
 .menu-item:focus-visible {
   outline: 2px solid var(--accent);
@@ -1316,7 +1325,7 @@ body,
 }
 .menu-sep {
   height: 1px;
-  background: var(--border);
+  background: var(--border-popover);
   margin: var(--sp-2) 0;
 }
 .menu-save {
@@ -1392,7 +1401,7 @@ body,
 .trigger-panel {
   margin: 2px 0 var(--sp-2) var(--sp-6);
   padding-left: var(--sp-2);
-  border-left: 2px solid var(--border);
+  border-left: 2px solid var(--border-popover);
 }
 .trigger-hint {
   font-size: var(--fs-caption);
@@ -1434,9 +1443,23 @@ body,
   flex-direction: column;
   gap: var(--sp-4);
 }
+/* Title row with the close affordance; flex: 0 0 auto so it survives the
+   EQ panel turning its body into a flex column. */
+.modal-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
 .modal-title {
+  flex: 1;
+  min-width: 0;
   font-size: var(--fs-title-lg, 16px);
   font-weight: 600;
+}
+/* Pull the close button out to the panel's padding edge. */
+.modal-head .icon-btn {
+  margin-right: -4px;
 }
 .modal-text {
   font-size: var(--fs-meta);
@@ -1786,7 +1809,7 @@ body,
 /* divider inside popover menus */
 .menu-div {
   height: 1px;
-  background: var(--border);
+  background: var(--border-popover);
   margin: var(--sp-1) var(--sp-2);
 }
 
@@ -1899,9 +1922,14 @@ body,
   color: var(--on-accent);
 }
 .modal.eqm-modal {
-  /* Extra room for the curve and the band rows; sizing itself comes from
-     .modal.lg. */
-  --modal-w: 900px;
+  --modal-w: 860px;
+  /* The band list is the scroller, not the panel, so the curve stays put
+     while you work through the rows. */
+  overflow: hidden;
+}
+/* Everything above the list keeps its natural height; only the list flexes. */
+.modal.eqm-modal > * {
+  flex-shrink: 0;
 }
 .eqm-head {
   display: flex;
@@ -1919,6 +1947,12 @@ body,
 .eqm-curve {
   width: 100%;
   height: auto;
+  /* A wider window should buy more band rows, not a taller graph - past this
+     the plot stops growing and centres, and the freed height goes to the
+     list below. */
+  max-width: 640px;
+  margin-inline: auto;
+  display: block;
   /* Labels live in gutters outside the plot; the rect carries the frame. */
   background: transparent;
   touch-action: none;
@@ -2005,9 +2039,16 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  /* Claim the panel's leftover height so the rows only scroll when they
+     genuinely do not fit. */
+  flex: 1;
+  min-height: 0;
 }
 .eqm-bands-viewport {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 /* Fade the bottom edge so a clipped row reads as "scroll for more", not a bug. */
 .eqm-bands-viewport::after {
@@ -2024,7 +2065,10 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  max-height: 220px;
+  flex: 1;
+  /* Two rows, so a short window shrinks the list instead of clipping the
+     panel it lives in. */
+  min-height: 72px;
   overflow-y: auto;
   /* keep rows clear of the scrollbar and the bottom fade */
   padding-right: 4px;
