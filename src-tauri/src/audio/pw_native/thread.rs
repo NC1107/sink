@@ -1020,6 +1020,10 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     s.eq_desired_targets = eq_targets;
 }
 
+fn node_needs_monitor_volumes(kind: u8) -> bool {
+    kind == 0 || kind == 1
+}
+
 /// The three virtual node shapes we own (kind 0=channel sink, 1=mix bus,
 /// 2=virtual mic). The heal path mirrors the create handlers with this.
 fn create_node_object(
@@ -1037,7 +1041,7 @@ fn create_node_object(
         "media.class" => class,
         "audio.position" => position,
     };
-    if kind == 0 {
+    if node_needs_monitor_volumes(kind) {
         props.insert("monitor.channel-volumes", "true");
     }
     core.create_object::<Node>("adapter", &props)
@@ -1218,16 +1222,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 let _ = reply.send(Err(SinkError::Config("core is gone".into())));
                 return;
             };
-            match core.create_object::<Node>(
-                "adapter",
-                &pw::properties::properties! {
-                    "factory.name" => "support.null-audio-sink",
-                    "node.name" => name.as_str(),
-                    "node.description" => label.as_str(),
-                    "media.class" => VIRTUAL_SOURCE_CLASS,
-                    "audio.position" => "[ FL FR ]",
-                },
-            ) {
+            match create_node_object(&core, &name, &label, 1) {
                 Ok(proxy) => {
                     s.desired.insert(name.clone(), (label, 1));
                     s.bus_sources.insert(name, proxy);
@@ -1606,6 +1601,13 @@ mod tests {
     #[test]
     fn resolve_source_prefers_live_eq_playback() {
         assert_eq!(resolve_source(Some(77), 10), 77);
+    }
+
+    #[test]
+    fn mixes_get_monitor_volumes_like_channels() {
+        assert!(node_needs_monitor_volumes(0));
+        assert!(node_needs_monitor_volumes(1));
+        assert!(!node_needs_monitor_volumes(2));
     }
 
     #[test]
