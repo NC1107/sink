@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
-    "material-symbols": "^0.45.8",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "material-symbols": "^0.45.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5"
@@ -24,7 +24,7 @@
     "@tauri-apps/cli": "^2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^6.0.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "typescript": "^6.0.3",
