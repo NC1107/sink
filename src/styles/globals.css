@@ -2357,3 +2357,63 @@ body,
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================
+   Theme: Tokyo Night (opt-in via <html data-theme="tokyo-night">)
+   Original theme stays the default under :root.
+   ============================================================ */
+:root[data-theme="tokyo-night"] {
+  --bg-main: #1a1b26;
+  --bg-sidebar: #16161e;
+  --bg-chat: #1a1b26;
+  --bg-surface: #1f2335;
+  --bg-surface-hover: #24283b;
+  --bg-active: #292e42;
+
+  --fg-primary: #c0caf5;
+  --fg-secondary: #a9b1d6;
+  --fg-muted: #565f89;
+
+  --accent: #7aa2f7;
+  --accent-hover: #9eb8f9;
+  --accent-light: rgba(122, 162, 247, 0.12);
+  --on-accent: #1a1b26;
+
+  --bg-popover: #24283b;
+  --bg-popover-hover: #2f334d;
+
+  --border: #2a2e42;
+  --border-popover: #3b4261;
+
+  --online: #9ece6a;
+  --danger: #f7768e;
+  --warning: #e0af68;
+}
+
+/* Theme picker (Settings › Appearance) */
+.theme-picker { display: flex; gap: var(--sp-2); }
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.theme-swatch:hover { border-color: var(--accent-hover); }
+.theme-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.theme-swatch-colors { display: flex; }
+.theme-swatch-colors i {
+  width: 16px;
+  height: 16px;
+  display: block;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+.theme-swatch-colors i:first-child { border-radius: var(--r-xs) 0 0 var(--r-xs); }
+.theme-swatch-colors i:last-child { border-radius: 0 var(--r-xs) var(--r-xs) 0; }
+.theme-swatch-label { font-size: var(--fs-caption); color: var(--fg-secondary); }
+.theme-swatch.active .theme-swatch-label { color: var(--fg-primary); }
