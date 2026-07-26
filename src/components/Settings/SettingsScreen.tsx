@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { useMixerStore } from "../../store/mixer";
+import { useTheme, THEMES } from "../../store/theme";
 import type { OutputDevice } from "../../types";
 import { Ms } from "../Icons";
 import { ConfirmModal } from "../ConfirmModal";
@@ -85,6 +86,7 @@ function engineDesc(native: boolean | null): string {
 }
 
 export function SettingsScreen() {
+  const { theme, setTheme } = useTheme();
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [startMinimized, setStartMinimized] = useState(false);
   const [backendNative, setBackendNative] = useState<boolean | null>(null);
@@ -163,6 +165,37 @@ export function SettingsScreen() {
       </div>
       <div className="screen-scroll">
         {error && <div className="error-banner" style={{ borderRadius: 8 }}>{error}</div>}
+
+        <div className="section-label">Appearance</div>
+        <div className="card" style={{ padding: "var(--sp-2)" }}>
+          <div className="row">
+            <div className="ricon">
+              <Ms name="palette" />
+            </div>
+            <div className="rmain">
+              <div className="rtitle">Theme</div>
+              <div className="rsub">Original, or Tokyo Night to match your desktop</div>
+            </div>
+            <div className="theme-picker">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={"theme-swatch" + (t.id === theme ? " active" : "")}
+                  onClick={() => setTheme(t.id)}
+                  title={t.label}
+                >
+                  <span className="theme-swatch-colors">
+                    {t.swatch.map((c) => (
+                      <i key={c} style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="theme-swatch-label">{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         <div className="section-label">Preferences</div>
         <div className="card" style={{ padding: "var(--sp-2)" }}>
