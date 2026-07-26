@@ -12,11 +12,11 @@ function Segmented<T extends string | number>({
   value,
   options,
   onChange,
-}: {
+}: Readonly<{
   value: T;
   options: { value: T; label: string }[];
   onChange: (v: T) => void;
-}) {
+}>) {
   return (
     <div className="hs-seg">
       {options.map((o) => (
@@ -43,7 +43,7 @@ function Slider({
   suffix = "",
   onChange,
   disabled,
-}: {
+}: Readonly<{
   label: string;
   value: number;
   min: number;
@@ -52,9 +52,12 @@ function Slider({
   suffix?: string;
   onChange: (v: number) => void;
   disabled?: boolean;
-}) {
+}>) {
   return (
-    <label className={"hs-slider" + (disabled ? " disabled" : "")}>
+    <label
+      className={"hs-slider" + (disabled ? " disabled" : "")}
+      aria-label={label}
+    >
       <div className="hs-slider-top">
         <span>{label}</span>
         <span className="hs-slider-val">
@@ -80,12 +83,12 @@ function Card({
   icon,
   right,
   children,
-}: {
+}: Readonly<{
   title: string;
   icon: string;
   right?: ReactNode;
   children: ReactNode;
-}) {
+}>) {
   return (
     <section className="hs-card">
       <div className="hs-card-head">
@@ -98,10 +101,17 @@ function Card({
   );
 }
 
+/** Battery colour tone from a percentage. */
+function batteryTone(pct: number): "low" | "mid" | "ok" {
+  if (pct <= 15) return "low";
+  if (pct <= 40) return "mid";
+  return "ok";
+}
+
 /** A battery pill with a fill bar. */
-function Battery({ label, pct }: { label: string; pct: number | null }) {
+function Battery({ label, pct }: Readonly<{ label: string; pct: number | null }>) {
   if (pct === null) return null;
-  const tone = pct <= 15 ? "low" : pct <= 40 ? "mid" : "ok";
+  const tone = batteryTone(pct);
   return (
     <div className="hs-batt">
       <span className="hs-batt-label">{label}</span>
@@ -116,6 +126,17 @@ function Battery({ label, pct }: { label: string; pct: number | null }) {
 // Ten EQ bands track these centre frequencies (device custom preset slot).
 const EQ_FREQS = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
 
+function powerLabel(status: string | null): string {
+  if (status === "online") return "Online";
+  if (status === "cable_charging") return "Charging";
+  return "Offline";
+}
+
+function bluetoothLabel(connected: boolean | null, powered: boolean | null): string {
+  if (connected) return "Connected";
+  return powered ? "On" : "Off";
+}
+
 export function HeadsetScreen() {
   const h = useHeadset();
   const s = h.status;
@@ -123,7 +144,7 @@ export function HeadsetScreen() {
   // Controls the device doesn't report back get local state.
   const [micVolume, setMicVolume] = useState(10);
   const [sidetone, setSidetone] = useState(0);
-  const [eq, setEq] = useState<number[]>(() => Array(10).fill(0));
+  const [eq, setEq] = useState<number[]>(() => new Array(10).fill(0));
   const [lineL, setLineL] = useState(100);
   const [lineR, setLineR] = useState(100);
   const [lineAux, setLineAux] = useState(100);
@@ -173,11 +194,7 @@ export function HeadsetScreen() {
         <div className="screen-head-actions">
           <span className={"tag" + (s.power_status === "online" ? " live" : " tag-off")}>
             <Ms name="bolt" style={{ fontSize: 11 }} />
-            {s.power_status === "online"
-              ? "Online"
-              : s.power_status === "cable_charging"
-                ? "Charging"
-                : "Offline"}
+            {powerLabel(s.power_status)}
           </span>
         </div>
       </div>
@@ -192,7 +209,7 @@ export function HeadsetScreen() {
         <div className="hs-status-grid">
           <div><span>Volume</span><b>{s.volume_percent ?? "–"}%</b></div>
           <div><span>Wireless</span><b>{s.wireless_paired ? "Paired" : "Unpaired"}</b></div>
-          <div><span>Bluetooth</span><b>{s.bluetooth_connected ? "Connected" : s.bluetooth_powered ? "On" : "Off"}</b></div>
+          <div><span>Bluetooth</span><b>{bluetoothLabel(s.bluetooth_connected, s.bluetooth_powered)}</b></div>
           <div><span>Mic</span><b>{s.mic_muted ? "Muted" : "Live"}</b></div>
         </div>
       </Card>
@@ -229,7 +246,7 @@ export function HeadsetScreen() {
         </div>
         <div className="hs-row">
           <span>
-            Anti-crackle headroom
+            Anti-crackle headroom{" "}
             <span className="hs-hint" style={{ display: "block" }}>
               WirePlumber quirk · +85 ms latency · applies after next login
             </span>
@@ -320,7 +337,7 @@ export function HeadsetScreen() {
         </div>
         <div className="hs-eq">
           {eq.map((v, i) => (
-            <div className="hs-eq-band" key={i}>
+            <div className="hs-eq-band" key={EQ_FREQS[i]}>
               <input
                 type="range"
                 className="hs-eq-fader"

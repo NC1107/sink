@@ -2471,7 +2471,8 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent-hover
 
 /* Hardware EQ */
 .hs-eq-presets, .hs-oled-actions, .hs-eq-band { display: flex; }
-.hs-eq-presets { gap: var(--sp-2); flex-wrap: wrap; }
+/* Preset chips can get numerous — wrap, and keep the row from exploding vertically. */
+.hs-eq-presets { gap: var(--sp-2); flex-wrap: wrap; max-height: 132px; overflow-y: auto; }
 .hs-eq {
   display: grid;
   grid-template-columns: repeat(10, 1fr);
@@ -2674,8 +2675,6 @@ input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent-hover
   cursor: pointer;
 }
 .hs-select:hover { border-color: var(--accent); }
-/* Preset chips can get numerous — keep the row from exploding vertically. */
-.hs-eq-presets { max-height: 132px; overflow-y: auto; }
 
 /* Native colour swatches in the Mouse panel. */
 .hs-color {

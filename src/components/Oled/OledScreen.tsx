@@ -16,13 +16,15 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 /** Rough 128x64 preview of static text (real rendering happens on-device). */
-function Preview({ lines }: { lines: string[] }) {
+const PREVIEW_SLOTS = ["l0", "l1", "l2", "l3"];
+
+function Preview({ lines }: Readonly<{ lines: string[] }>) {
   return (
     <div className="oled-preview" aria-hidden>
       <div className="oled-preview-inner">
-        {lines.slice(0, 4).map((l, i) => (
-          <div key={i} className="oled-preview-line">
-            {l || " "}
+        {PREVIEW_SLOTS.map((slot, i) => (
+          <div key={slot} className="oled-preview-line">
+            {lines[i] || " "}
           </div>
         ))}
       </div>
@@ -39,6 +41,9 @@ export function OledScreen() {
   const [active, setActive] = useState<string | null>(null);
   const [rotation, setRotation] = useState<string[]>([]);
   const [rotateSecs, setRotateSecs] = useState(15);
+
+  const toggleRotation = (id: string, on: boolean) =>
+    setRotation((r) => (on ? [...r, id] : r.filter((x) => x !== id)));
 
   useEffect(() => {
     void h.init();
@@ -154,7 +159,7 @@ export function OledScreen() {
               value={notifyMs / 1000}
               onChange={(e) => setNotifyMs(Math.round(Number(e.target.value) * 1000))}
             />
-            s
+            {" "}s
           </label>
         </div>
       </section>
@@ -197,7 +202,7 @@ export function OledScreen() {
           </button>
           <label className="hs-check">
             <input type="checkbox" checked={loop} onChange={(e) => setLoop(e.target.checked)} />
-            Loop animation
+            {" "}Loop animation
           </label>
         </div>
         <p className="hs-hint">
@@ -244,17 +249,12 @@ export function OledScreen() {
                     <label
                       className="hs-mode-tick"
                       title="Include in rotation"
+                      aria-label={`Include ${m.label} in rotation`}
                     >
                       <input
                         type="checkbox"
                         checked={rotation.includes(m.id)}
-                        onChange={(e) =>
-                          setRotation((r) =>
-                            e.target.checked
-                              ? [...r, m.id]
-                              : r.filter((x) => x !== m.id),
-                          )
-                        }
+                        onChange={(e) => toggleRotation(m.id, e.target.checked)}
                       />
                     </label>
                   </div>
@@ -283,7 +283,7 @@ export function OledScreen() {
             Rotate {rotation.length > 0 ? `(${rotation.length})` : ""}
           </button>
           <label className="hs-inline-num">
-            every
+            every{" "}
             <input
               type="number"
               min={2}
@@ -291,7 +291,7 @@ export function OledScreen() {
               value={rotateSecs}
               onChange={(e) => setRotateSecs(Number(e.target.value))}
             />
-            s
+            {" "}s
           </label>
           <button
             type="button"
@@ -346,7 +346,7 @@ export function OledScreen() {
         </div>
         <div className="hs-row">
           <span>
-            Mirror desktop notifications
+            Mirror desktop notifications{" "}
             <span className="hs-hint" style={{ display: "block" }}>
               Shows PC notifications on the OLED for a few seconds
             </span>

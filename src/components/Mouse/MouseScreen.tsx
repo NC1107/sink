@@ -8,10 +8,18 @@ function toHex([r, g, b]: [number, number, number]) {
 }
 function fromHex(hex: string): [number, number, number] {
   return [
-    parseInt(hex.slice(1, 3), 16),
-    parseInt(hex.slice(3, 5), 16),
-    parseInt(hex.slice(5, 7), 16),
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
   ];
+}
+
+/** Battery colour tone from a percentage (null while asleep). */
+function batteryTone(pct: number | null): "ok" | "low" | "mid" {
+  if (pct == null) return "ok";
+  if (pct <= 15) return "low";
+  if (pct <= 40) return "mid";
+  return "ok";
 }
 
 export function MouseScreen() {
@@ -43,7 +51,7 @@ export function MouseScreen() {
   }
 
   const battery = m.status.battery_percent;
-  const tone = battery == null ? "ok" : battery <= 15 ? "low" : battery <= 40 ? "mid" : "ok";
+  const tone = batteryTone(battery);
 
   return (
     <div className="content narrow">
@@ -114,7 +122,7 @@ export function MouseScreen() {
           </div>
 
           {/* Editing the active preset's value. */}
-          <label className="hs-slider">
+          <label className="hs-slider" aria-label="Active preset value">
             <div className="hs-slider-top">
               <span>Active preset value</span>
               <span className="hs-slider-val">
@@ -171,7 +179,7 @@ export function MouseScreen() {
             </button>
           </div>
           {cfg.zones.map((zone, i) => (
-            <div className="hs-row" key={i}>
+            <div className="hs-row" key={ZONE_LABELS[i]}>
               <span>{ZONE_LABELS[i] ?? `Zone ${i + 1}`}</span>
               <input
                 type="color"
@@ -183,7 +191,7 @@ export function MouseScreen() {
           ))}
           <div className="hs-row">
             <span>
-              Reactive click flash
+              Reactive click flash{" "}
               <span className="hs-hint" style={{ display: "block" }}>
                 Flashes a colour on every click
               </span>
@@ -212,7 +220,7 @@ export function MouseScreen() {
             <Ms name="battery_saver" style={{ fontSize: 18 }} />
             <h2>Power saving</h2>
           </div>
-          <label className="hs-slider">
+          <label className="hs-slider" aria-label="Sleep after">
             <div className="hs-slider-top">
               <span>Sleep after</span>
               <span className="hs-slider-val">
@@ -227,7 +235,7 @@ export function MouseScreen() {
               onChange={(e) => void m.setSleep(Number(e.target.value))}
             />
           </label>
-          <label className="hs-slider">
+          <label className="hs-slider" aria-label="Dim lighting after">
             <div className="hs-slider-top">
               <span>Dim lighting after</span>
               <span className="hs-slider-val">

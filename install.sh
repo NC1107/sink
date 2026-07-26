@@ -21,7 +21,7 @@ die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- distro
 detect_distro() {
-  [ -r /etc/os-release ] || { echo unknown; return; }
+  [[ -r /etc/os-release ]] || { echo unknown; return; }
   . /etc/os-release
   # ID_LIKE catches derivatives (Mint -> ubuntu, PikaOS -> debian, …)
   case " ${ID:-} ${ID_LIKE:-} " in
@@ -76,7 +76,7 @@ install_deps() {
 need_rust() {
   if command -v cargo >/dev/null 2>&1; then return; fi
   # rustup's default install puts cargo here but doesn't touch the current shell.
-  if [ -x "$HOME/.cargo/bin/cargo" ]; then
+  if [[ -x "$HOME/.cargo/bin/cargo" ]]; then
     export PATH="$HOME/.cargo/bin:$PATH"
     return
   fi
@@ -113,7 +113,7 @@ do_build() {
 
 do_install() {
   local bin="$REPO_DIR/target/release/$APP_ID"
-  [ -x "$bin" ] || die "build output missing: $bin"
+  [[ -x "$bin" ]] || die "build output missing: $bin"
 
   info "Installing binary to $PREFIX/bin/$APP_ID"
   sudo install -Dm755 "$bin" "$PREFIX/bin/$APP_ID"
@@ -131,11 +131,11 @@ Categories=AudioVideo;Audio;Mixer;
 StartupWMClass=$APP_ID
 EOF
   local icon="$REPO_DIR/src-tauri/icons/512x512.png"
-  [ -f "$icon" ] && sudo install -Dm644 "$icon" \
+  [[ -f "$icon" ]] && sudo install -Dm644 "$icon" \
     "$PREFIX/share/icons/hicolor/512x512/apps/$APP_ID.png"
 
   # Lets Sink talk to SteelSeries HID devices without root.
-  if [ -f "$REPO_DIR/packaging/udev/50-sink-steelseries.rules" ]; then
+  if [[ -f "$REPO_DIR/packaging/udev/50-sink-steelseries.rules" ]]; then
     info "Installing udev rule for SteelSeries devices"
     sudo install -Dm644 "$REPO_DIR/packaging/udev/50-sink-steelseries.rules" \
       /etc/udev/rules.d/50-sink-steelseries.rules
@@ -164,6 +164,6 @@ case "${1:-}" in
 esac
 
 bold "Sink installer"
-[ "$DEPS" -eq 1 ] && install_deps "$(detect_distro)"
+[[ "$DEPS" -eq 1 ]] && install_deps "$(detect_distro)"
 do_build
 do_install

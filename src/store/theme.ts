@@ -11,8 +11,8 @@ const STORAGE_KEY = "sink-theme";
 
 function apply(theme: ThemeId) {
   const root = document.documentElement;
-  if (theme === "original") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", theme);
+  if (theme === "original") delete root.dataset.theme;
+  else root.dataset.theme = theme;
 }
 
 function initial(): ThemeId {
