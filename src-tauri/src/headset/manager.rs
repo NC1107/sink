@@ -2,7 +2,7 @@
 //! status read loop, a heartbeat that refreshes battery, and the shared writer
 //! that Tauri command handlers use to send control packets.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -10,6 +10,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 use crate::audio::pw_native::levels::LevelStore;
+use crate::persistence::prefs::{NotifyScroll, Prefs};
 
 use super::hidraw::{DeviceKind, HidDevice};
 use super::media::OledFrame;
@@ -21,18 +22,6 @@ use super::protocol_apw::{self, ApwStatus};
 const EV_STATUS: &str = "headset-status";
 const EV_PRESENCE: &str = "headset-presence";
 const EV_CHATMIX: &str = "headset-chatmix";
-
-/// Truncate to `max` chars, adding an ellipsis when clipped (OLED lines are
-/// narrow, so notifications need trimming).
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
-        out.push('\u{2026}');
-        out
-    }
-}
 
 /// Shared, thread-safe access to the base station.
 pub struct HeadsetManager {
@@ -49,6 +38,9 @@ pub struct HeadsetManager {
     app: Mutex<Option<AppHandle>>,
     /// Running `dbus-monitor` child when notification mirroring is on.
     notify_child: Mutex<Option<std::process::Child>>,
+    /// Seconds a mirrored notification stays up (mirror of the persisted pref,
+    /// read on the dbus-monitor thread without touching disk per notification).
+    notify_duration: AtomicU64,
     /// PipeWire peak meters, when the native backend is driving (VU mode).
     levels: Mutex<Option<Arc<LevelStore>>>,
 }
@@ -63,6 +55,7 @@ impl Default for HeadsetManager {
             connected: AtomicBool::new(false),
             app: Mutex::new(None),
             notify_child: Mutex::new(None),
+            notify_duration: AtomicU64::new(Prefs::load().notify_duration_secs.clamp(1, 60)),
             levels: Mutex::new(None),
         }
     }
@@ -166,6 +159,26 @@ impl HeadsetManager {
         Ok(())
     }
 
+    /// Current notification display prefs: (duration in seconds, scroll style).
+    pub fn notify_display(&self) -> (u64, NotifyScroll) {
+        let p = Prefs::load();
+        (p.notify_duration_secs.clamp(1, 60), p.notify_scroll)
+    }
+
+    /// Persist how long mirrored notifications stay up and how over-long text
+    /// scrolls, then apply both live (the OLED thread learns the new scroll
+    /// style immediately; the duration is used by the next notification).
+    pub fn set_notify_display(&self, secs: u64, scroll: NotifyScroll) -> Result<(), String> {
+        let secs = secs.clamp(1, 60);
+        let mut p = Prefs::load();
+        p.notify_duration_secs = secs;
+        p.notify_scroll = scroll;
+        p.save().map_err(|e| e.to_string())?;
+        self.notify_duration.store(secs, Ordering::Relaxed);
+        let _ = self.oled(OledCommand::SetNotifyScroll(scroll));
+        Ok(())
+    }
+
     /// Spawn `dbus-monitor` and forward each desktop notification's summary +
     /// body to the OLED as a timed notification. No-op if already running.
     fn start_notify_mirror(self: &Arc<Self>) {
@@ -222,17 +235,20 @@ impl HeadsetManager {
                         let summary = strings[2].clone();
                         let body = strings[3].clone();
                         capturing = false;
+                        // Send the full text — the OLED renderer wraps/scrolls
+                        // whatever doesn't fit, so nothing is truncated here.
                         let mut lines = Vec::new();
                         if !summary.is_empty() {
-                            lines.push(truncate(&summary, 20));
+                            lines.push(summary);
                         }
                         if !body.is_empty() {
-                            lines.push(truncate(&body, 21));
+                            lines.push(body);
                         }
                         if !lines.is_empty() {
+                            let secs = self.notify_duration.load(Ordering::Relaxed).clamp(1, 60);
                             let _ = self.oled(OledCommand::Notify {
                                 lines,
-                                duration: Duration::from_secs(5),
+                                duration: Duration::from_secs(secs),
                             });
                         }
                     }
@@ -310,6 +326,8 @@ impl HeadsetManager {
                 if let Ok(mut slot) = self.oled_tx.lock() {
                     *slot = Some(oled_tx);
                 }
+                // Apply the persisted notification scroll style to the new thread.
+                let _ = self.oled(OledCommand::SetNotifyScroll(Prefs::load().notify_scroll));
             }
 
             let writer = Arc::new(Mutex::new(writer));

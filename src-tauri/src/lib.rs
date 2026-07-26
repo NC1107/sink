@@ -132,6 +132,8 @@ pub fn run() {
             commands::headset::headset_oled_now_playing,
             commands::headset::headset_get_notify_mirror,
             commands::headset::headset_set_notify_mirror,
+            commands::headset::headset_get_notify_display,
+            commands::headset::headset_set_notify_display,
             commands::headset::headset_oled_notify,
             commands::headset::headset_oled_media,
             commands::headset::headset_oled_clips,

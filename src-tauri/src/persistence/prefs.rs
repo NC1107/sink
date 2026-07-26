@@ -18,6 +18,21 @@ pub enum DeviceLabelStyle {
     Prefix,
 }
 
+/// How an over-long OLED notification is animated so all of it stays readable.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NotifyScroll {
+    /// Word-wrap the body and scroll the block vertically (like film credits).
+    #[default]
+    Vertical,
+    /// Ticker: scroll each over-long line horizontally, right to left.
+    Horizontal,
+}
+
+fn default_notify_secs() -> u64 {
+    5
+}
+
 /// App preferences, stored at `$XDG_CONFIG_HOME/sink/prefs.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Prefs {
@@ -39,6 +54,13 @@ pub struct Prefs {
     /// showing the window (only meaningful with autostart enabled).
     #[serde(default)]
     pub start_minimized: bool,
+    /// Seconds a mirrored desktop notification stays on the OLED before the
+    /// previous screen returns.
+    #[serde(default = "default_notify_secs")]
+    pub notify_duration_secs: u64,
+    /// How an over-long notification scrolls so all of its text can be read.
+    #[serde(default)]
+    pub notify_scroll: NotifyScroll,
 }
 
 fn default_true() -> bool {
@@ -54,6 +76,8 @@ impl Default for Prefs {
             balance_b: None,
             show_balance: true,
             start_minimized: false,
+            notify_duration_secs: default_notify_secs(),
+            notify_scroll: NotifyScroll::default(),
         }
     }
 }

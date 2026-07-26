@@ -135,6 +135,55 @@ impl Framebuffer {
         self.draw_text((WIDTH as isize - w) / 2, y, text, scale);
     }
 
+    /// Draw a string, clipping every pixel to the half-open rect
+    /// `[x0, x1) × [y0, y1)`. Used for marquee / scrolling notification text
+    /// that slides under a fixed frame without spilling past it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_text_clip(
+        &mut self,
+        x: isize,
+        y: isize,
+        text: &str,
+        scale: usize,
+        x0: isize,
+        y0: isize,
+        x1: isize,
+        y1: isize,
+    ) {
+        let s = scale.max(1) as isize;
+        let advance = CHAR_ADVANCE as isize * s;
+        let mut cx = x;
+        for c in text.chars() {
+            let code = c as usize;
+            // Skip glyphs entirely outside the clip box (cheap horizontal cull).
+            if code < 256 && cx + advance > x0 && cx < x1 {
+                for col in 0..GLYPH_W {
+                    let bits = FONT5X7[code * GLYPH_W + col];
+                    for row in 0..GLYPH_H {
+                        if (bits >> row) & 1 != 0 {
+                            let bx = cx + col as isize * s;
+                            let by = y + row as isize * s;
+                            for ddx in 0..s {
+                                let px = bx + ddx;
+                                if px < x0 || px >= x1 {
+                                    continue;
+                                }
+                                for ddy in 0..s {
+                                    let py = by + ddy;
+                                    if py < y0 || py >= y1 {
+                                        continue;
+                                    }
+                                    self.set(px, py, true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            cx += advance;
+        }
+    }
+
     /// Set pixels from a 128x64 grayscale buffer using Floyd–Steinberg
     /// dithering (0 = black, 255 = white). Buffer must be WIDTH*HEIGHT long.
     pub fn blit_gray_dithered(&mut self, gray: &[u8]) {

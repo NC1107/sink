@@ -243,6 +243,28 @@ pub fn headset_set_notify_mirror(state: State<'_, AppState>, enabled: bool) -> R
     state.headset.set_notify_mirror(enabled)
 }
 
+/// How notifications are shown on the OLED: seconds on screen + scroll style.
+#[derive(Serialize)]
+pub struct NotifyDisplay {
+    pub duration_secs: u64,
+    pub scroll: crate::persistence::prefs::NotifyScroll,
+}
+
+#[tauri::command]
+pub fn headset_get_notify_display(state: State<'_, AppState>) -> NotifyDisplay {
+    let (duration_secs, scroll) = state.headset.notify_display();
+    NotifyDisplay { duration_secs, scroll }
+}
+
+#[tauri::command]
+pub fn headset_set_notify_display(
+    state: State<'_, AppState>,
+    duration_secs: u64,
+    scroll: crate::persistence::prefs::NotifyScroll,
+) -> Result<(), String> {
+    state.headset.set_notify_display(duration_secs, scroll)
+}
+
 #[tauri::command]
 pub fn headset_oled_notify(
     state: State<'_, AppState>,

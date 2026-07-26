@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::audio::pw_native::levels::LevelStore;
+use crate::persistence::prefs::NotifyScroll;
 
 use super::hidraw::{DevicePath, HidDevice};
 use super::media::OledFrame;
@@ -72,6 +73,8 @@ pub enum OledCommand {
     UpdateAux(Box<AuxData>),
     /// Configure the timed rotator.
     ConfigureRotation { modes: Vec<ModeId>, secs: u64 },
+    /// Choose how over-long notifications scroll (vertical vs. horizontal).
+    SetNotifyScroll(NotifyScroll),
     /// Timer control for the Timer mode.
     TimerCountdown(u64),
     TimerStopwatch,
@@ -188,8 +191,9 @@ pub fn run(path: DevicePath, rx: Receiver<OledCommand>, levels: Option<Arc<Level
     let mut frame_idx = 0usize;
     let mut frame_started = Instant::now();
 
-    // Notification overlay state.
-    let mut notify: Option<(Vec<String>, Instant)> = None;
+    // Notification overlay state: (lines, shown_at, expires_at).
+    let mut notify: Option<(Vec<String>, Instant, Instant)> = None;
+    let mut notify_scroll = NotifyScroll::default();
     let mut saved: Option<OledContent> = None;
 
     // `Ui` means "stop drawing"; send return-to-ui once then idle.
@@ -214,6 +218,7 @@ pub fn run(path: DevicePath, rx: Receiver<OledCommand>, levels: Option<Arc<Level
                 OledCommand::ConfigureRotation { modes: m, secs } => {
                     rotator.configure(m, secs);
                 }
+                OledCommand::SetNotifyScroll(mode) => notify_scroll = mode,
                 OledCommand::TimerCountdown(secs) => modes.timer.start_countdown(secs),
                 OledCommand::TimerStopwatch => modes.timer.start_stopwatch(),
                 OledCommand::TimerToggle => modes.timer.toggle_pause(),
@@ -222,7 +227,8 @@ pub fn run(path: DevicePath, rx: Receiver<OledCommand>, levels: Option<Arc<Level
                     if saved.is_none() {
                         saved = Some(content.clone());
                     }
-                    notify = Some((lines, Instant::now() + duration));
+                    let now = Instant::now();
+                    notify = Some((lines, now, now + duration));
                     ui_handed_back = false;
                 }
                 OledCommand::Set(c) => {
@@ -253,7 +259,7 @@ pub fn run(path: DevicePath, rx: Receiver<OledCommand>, levels: Option<Arc<Level
         }
 
         // Expire a finished notification.
-        if let Some((_, until)) = &notify {
+        if let Some((_, _, until)) = &notify {
             if Instant::now() >= *until {
                 notify = None;
                 if let Some(prev) = saved.take() {
@@ -265,8 +271,8 @@ pub fn run(path: DevicePath, rx: Receiver<OledCommand>, levels: Option<Arc<Level
         }
 
         // Decide what to paint this tick.
-        let fb = if let Some((lines, _)) = &notify {
-            Some(render_notification(lines))
+        let fb = if let Some((lines, shown_at, _)) = &notify {
+            Some(render_notification(lines, shown_at.elapsed(), notify_scroll))
         } else {
             match &content {
                 OledContent::Ui => {
@@ -396,20 +402,158 @@ fn render_text(lines: &[String]) -> Framebuffer {
     fb
 }
 
-/// A notification: a framed card with a bold title and wrapped body.
-fn render_notification(lines: &[String]) -> Framebuffer {
+/// Padding inside the 1px notification border.
+const N_PAD: isize = 3;
+/// Row pitch for scale-1 body lines (glyph is 7px tall).
+const N_LINE_H: isize = 9;
+
+/// A notification: a framed card with a bold title (line 0) and the body
+/// (remaining lines). Text that doesn't fit is never cut off — it scrolls,
+/// either vertically (word-wrapped block) or horizontally (per-line ticker),
+/// per the user's [`NotifyScroll`] choice. `elapsed` drives the animation.
+fn render_notification(lines: &[String], elapsed: Duration, scroll: NotifyScroll) -> Framebuffer {
     let mut fb = Framebuffer::new();
+    let w = super::oled::WIDTH as isize;
+    let h = super::oled::HEIGHT as isize;
     fb.stroke_rect(0, 0, super::oled::WIDTH, super::oled::HEIGHT);
-    let mut y = 8;
-    if let Some(title) = lines.first() {
-        fb.draw_text_centered(y, title, 2);
-        y += 20;
+
+    let x0 = N_PAD;
+    let x1 = w - N_PAD;
+    let view = x1 - x0;
+    let t = elapsed.as_secs_f32();
+
+    // Title: first line, scale 2 — centred if it fits, else a horizontal ticker
+    // (a two-scale title is wide, so this keeps long app names readable).
+    let title = lines.first().map(String::as_str).unwrap_or("");
+    let title_y = N_PAD + 1;
+    draw_scroll_line(&mut fb, title, 2, title_y, x0, x1, t);
+
+    let body_top = title_y + 14 + 2;
+    let body_bot = h - N_PAD;
+    let body: Vec<&str> = lines
+        .iter()
+        .skip(1)
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if body.is_empty() {
+        return fb;
     }
-    for line in lines.iter().skip(1).take(3) {
-        fb.draw_text_centered(y, line, 1);
-        y += 11;
+
+    match scroll {
+        // One ticker line: the whole body joined and scrolled left-to-right.
+        NotifyScroll::Horizontal => {
+            let joined = body.join("  ·  ");
+            let y = body_top + ((body_bot - body_top - 7) / 2).max(0);
+            draw_scroll_line(&mut fb, &joined, 1, y, x0, x1, t);
+        }
+        // Word-wrapped block, scrolled vertically when it overflows the card.
+        NotifyScroll::Vertical => {
+            let wrapped = wrap_text(&body.join("\n"), 1, view);
+            let area_h = body_bot - body_top;
+            let total = wrapped.len() as isize * N_LINE_H;
+            let off = if total <= area_h {
+                0
+            } else {
+                scroll_offset(total - area_h, t, 12.0)
+            };
+            for (i, line) in wrapped.iter().enumerate() {
+                let ly = body_top + i as isize * N_LINE_H - off;
+                if ly + 7 <= body_top || ly >= body_bot {
+                    continue; // fully outside the body window
+                }
+                let tw = Framebuffer::text_width(line, 1) as isize;
+                let lx = x0 + ((view - tw) / 2).max(0);
+                fb.draw_text_clip(lx, ly, line, 1, x0, body_top, x1, body_bot);
+            }
+        }
     }
     fb
+}
+
+/// Draw one line at row `y`: centred if it fits in `[x0, x1)`, otherwise a
+/// horizontal ticker that pauses at each end. Clipped so it never spills past
+/// the card edges.
+fn draw_scroll_line(fb: &mut Framebuffer, text: &str, scale: usize, y: isize, x0: isize, x1: isize, t: f32) {
+    let tw = Framebuffer::text_width(text, scale) as isize;
+    let view = x1 - x0;
+    let gh = 7 * scale as isize;
+    if tw <= view {
+        let x = x0 + (view - tw) / 2;
+        fb.draw_text_clip(x, y, text, scale, x0, y, x1, y + gh);
+    } else {
+        let off = scroll_offset(tw - view, t, 18.0);
+        fb.draw_text_clip(x0 - off, y, text, scale, x0, y, x1, y + gh);
+    }
+}
+
+/// A ping-pong scroll offset in `[0, span]` px: dwell at the start, travel to
+/// the end at `speed` px/s, dwell, travel back, repeat.
+fn scroll_offset(span: isize, t: f32, speed: f32) -> isize {
+    if span <= 0 {
+        return 0;
+    }
+    let span = span as f32;
+    let pause = 1.4_f32;
+    let travel = span / speed;
+    let period = travel * 2.0 + pause * 2.0;
+    let p = t % period;
+    let d = if p < pause {
+        0.0
+    } else if p < pause + travel {
+        (p - pause) * speed
+    } else if p < pause + travel + pause {
+        span
+    } else {
+        span - (p - pause - travel - pause) * speed
+    };
+    d.round().clamp(0.0, span) as isize
+}
+
+/// Greedy word-wrap to a pixel width at a given scale, breaking words that are
+/// themselves too long. Newlines in the input start a new line.
+fn wrap_text(text: &str, scale: usize, max_width: isize) -> Vec<String> {
+    let advance = super::oled::CHAR_ADVANCE * scale.max(1);
+    let max_chars = (max_width.max(1) as usize / advance).max(1);
+    let mut out = Vec::new();
+    for para in text.split('\n') {
+        let mut line = String::new();
+        for word in para.split_whitespace() {
+            let wlen = word.chars().count();
+            if wlen > max_chars {
+                if !line.is_empty() {
+                    out.push(std::mem::take(&mut line));
+                }
+                let mut chars = word.chars().peekable();
+                while chars.peek().is_some() {
+                    let chunk: String = chars.by_ref().take(max_chars).collect();
+                    if chunk.chars().count() == max_chars {
+                        out.push(chunk);
+                    } else {
+                        line = chunk; // keep the tail to continue the line
+                    }
+                }
+                continue;
+            }
+            let need = if line.is_empty() { wlen } else { line.chars().count() + 1 + wlen };
+            if need > max_chars {
+                out.push(std::mem::take(&mut line));
+                line = word.to_string();
+            } else {
+                if !line.is_empty() {
+                    line.push(' ');
+                }
+                line.push_str(word);
+            }
+        }
+        if !line.is_empty() {
+            out.push(line);
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
 }
 
 /// The headset dashboard: title, battery bar, volume, ANC and mic state.
@@ -451,4 +595,68 @@ fn render_status(s: &HeadsetStatus) -> Framebuffer {
         fb.draw_text(super::oled::WIDTH as isize - w - 2, 54, &label, 1);
     }
     fb
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 120px / (6px per scale-1 char) = 20 chars per line.
+    const W: isize = 120;
+
+    #[test]
+    fn wrap_breaks_on_words_within_width() {
+        let lines = wrap_text("the quick brown fox jumps over the lazy dog", 1, W);
+        assert!(lines.len() > 1, "long text must wrap onto several lines");
+        for l in &lines {
+            assert!(l.chars().count() <= 20, "line {l:?} exceeds the width");
+        }
+        // No text is lost: joining the wrapped words back matches the input words.
+        let joined: Vec<&str> = lines.iter().flat_map(|l| l.split_whitespace()).collect();
+        assert_eq!(joined.join(" "), "the quick brown fox jumps over the lazy dog");
+    }
+
+    #[test]
+    fn wrap_hard_breaks_overlong_words() {
+        // A single word longer than the line must be split, not dropped.
+        let word = "a".repeat(55);
+        let lines = wrap_text(&word, 1, W);
+        assert!(lines.len() >= 3);
+        for l in &lines {
+            assert!(l.chars().count() <= 20);
+        }
+        let rejoined: String = lines.concat();
+        assert_eq!(rejoined, word);
+    }
+
+    #[test]
+    fn wrap_honours_explicit_newlines() {
+        let lines = wrap_text("first\nsecond", 1, W);
+        assert_eq!(lines, vec!["first".to_string(), "second".to_string()]);
+    }
+
+    #[test]
+    fn scroll_offset_stays_in_range_and_pings_back() {
+        let span = 40;
+        // Sample a full period; the offset must never leave [0, span].
+        let mut saw_zero = false;
+        let mut saw_max = false;
+        for i in 0..400 {
+            let t = i as f32 * 0.05;
+            let o = scroll_offset(span, t, 18.0);
+            assert!((0..=span).contains(&o), "offset {o} out of range at t={t}");
+            if o == 0 {
+                saw_zero = true;
+            }
+            if o == span {
+                saw_max = true;
+            }
+        }
+        assert!(saw_zero && saw_max, "scroll must reach both ends");
+    }
+
+    #[test]
+    fn scroll_offset_zero_span_is_static() {
+        assert_eq!(scroll_offset(0, 3.2, 18.0), 0);
+    }
 }

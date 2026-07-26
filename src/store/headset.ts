@@ -7,6 +7,7 @@ import { useMixerStore } from "./mixer";
 // serde keeps field names as-is (snake_case), so JSON keys match 1:1.
 export type AncMode = "off" | "transparent" | "on";
 export type LineOutMode = "speaker" | "stream";
+export type NotifyScroll = "vertical" | "horizontal";
 
 export interface HeadsetStatus {
   present: boolean;
@@ -149,6 +150,11 @@ interface HeadsetState {
   oledNowPlaying: () => Promise<void>;
   notifyMirror: boolean;
   setNotifyMirror: (enabled: boolean) => Promise<void>;
+  /** How long mirrored notifications stay on the OLED (seconds). */
+  notifyDurationSecs: number;
+  /** How over-long notification text scrolls so all of it can be read. */
+  notifyScroll: NotifyScroll;
+  setNotifyDisplay: (durationSecs: number, scroll: NotifyScroll) => Promise<void>;
   oledNotify: (lines: string[], durationMs: number) => Promise<void>;
   oledMedia: (path: string, looping: boolean) => Promise<void>;
   oledClip: (name: string) => Promise<void>;
@@ -199,9 +205,20 @@ export const useHeadset = create<HeadsetState>((set, get) => ({
       const clips = await invoke<ClipEntry[]>("headset_oled_clips");
       const alsaHeadroom = await invoke<boolean>("headset_get_alsa_headroom");
       const notifyMirror = await invoke<boolean>("headset_get_notify_mirror");
+      const notifyDisplay = await invoke<{ duration_secs: number; scroll: NotifyScroll }>(
+        "headset_get_notify_display",
+      );
       const eqPresets = await invoke<EqPreset[]>("headset_eq_presets");
       const modes = await invoke<ModeEntry[]>("headset_oled_modes");
-      set({ clips, modes, alsaHeadroom, notifyMirror, eqPresets });
+      set({
+        clips,
+        modes,
+        alsaHeadroom,
+        notifyMirror,
+        notifyDurationSecs: notifyDisplay.duration_secs,
+        notifyScroll: notifyDisplay.scroll,
+        eqPresets,
+      });
     } catch (e) {
       console.error("headset init:", e);
     }
@@ -292,6 +309,18 @@ export const useHeadset = create<HeadsetState>((set, get) => ({
     } catch (e) {
       set({ notifyMirror: !enabled });
       console.error("headset notify mirror:", e);
+    }
+  },
+  notifyDurationSecs: 5,
+  notifyScroll: "vertical",
+  setNotifyDisplay: async (durationSecs, scroll) => {
+    const prev = { secs: get().notifyDurationSecs, scroll: get().notifyScroll };
+    set({ notifyDurationSecs: durationSecs, notifyScroll: scroll });
+    try {
+      await invoke("headset_set_notify_display", { durationSecs, scroll });
+    } catch (e) {
+      set({ notifyDurationSecs: prev.secs, notifyScroll: prev.scroll });
+      console.error("headset notify display:", e);
     }
   },
   oledNotify: (lines, durationMs) =>

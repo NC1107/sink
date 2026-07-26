@@ -360,6 +360,53 @@ export function OledScreen() {
             {h.notifyMirror ? "On" : "Off"}
           </label>
         </div>
+        <div className="hs-row">
+          <span>
+            Show for{" "}
+            <span className="hs-hint" style={{ display: "block" }}>
+              How long a notification stays before the previous screen returns
+            </span>
+          </span>
+          <label className="hs-inline-num" aria-label="Notification duration in seconds">
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={h.notifyDurationSecs}
+              onChange={(e) =>
+                void h.setNotifyDisplay(
+                  Math.min(60, Math.max(1, Math.round(Number(e.target.value)) || 1)),
+                  h.notifyScroll,
+                )
+              }
+            />
+            {" "}s
+          </label>
+        </div>
+        <div className="hs-row">
+          <span>
+            Long text{" "}
+            <span className="hs-hint" style={{ display: "block" }}>
+              Direction to scroll when a notification is too long to fit
+            </span>
+          </span>
+          <div className="hs-seg">
+            <button
+              type="button"
+              className={"hs-seg-btn" + (h.notifyScroll === "vertical" ? " active" : "")}
+              onClick={() => void h.setNotifyDisplay(h.notifyDurationSecs, "vertical")}
+            >
+              Vertical
+            </button>
+            <button
+              type="button"
+              className={"hs-seg-btn" + (h.notifyScroll === "horizontal" ? " active" : "")}
+              onClick={() => void h.setNotifyDisplay(h.notifyDurationSecs, "horizontal")}
+            >
+              Horizontal
+            </button>
+          </div>
+        </div>
       </section>
       </div>
     </div>
