@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Drum & Bass",
+  "author": "Sink",
+  "description": "Deep sub weight under snappy breaks.",
+  "preamp_db": -6.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 55,
+      "gain_db": 6,
+      "q": 0.9
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 120,
+      "gain_db": 2,
+      "q": 1.2
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 500,
+      "gain_db": -1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3000,
+      "gain_db": 2,
+      "q": 1.1
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 3,
+      "q": 0.71
+    }
+  ]
+}

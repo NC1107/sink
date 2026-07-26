@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "Jazz",
+  "author": "Sink",
+  "description": "Natural tone with a touch of warmth and air.",
+  "preamp_db": -2.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 110,
+      "gain_db": 2.5,
+      "q": 0.7
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 900,
+      "gain_db": 0.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 4000,
+      "gain_db": 1,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 11000,
+      "gain_db": 2,
+      "q": 0.71
+    }
+  ]
+}

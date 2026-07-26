@@ -22,6 +22,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 dirs = "6"
+# Direct /dev/hidraw access for the Arctis base station: libc for the
+# HIDIOCSFEATURE ioctl (OLED feature reports); plain read/write covers the
+# rest. No libhidapi/libusb system dependency.
+libc = "0.2"
+# Decode OLED media (still images + animated GIFs) to 1-bit frames. Video is
+# handled out-of-process via the system ffmpeg, so no heavy codec deps here.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
 # 0.8.0 on crates.io predates PipeWire 1.6 headers (libspa bindgen breaks);
 # git main carries the header fixes. v0_3_49 gates Buffer::requested().
 pipewire = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-rs", rev = "v0.10.0", features = ["v0_3_49"] }

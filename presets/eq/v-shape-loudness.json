@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "V-Shape / Loudness",
+  "author": "Sink",
+  "description": "Scooped mids with lifted extremes \u2014 the classic fun curve.",
+  "preamp_db": -5.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 90,
+      "gain_db": 5,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 800,
+      "gain_db": -3,
+      "q": 1.1
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2000,
+      "gain_db": -1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 5,
+      "q": 0.71
+    }
+  ]
+}

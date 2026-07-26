@@ -138,6 +138,8 @@ interface MixerStore {
   fetchChannels: () => Promise<void>;
   fetchAppStreams: () => Promise<void>;
   setChannelVolume: (sinkName: string, volume: number) => Promise<void>;
+  /** Drive the balance channels from the headset's hardware ChatMix wheel. */
+  applyChatMix: (game: number, chat: number) => void;
   toggleMute: (sinkName: string, muted: boolean) => Promise<void>;
   routeApp: (streamIndex: number, sinkName: string) => Promise<void>;
   setAppVolume: (streamIndex: number, volume: number) => Promise<void>;
@@ -316,6 +318,23 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
         void get().fetchChannels();
       },
     );
+  },
+
+  applyChatMix: (game, chat) => {
+    const s = get();
+    const find = (name: string | null) =>
+      s.channels.find((c) => c.name === name) ?? null;
+    // Same resolution as BalanceBar: saved picks, else Game/Chat, else first two.
+    const a = find(s.balanceA) ?? find("sink_game") ?? s.channels[0] ?? null;
+    const b =
+      find(s.balanceB) ??
+      find("sink_chat") ??
+      s.channels.find((c) => c.name !== a?.name) ??
+      null;
+    if (!a || !b || a.name === b.name) return;
+    const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+    void s.setChannelVolume(a.name, clamp(game));
+    void s.setChannelVolume(b.name, clamp(chat));
   },
 
   toggleMute: async (sinkName, muted) => {

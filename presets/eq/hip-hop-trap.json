@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Hip-Hop / Trap",
+  "author": "Sink",
+  "description": "808 weight while vocals stay forward.",
+  "preamp_db": -6.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 60,
+      "gain_db": 6,
+      "q": 0.9
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 150,
+      "gain_db": 2.5,
+      "q": 1.1
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 500,
+      "gain_db": -1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2500,
+      "gain_db": 1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": 2.5,
+      "q": 0.71
+    }
+  ]
+}

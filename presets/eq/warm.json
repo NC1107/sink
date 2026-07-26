@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "name": "Warm",
+  "author": "Sink",
+  "description": "Full lows and softened highs for long, fatigue-free sessions.",
+  "preamp_db": -3.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 150,
+      "gain_db": 3.5,
+      "q": 0.7
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1500,
+      "gain_db": -0.5,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 7000,
+      "gain_db": -3,
+      "q": 0.7
+    }
+  ]
+}

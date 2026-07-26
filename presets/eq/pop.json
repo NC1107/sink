@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "Pop",
+  "author": "Sink",
+  "description": "Gentle smile curve that flatters modern masters.",
+  "preamp_db": -3.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 100,
+      "gain_db": 3,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 600,
+      "gain_db": -0.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3000,
+      "gain_db": 2,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": 2.5,
+      "q": 0.71
+    }
+  ]
+}

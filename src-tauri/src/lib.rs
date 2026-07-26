@@ -1,7 +1,9 @@
 mod audio;
 mod commands;
 mod error;
+mod headset;
 mod mixer;
+mod mouse;
 mod persistence;
 mod state;
 
@@ -105,6 +107,53 @@ pub fn run() {
             commands::settings::set_balance_visible,
             commands::settings::set_start_minimized,
             commands::settings::reset_app,
+            commands::headset::get_headset_status,
+            commands::headset::headset_set_sidetone,
+            commands::headset::headset_set_mic_volume,
+            commands::headset::headset_set_mic_led,
+            commands::headset::headset_set_anc,
+            commands::headset::headset_set_transparency,
+            commands::headset::headset_set_auto_off,
+            commands::headset::headset_set_gain_high,
+            commands::headset::headset_set_wireless_range,
+            commands::headset::headset_set_line_out,
+            commands::headset::headset_set_line_out_volumes,
+            commands::headset::headset_set_eq_bands,
+            commands::headset::headset_set_eq_preset,
+            commands::headset::headset_eq_presets,
+            commands::headset::headset_apply_eq_preset,
+            commands::headset::headset_save,
+            commands::headset::headset_get_alsa_headroom,
+            commands::headset::headset_set_alsa_headroom,
+            commands::headset::headset_oled_text,
+            commands::headset::headset_oled_status,
+            commands::headset::headset_oled_modes,
+            commands::headset::headset_oled_system,
+            commands::headset::headset_oled_now_playing,
+            commands::headset::headset_get_notify_mirror,
+            commands::headset::headset_set_notify_mirror,
+            commands::headset::headset_oled_notify,
+            commands::headset::headset_oled_media,
+            commands::headset::headset_oled_clips,
+            commands::headset::headset_oled_clip,
+            commands::headset::headset_oled_mode,
+            commands::headset::headset_oled_rotate,
+            commands::headset::headset_oled_auto,
+            commands::headset::headset_timer_countdown,
+            commands::headset::headset_timer_stopwatch,
+            commands::headset::headset_timer_toggle,
+            commands::headset::headset_timer_reset,
+            commands::headset::headset_oled_brightness,
+            commands::headset::headset_oled_return_ui,
+            commands::mouse::get_mouse_status,
+            commands::mouse::mouse_set_dpi,
+            commands::mouse::mouse_set_polling,
+            commands::mouse::mouse_set_zone_color,
+            commands::mouse::mouse_set_rainbow,
+            commands::mouse::mouse_set_reactive,
+            commands::mouse::mouse_set_sleep,
+            commands::mouse::mouse_set_dim,
+            commands::mouse::mouse_set_startup_lighting,
         ])
         .setup(move |app| {
             build_tray(app)?;
@@ -117,8 +166,21 @@ pub fn run() {
                 }
             }
             if let Some(levels) = levels {
+                // The OLED VU mode reads the same peak store as the UI meters.
+                app.state::<AppState>().headset.set_levels(levels.clone());
                 spawn_level_emitter(app.handle().clone(), levels);
             }
+            // Start the Arctis base-station supervisor (discovery, status
+            // stream, OLED). No-op on machines without the headset.
+            app.state::<AppState>()
+                .headset
+                .start(app.handle().clone());
+            // Same for the SteelSeries mouse (no-op without one attached).
+            app.state::<AppState>()
+                .mouse
+                .start(app.handle().clone());
+            // Feed the OLED the data it can't read itself (mouse, app list).
+            spawn_oled_aux_feeder(app.handle().clone());
             Ok(())
         })
         // Close button hides to tray instead of quitting.
@@ -136,6 +198,37 @@ pub fn run() {
         eprintln!("sink: fatal error while running tauri application: {e}");
         std::process::exit(1);
     }
+}
+
+/// Pushes data the OLED modes need but the draw thread can't read itself —
+/// the mouse's battery and the list of apps currently making sound. Runs on a
+/// slow cadence because none of it changes quickly.
+fn spawn_oled_aux_feeder(handle: tauri::AppHandle) {
+    use headset::oled_controller::AuxData;
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(3));
+        let state = handle.state::<AppState>();
+        if !state.headset.is_connected() {
+            continue;
+        }
+        let mouse = state.mouse.status();
+        let apps = state
+            .backend
+            .list_app_streams()
+            .map(|streams| {
+                streams
+                    .into_iter()
+                    .map(|s| (s.alias.unwrap_or(s.app_name), s.active))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        state.headset.push_aux(AuxData {
+            mouse_battery: mouse.battery_percent,
+            mouse_charging: mouse.charging,
+            mouse_model: mouse.model.unwrap_or_else(|| "Mouse".to_string()),
+            active_apps: apps,
+        });
+    });
 }
 
 /// Streams per-channel peak levels to the UI at 10 Hz as `levels` events.

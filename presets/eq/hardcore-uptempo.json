@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "name": "Hardcore / Uptempo",
+  "author": "Sink",
+  "description": "Fast distorted kicks kept tight, with aggressive presence up top.",
+  "preamp_db": -5.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 65,
+      "gain_db": 5.5,
+      "q": 0.9
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 160,
+      "gain_db": 3,
+      "q": 1.2
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 450,
+      "gain_db": -3,
+      "q": 1.1
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2500,
+      "gain_db": 2,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 5000,
+      "gain_db": 3,
+      "q": 1.3
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": 3.5,
+      "q": 0.71
+    }
+  ]
+}

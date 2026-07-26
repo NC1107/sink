@@ -1,7 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use crate::audio::backend::AudioBackend;
+use crate::headset::HeadsetManager;
 use crate::mixer::state::MixerState;
+use crate::mouse::MouseManager;
 
 /// Application state managed by Tauri and shared across commands and the tray.
 pub struct AppState {
@@ -9,6 +11,10 @@ pub struct AppState {
     /// True when the native PipeWire backend is driving (vs pactl fallback).
     pub backend_native: bool,
     pub mixer: Mutex<MixerState>,
+    /// Arctis Nova Pro Wireless base station (HID control + OLED).
+    pub headset: Arc<HeadsetManager>,
+    /// SteelSeries mouse (Aerox 9 Wireless).
+    pub mouse: Arc<MouseManager>,
 }
 
 impl AppState {
@@ -57,6 +63,8 @@ impl AppState {
             backend,
             backend_native,
             mixer: Mutex::new(mixer),
+            headset: HeadsetManager::new(),
+            mouse: MouseManager::new(),
         }
     }
 

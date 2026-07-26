@@ -1,0 +1,14 @@
+# Sink — access to SteelSeries Arctis / Aerox HID control interfaces.
+#
+# Grants the active desktop session user read/write on the vendor HID nodes so
+# Sink can read headset/mouse status and drive the OLED without running as root.
+# `uaccess` hands access to whoever is logged in on the seat (via systemd-logind),
+# which is cleaner than a fixed group.
+#
+# Install: copy to /etc/udev/rules.d/ then reload:
+#   sudo cp 50-sink-steelseries.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Covers every SteelSeries device (vendor 0x1038): Arctis Nova Pro Wireless
+# base station (0x12e0/0x12e5/0x225d), Aerox 9 Wireless (0x1858/0x185a), etc.
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1038", MODE="0660", TAG+="uaccess"

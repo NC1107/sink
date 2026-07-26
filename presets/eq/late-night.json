@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Late-Night",
+  "author": "Sink",
+  "description": "Quiet-hours listening: no bass to travel, speech still clear.",
+  "preamp_db": -2.0,
+  "bands": [
+    {
+      "kind": "high_pass",
+      "freq_hz": 110,
+      "gain_db": 0,
+      "q": 0.71
+    },
+    {
+      "kind": "low_shelf",
+      "freq_hz": 200,
+      "gain_db": -5,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1000,
+      "gain_db": 2,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2500,
+      "gain_db": 2,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": -2,
+      "q": 0.71
+    }
+  ]
+}

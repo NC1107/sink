@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Rock / Metal",
+  "author": "Sink",
+  "description": "Guitar bite and kick punch without harshness.",
+  "preamp_db": -3.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 90,
+      "gain_db": 3,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 400,
+      "gain_db": -1,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1500,
+      "gain_db": 1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3500,
+      "gain_db": 2.5,
+      "q": 1.2
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 2,
+      "q": 0.71
+    }
+  ]
+}

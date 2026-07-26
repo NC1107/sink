@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "name": "Hardstyle",
+  "author": "Sink",
+  "description": "Hard kick punch with scooped low-mids so the screech lead cuts through.",
+  "preamp_db": -6.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 70,
+      "gain_db": 6,
+      "q": 0.9
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 150,
+      "gain_db": 3,
+      "q": 1.2
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 400,
+      "gain_db": -3,
+      "q": 1.1
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 900,
+      "gain_db": -2,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3500,
+      "gain_db": 2.5,
+      "q": 1.2
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 3,
+      "q": 0.71
+    }
+  ]
+}

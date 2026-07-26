@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "Vocal Presence",
+  "author": "Sink",
+  "description": "Lifts voices out of a busy mix.",
+  "preamp_db": -2.5,
+  "bands": [
+    {
+      "kind": "peaking",
+      "freq_hz": 300,
+      "gain_db": -1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1200,
+      "gain_db": 1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2800,
+      "gain_db": 2.5,
+      "q": 1.1
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 1,
+      "q": 0.71
+    }
+  ]
+}

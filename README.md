@@ -36,12 +36,57 @@ processed virtual microphone for voice chat.
   [NoiseTorch](https://github.com/noisetorch/NoiseTorch) on the input for
   noise suppression before the chain.
 - **Profiles** - save and switch full layouts from the tray
+- **Headset** - full control of a **SteelSeries Arctis Nova Pro Wireless**
+  base station over USB (no root, no SteelSeries GG): live battery, ANC /
+  transparency, sidetone, mic volume & mute-LED, 10-band hardware EQ, auto-off,
+  wireless speed/range, line-out, and a ChatMix read-out. See
+  [docs/headset.md](docs/headset.md).
+- **OLED** - drive the base station's 128×64 display: live dashboard,
+  system monitor (CPU/RAM/GPU), now playing, desktop-notification mirroring,
+  text, built-in animations, and your own images / GIFs / videos, scaled and
+  dithered on the fly.
+- **Mouse** - SteelSeries **Aerox 9 Wireless**: DPI presets, polling rate,
+  per-zone RGB, reactive lighting, sleep and dim timeouts, battery.
+- **Themes** - ships the original look plus a **Tokyo Night** palette,
+  switchable in Settings.
 
 ![Equalizer](docs/eq.png)
 ![Mic](docs/mic.png)
 ![Apps](docs/apps.png)
 
 ## Install
+
+**Build and install from source (any distro)**
+
+```bash
+git clone <your-fork-url> sink && cd sink
+./install.sh
+```
+
+`install.sh` installs the build/runtime dependencies for Debian/Ubuntu (and
+derivatives like Mint, Pop!_OS), Fedora and Arch, builds the release binary,
+and installs the app, its desktop entry and the udev rule that lets Sink talk
+to SteelSeries devices without root. Useful flags: `--deps-only`, `--no-deps`,
+`--uninstall` (uninstall keeps your `~/.config/sink`).
+
+**Debian / Ubuntu — manual dependencies**
+
+If you would rather do it by hand:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl wget file pkg-config \
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+  libssl-dev libxdo-dev libpipewire-0.3-dev clang ffmpeg
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # if you have no Rust
+npm install && ./node_modules/.bin/tauri build --no-bundle
+sudo install -Dm755 target/release/sink /usr/bin/sink
+```
+
+`ffmpeg` is optional and only needed to play videos on the headset OLED.
+
+### Prebuilt packages
+
 
 **Arch / Manjaro / EndeavourOS** - from the [AUR](https://aur.archlinux.org/packages/sink-bin):
 

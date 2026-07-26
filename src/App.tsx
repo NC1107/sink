@@ -4,6 +4,9 @@ import { TitleBar } from "./components/TitleBar/TitleBar";
 import { MixerBoard } from "./components/MixerBoard/MixerBoard";
 import { AppList } from "./components/AppList/AppList";
 import { MicScreen } from "./components/Mic/MicScreen";
+import { HeadsetScreen } from "./components/Headset/HeadsetScreen";
+import { OledScreen } from "./components/Oled/OledScreen";
+import { MouseScreen } from "./components/Mouse/MouseScreen";
 import { OnboardingModal } from "./components/Onboarding/OnboardingModal";
 import { SettingsScreen } from "./components/Settings/SettingsScreen";
 import { Ms } from "./components/Icons";
@@ -15,6 +18,9 @@ const NAV = [
   { id: "mixer", icon: "graphic_eq", label: "Mixer" },
   { id: "apps", icon: "grid_view", label: "Apps" },
   { id: "mic", icon: "mic", label: "Mic" },
+  { id: "headset", icon: "headphones", label: "Headset" },
+  { id: "oled", icon: "tv_gen", label: "OLED" },
+  { id: "mouse", icon: "mouse", label: "Mouse" },
 ] as const;
 
 type NavId = (typeof NAV)[number]["id"] | "settings";
@@ -39,6 +45,9 @@ export default function App() {
   if (nav === "mixer") screen = <MixerBoard />;
   else if (nav === "apps") screen = <AppList />;
   else if (nav === "mic") screen = <MicScreen />;
+  else if (nav === "headset") screen = <HeadsetScreen />;
+  else if (nav === "oled") screen = <OledScreen />;
+  else if (nav === "mouse") screen = <MouseScreen />;
   else screen = <SettingsScreen />;
 
   return (

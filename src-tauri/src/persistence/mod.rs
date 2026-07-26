@@ -1,5 +1,6 @@
 pub mod active;
 pub mod aliases;
+pub mod alsa_headroom;
 pub mod assignments;
 pub mod autostart;
 pub mod buses;
@@ -7,6 +8,7 @@ pub mod channels;
 pub mod eq;
 pub mod eq_presets;
 pub mod mic;
+pub mod notify_mirror;
 pub mod outputs;
 pub mod prefs;
 pub mod seen;

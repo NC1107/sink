@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "name": "Lo-Fi",
+  "author": "Sink",
+  "description": "Rolled-off highs and thick lows for that tape feel.",
+  "preamp_db": -3.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 120,
+      "gain_db": 3,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1000,
+      "gain_db": -1,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 6000,
+      "gain_db": -5,
+      "q": 0.7
+    }
+  ]
+}

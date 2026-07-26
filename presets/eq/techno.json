@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Techno",
+  "author": "Sink",
+  "description": "Driving low end, restrained elsewhere \u2014 keeps the groove.",
+  "preamp_db": -4.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 70,
+      "gain_db": 4.5,
+      "q": 0.85
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 250,
+      "gain_db": -1,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1200,
+      "gain_db": -0.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 5000,
+      "gain_db": 1.5,
+      "q": 1.2
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 11000,
+      "gain_db": 2,
+      "q": 0.71
+    }
+  ]
+}

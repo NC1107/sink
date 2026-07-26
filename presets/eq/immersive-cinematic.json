@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "Immersive / Cinematic",
+  "author": "Sink",
+  "description": "Weighty and wide for single-player worlds.",
+  "preamp_db": -4.5,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 80,
+      "gain_db": 4.5,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 500,
+      "gain_db": -1,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3000,
+      "gain_db": 1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": 3,
+      "q": 0.71
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Podcast / Voice",
+  "author": "Sink",
+  "description": "Optimised for spoken word \u2014 no rumble, no sibilance.",
+  "preamp_db": -2.5,
+  "bands": [
+    {
+      "kind": "high_pass",
+      "freq_hz": 85,
+      "gain_db": 0,
+      "q": 0.71
+    },
+    {
+      "kind": "low_shelf",
+      "freq_hz": 160,
+      "gain_db": -3,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1500,
+      "gain_db": 2,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3000,
+      "gain_db": 2.5,
+      "q": 1.1
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 7000,
+      "gain_db": -2,
+      "q": 2.0
+    }
+  ]
+}

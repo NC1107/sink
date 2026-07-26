@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "EDM / Festival",
+  "author": "Sink",
+  "description": "Big-room weight and sparkle without clogging the middle.",
+  "preamp_db": -5.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 80,
+      "gain_db": 5,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 300,
+      "gain_db": -1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 800,
+      "gain_db": -2,
+      "q": 1.1
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 4000,
+      "gain_db": 2.5,
+      "q": 1.2
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 10000,
+      "gain_db": 4,
+      "q": 0.71
+    }
+  ]
+}

@@ -215,18 +215,22 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
         align="end"
         style={{ minWidth: 260 }}
       >
-        {bundled.length > 0 && (
-          <>
-            <div className="eqm-preset-head">Bundled</div>
-            {bundled.map(presetRow)}
-          </>
-        )}
-        {user.length > 0 && (
-          <>
-            <div className="eqm-preset-head">Your presets</div>
-            {user.map(presetRow)}
-          </>
-        )}
+        {/* The bundled library is long, so the list scrolls while the save
+            and import/export controls below stay put. */}
+        <div className="eqm-preset-list">
+          {bundled.length > 0 && (
+            <>
+              <div className="eqm-preset-head">Bundled</div>
+              {bundled.map(presetRow)}
+            </>
+          )}
+          {user.length > 0 && (
+            <>
+              <div className="eqm-preset-head">Your presets</div>
+              {user.map(presetRow)}
+            </>
+          )}
+        </div>
 
         <div className="menu-sep" />
         <div className={"eqm-save-label" + (activePreset ? "" : " custom")}>

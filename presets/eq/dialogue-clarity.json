@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "name": "Dialogue Clarity",
+  "author": "Sink",
+  "description": "Speech forward, rumble held back.",
+  "preamp_db": -2.5,
+  "bands": [
+    {
+      "kind": "high_pass",
+      "freq_hz": 80,
+      "gain_db": 0,
+      "q": 0.71
+    },
+    {
+      "kind": "low_shelf",
+      "freq_hz": 150,
+      "gain_db": -2,
+      "q": 0.8
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 1200,
+      "gain_db": 2,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 3000,
+      "gain_db": 2.5,
+      "q": 1.1
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 1,
+      "q": 0.71
+    }
+  ]
+}

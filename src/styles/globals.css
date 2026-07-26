@@ -2357,3 +2357,396 @@ body,
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================
+   Headset + OLED panels (Arctis Nova Pro Wireless)
+   ============================================================ */
+.hs { gap: var(--sp-4); }
+.hs-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.hs-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--fg-primary);
+}
+.hs-card-head h2 { font-size: var(--fs-title); margin: 0; font-weight: 600; }
+.hs-card-right { margin-left: auto; }
+
+/* Segmented control */
+.hs-seg {
+  display: inline-flex;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 2px;
+  gap: 2px;
+}
+.hs-seg-btn {
+  border: 0;
+  background: transparent;
+  color: var(--fg-secondary);
+  padding: 5px 12px;
+  border-radius: var(--r-xs);
+  font-family: var(--font-sans);
+  font-size: var(--fs-meta);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.hs-seg-btn:hover { color: var(--fg-primary); }
+.hs-seg-btn.active { background: var(--accent); color: var(--on-accent); }
+
+/* Rows + sliders */
+.hs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  color: var(--fg-secondary);
+  font-size: var(--fs-meta);
+}
+.hs-slider { display: flex; flex-direction: column; gap: 6px; }
+.hs-slider.disabled { opacity: 0.4; pointer-events: none; }
+.hs-slider-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-meta);
+  color: var(--fg-secondary);
+}
+.hs-slider-val { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--bg-active);
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-main);
+  transition: background 0.12s;
+}
+input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent-hover); }
+
+/* Battery */
+.hs-batts { display: flex; flex-direction: column; gap: var(--sp-3); }
+.hs-batt { display: flex; align-items: center; gap: var(--sp-3); }
+.hs-batt-label { width: 92px; color: var(--fg-secondary); font-size: var(--fs-meta); }
+.hs-batt-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--bg-active);
+  overflow: hidden;
+}
+.hs-batt-fill { height: 100%; border-radius: var(--r-pill); transition: width 0.4s ease; }
+.hs-batt-fill.ok { background: var(--online); }
+.hs-batt-fill.mid { background: var(--warning); }
+.hs-batt-fill.low { background: var(--danger); }
+.hs-batt-pct { width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-primary); }
+
+/* Status grid */
+.hs-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2) var(--sp-5);
+}
+.hs-status-grid > div { display: flex; justify-content: space-between; font-size: var(--fs-meta); }
+.hs-status-grid span { color: var(--fg-muted); }
+.hs-status-grid b { color: var(--fg-primary); font-weight: 500; }
+
+/* Hardware EQ */
+.hs-eq-presets, .hs-oled-actions, .hs-eq-band { display: flex; }
+.hs-eq-presets { gap: var(--sp-2); flex-wrap: wrap; }
+.hs-eq {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+  align-items: end;
+  height: 130px;
+}
+.hs-eq-band { flex-direction: column; align-items: center; gap: 6px; height: 100%; }
+.hs-eq-fader {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 4px;
+  height: 100px;
+}
+.hs-eq-band span { font-size: 10px; color: var(--fg-muted); }
+
+/* Chips + buttons */
+.hs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  color: var(--fg-primary);
+  border-radius: var(--r-sm);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-meta);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.hs-chip:hover { background: var(--bg-surface-hover); border-color: var(--accent); }
+.hs-chip.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.hs-chip.primary:hover { background: var(--accent-hover); }
+
+.hs-oled-actions { gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.hs-oled-text { display: flex; gap: var(--sp-2); }
+.hs-oled-text input, .oled-text, .hs-inline-num input {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-primary);
+  padding: 7px 10px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-meta);
+}
+.hs-oled-text input { flex: 1; }
+.oled-text { width: 100%; resize: vertical; }
+.hs-inline-num { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-muted); font-size: var(--fs-meta); }
+.hs-inline-num input { width: 56px; }
+.hs-check { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: var(--fs-meta); cursor: pointer; }
+.hs-hint { color: var(--fg-muted); font-size: var(--fs-caption); margin: 0; }
+.hs-hint code, .hs-empty-sub code { color: var(--accent); background: var(--bg-main); padding: 1px 4px; border-radius: var(--r-xs); }
+
+/* Clip gallery */
+.hs-clip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--sp-2);
+}
+.hs-clip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sp-3);
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-secondary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.hs-clip:hover { background: var(--bg-surface-hover); border-color: var(--accent); color: var(--fg-primary); }
+
+/* OLED preview (approximate) */
+.oled-preview {
+  align-self: center;
+  width: 256px;
+  height: 128px;
+  background: #05060a;
+  border: 2px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: inset 0 0 24px rgba(122, 162, 247, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+.oled-preview-inner { text-align: center; }
+.oled-preview-line {
+  color: #cfe3ff;
+  font-size: 18px;
+  line-height: 1.35;
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(160, 200, 255, 0.6);
+  white-space: pre;
+}
+
+/* Empty state */
+.hs-empty {
+  margin: auto;
+  max-width: 360px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--fg-secondary);
+}
+.hs-empty-sub { color: var(--fg-muted); font-size: var(--fs-caption); line-height: 1.6; }
+
+/* ============================================================
+   Theme: Tokyo Night (opt-in via <html data-theme="tokyo-night">)
+   Original theme stays the default under :root.
+   ============================================================ */
+:root[data-theme="tokyo-night"] {
+  --bg-main: #1a1b26;
+  --bg-sidebar: #16161e;
+  --bg-chat: #1a1b26;
+  --bg-surface: #1f2335;
+  --bg-surface-hover: #24283b;
+  --bg-active: #292e42;
+
+  --fg-primary: #c0caf5;
+  --fg-secondary: #a9b1d6;
+  --fg-muted: #565f89;
+
+  --accent: #7aa2f7;
+  --accent-hover: #9eb8f9;
+  --accent-light: rgba(122, 162, 247, 0.12);
+  --on-accent: #1a1b26;
+
+  --bg-popover: #24283b;
+  --bg-popover-hover: #2f334d;
+
+  --border: #2a2e42;
+  --border-popover: #3b4261;
+
+  --online: #9ece6a;
+  --danger: #f7768e;
+  --warning: #e0af68;
+}
+
+/* Theme picker (Settings › Appearance) */
+.theme-picker { display: flex; gap: var(--sp-2); }
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.theme-swatch:hover { border-color: var(--accent-hover); }
+.theme-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.theme-swatch-colors { display: flex; }
+.theme-swatch-colors i {
+  width: 16px;
+  height: 16px;
+  display: block;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+.theme-swatch-colors i:first-child { border-radius: var(--r-xs) 0 0 var(--r-xs); }
+.theme-swatch-colors i:last-child { border-radius: 0 var(--r-xs) var(--r-xs) 0; }
+.theme-swatch-label { font-size: var(--fs-caption); color: var(--fg-secondary); }
+.theme-swatch.active .theme-swatch-label { color: var(--fg-primary); }
+
+/* Scrollable body for the Headset/OLED panels (screen-head stays fixed). */
+.hs-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-5) var(--sp-6) var(--sp-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.hs-body::-webkit-scrollbar { width: 10px; height: 10px; }
+.hs-body::-webkit-scrollbar-thumb {
+  background: var(--bg-active);
+  border-radius: 10px;
+  border: 3px solid var(--bg-main);
+}
+
+/* Category dropdown in the hardware-EQ card header. */
+.hs-select {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-primary);
+  padding: 4px 8px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.hs-select:hover { border-color: var(--accent); }
+/* Preset chips can get numerous — keep the row from exploding vertically. */
+.hs-eq-presets { max-height: 132px; overflow-y: auto; }
+
+/* Native colour swatches in the Mouse panel. */
+.hs-color {
+  width: 44px;
+  height: 26px;
+  padding: 2px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.hs-color:hover { border-color: var(--accent); }
+
+/* The bundled EQ library outgrew a plain menu — scroll the list, keep the
+   save / import / export controls pinned below it. */
+.eqm-preset-list {
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: calc(-1 * var(--sp-1)) 0;
+}
+.eqm-preset-list::-webkit-scrollbar { width: 8px; }
+.eqm-preset-list::-webkit-scrollbar-thumb {
+  background: var(--bg-active);
+  border-radius: 8px;
+  border: 2px solid var(--bg-popover);
+}
+
+/* Clip gallery category headings. */
+.hs-clip-cat {
+  font-size: var(--fs-caption);
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: var(--sp-2) 0 var(--sp-1);
+}
+
+/* Live-mode picker: each entry is a button plus a rotation tick-box. */
+.hs-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-2);
+}
+.hs-mode {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  transition: border-color 0.12s;
+}
+.hs-mode:hover { border-color: var(--accent); }
+.hs-mode.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.hs-mode-btn {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--fg-primary);
+  padding: 7px 10px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-meta);
+  cursor: pointer;
+}
+.hs-mode.active .hs-mode-btn { color: var(--accent); }
+.hs-mode-tick {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+}
+.hs-chip:disabled { opacity: 0.45; cursor: not-allowed; }

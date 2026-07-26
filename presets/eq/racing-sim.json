@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "name": "Racing / Sim",
+  "author": "Sink",
+  "description": "Engine rumble plus tyre and surface detail.",
+  "preamp_db": -4.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 70,
+      "gain_db": 4,
+      "q": 0.85
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 600,
+      "gain_db": -1,
+      "q": 1.0
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2500,
+      "gain_db": 2,
+      "q": 1.1
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 9000,
+      "gain_db": 2,
+      "q": 0.71
+    }
+  ]
+}

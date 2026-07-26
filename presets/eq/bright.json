@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "name": "Bright",
+  "author": "Sink",
+  "description": "Tilts energy upward for clarity on dark-sounding sources.",
+  "preamp_db": -4.0,
+  "bands": [
+    {
+      "kind": "low_shelf",
+      "freq_hz": 120,
+      "gain_db": -1.5,
+      "q": 0.7
+    },
+    {
+      "kind": "peaking",
+      "freq_hz": 2500,
+      "gain_db": 1.5,
+      "q": 1.0
+    },
+    {
+      "kind": "high_shelf",
+      "freq_hz": 8000,
+      "gain_db": 4,
+      "q": 0.71
+    }
+  ]
+}
