@@ -106,7 +106,7 @@ do_build() {
   need_rust
   need_node
   info "Installing JavaScript dependencies"
-  ( cd "$REPO_DIR" && npm ci 2>/dev/null || npm install )
+  ( cd "$REPO_DIR" && npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts )
   info "Building release binary (this takes a few minutes on a cold cache)"
   ( cd "$REPO_DIR" && ./node_modules/.bin/tauri build --no-bundle )
 }
