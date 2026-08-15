@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -45,6 +46,16 @@ pub struct BusDef {
     /// Muted for recorders (they hear silence). Persisted like the volume.
     #[serde(default)]
     pub muted: bool,
+    /// Whether the processed virtual microphone feeds this mix alongside
+    /// its channels - lets a Stream Mix carry your voice plus game/media.
+    #[serde(default)]
+    pub mic: bool,
+    /// Per-member send level within this mix (0-150%; a member absent here
+    /// carries at 100%, same as its normal level). Independent of the
+    /// member's own volume - only this mix's recorders/listeners hear the
+    /// difference. Keyed by channel sink name, or "sink_mic" for the mic.
+    #[serde(default)]
+    pub member_gains: HashMap<String, u8>,
 }
 
 fn default_volume() -> u8 {
@@ -82,6 +93,8 @@ impl Default for Buses {
                 exclude: false,
                 volume_percent: 100,
                 muted: false,
+                mic: false,
+                member_gains: HashMap::new(),
             }],
         }
     }
@@ -162,6 +175,8 @@ impl Buses {
                 exclude: false,
                 volume_percent: 100,
                 muted: false,
+                mic: false,
+                member_gains: HashMap::new(),
             },
         };
         def.channels = channels.to_vec();
@@ -234,6 +249,8 @@ impl Buses {
             exclude: true,
             volume_percent: 100,
             muted: false,
+            mic: false,
+            member_gains: HashMap::new(),
         };
         self.buses.push(def.clone());
         Ok(def)
@@ -300,10 +317,43 @@ impl Buses {
         Ok(())
     }
 
-    /// Drop a deleted channel from every bus's membership.
+    /// Include (or drop) the processed virtual mic as a member of a mix,
+    /// alongside its channels. Allowed on the master mix too - unlike
+    /// channel membership, mic inclusion isn't auto-managed.
+    pub fn set_mic(&mut self, name: &str, mic: bool) -> Result<(), SinkError> {
+        let def = self
+            .buses
+            .iter_mut()
+            .find(|b| b.name == name)
+            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        def.mic = mic;
+        Ok(())
+    }
+
+    /// Set one member's send level within one specific mix (0-150%).
+    /// Storing 100 (unity, the default for an absent entry) drops the
+    /// entry instead, so a fader returned to its rest position doesn't
+    /// bloat the persisted file forever.
+    pub fn set_member_gain(&mut self, name: &str, member: &str, percent: u8) -> Result<(), SinkError> {
+        let def = self
+            .buses
+            .iter_mut()
+            .find(|b| b.name == name)
+            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        if percent == 100 {
+            def.member_gains.remove(member);
+        } else {
+            def.member_gains.insert(member.to_string(), percent);
+        }
+        Ok(())
+    }
+
+    /// Drop a deleted channel from every bus's membership and any per-mix
+    /// send level it had.
     pub fn remove_channel(&mut self, channel: &str) {
         for bus in &mut self.buses {
             bus.channels.retain(|c| c != channel);
+            bus.member_gains.remove(channel);
         }
     }
 }
@@ -439,6 +489,55 @@ mod tests {
         let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
         assert_eq!(loaded.buses[0].volume_percent, 100);
         assert!(!loaded.buses[0].muted);
+    }
+
+    #[test]
+    fn mic_membership_persists_and_defaults_off() {
+        let mut b = Buses::default();
+        assert!(!b.buses[0].mic);
+        b.set_mic("sink_stream", true).expect("sets mic on master");
+        assert!(b.get("sink_stream").expect("master").mic);
+
+        let mix = b.add("Voice Only").expect("adds");
+        assert!(!b.get(&mix.name).expect("mix").mic);
+        b.set_mic(&mix.name, true).expect("sets mic");
+        assert!(b.get(&mix.name).expect("mix").mic);
+        assert!(b.set_mic("sink_missing", true).is_err());
+
+        // sync_master preserves the flag across membership resyncs.
+        b.sync_master(&["sink_game".into()]);
+        assert!(b.get("sink_stream").expect("master").mic);
+
+        // Legacy buses.json written before this field loads at the default.
+        let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false}]}"#;
+        let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
+        assert!(!loaded.buses[0].mic);
+    }
+
+    #[test]
+    fn member_gain_round_trips_and_unity_drops_the_entry() {
+        let mut b = Buses::default();
+        b.set_member_gain("sink_stream", "sink_game", 60).expect("sets gain");
+        assert_eq!(b.get("sink_stream").expect("master").member_gains.get("sink_game"), Some(&60));
+
+        // A mic send level, keyed the same way as a channel.
+        b.set_member_gain("sink_stream", "sink_mic", 130).expect("sets mic gain");
+        assert_eq!(b.get("sink_stream").expect("master").member_gains.get("sink_mic"), Some(&130));
+
+        // Returning to unity (100) drops the entry rather than storing it.
+        b.set_member_gain("sink_stream", "sink_game", 100).expect("resets gain");
+        assert!(!b.get("sink_stream").expect("master").member_gains.contains_key("sink_game"));
+
+        assert!(b.set_member_gain("sink_missing", "sink_game", 50).is_err());
+
+        // Deleting the channel drops its per-mix send level too.
+        b.remove_channel("sink_mic"); // exercises the mic key through the same path
+        assert!(!b.get("sink_stream").expect("master").member_gains.contains_key("sink_mic"));
+
+        // Legacy buses.json written before this field loads at the default.
+        let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false}]}"#;
+        let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
+        assert!(loaded.buses[0].member_gains.is_empty());
     }
 
     #[test]

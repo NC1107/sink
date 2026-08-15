@@ -17,16 +17,21 @@ import { VuMeter } from "./VuMeter";
  * not what you hear.
  */
 /** Compact "what this mix carries" label for the membership button. */
-function memberLabel(exclude: boolean, carried: number, all: number): string {
-  if (!exclude) return `${carried} ${carried === 1 ? "channel" : "channels"}`;
-  if (carried === all) return "all channels";
-  return `all but ${all - carried}`;
+function memberLabel(exclude: boolean, carried: number, all: number, mic: boolean): string {
+  const channels = !exclude
+    ? `${carried} ${carried === 1 ? "channel" : "channels"}`
+    : carried === all
+      ? "all channels"
+      : `all but ${all - carried}`;
+  return mic ? `${channels} + mic` : channels;
 }
 
 export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const channels = useMixerStore((s) => s.channels);
   const setBusMembers = useMixerStore((s) => s.setBusMembers);
   const setBusExclude = useMixerStore((s) => s.setBusExclude);
+  const setBusMic = useMixerStore((s) => s.setBusMic);
+  const micEnabled = useMixerStore((s) => s.micConfig?.enabled ?? false);
   const renameBus = useMixerStore((s) => s.renameBus);
   const removeBus = useMixerStore((s) => s.removeBus);
   const level = useMixerStore((s) => s.levels[bus.name]);
@@ -34,6 +39,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const toggleMonitor = useMixerStore((s) => s.toggleMonitor);
   const setBusVolume = useMixerStore((s) => s.setBusVolume);
   const setBusMute = useMixerStore((s) => s.setBusMute);
+  const openMixFaderWindow = useMixerStore((s) => s.openMixFaderWindow);
 
   const [managing, setManaging] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -123,7 +129,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
               title="Choose which channels this mix carries"
               onClick={() => setManaging(true)}
             >
-              {memberLabel(bus.exclude, carried.length, allNames.length)}
+              {memberLabel(bus.exclude, carried.length, allNames.length, bus.mic)}
               <Ms name="expand_more" style={{ fontSize: 13 }} />
             </button>
             <Popover
@@ -133,6 +139,18 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
               align="center"
               style={{ minWidth: 220 }}
             >
+              <MenuCheckItem
+                checked={bus.mic}
+                title={
+                  micEnabled
+                    ? "Carry your processed microphone in this mix"
+                    : "Enable the microphone (Mic tab) to actually feed this mix"
+                }
+                onClick={() => void setBusMic(bus.name, !bus.mic)}
+              >
+                <span className="menu-item-label">Microphone</span>
+              </MenuCheckItem>
+              <div className="menu-div" />
               {channels.map((c) => (
                 <MenuCheckItem
                   key={c.name}
@@ -183,6 +201,14 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
           title="Monitor - hear what this mix carries on the default output"
         >
           <Ms name="headphones" style={{ fontSize: 16 }} />
+        </button>
+        <button
+          type="button"
+          className="sbtn"
+          onClick={() => void openMixFaderWindow(bus.name, bus.label)}
+          title="Open independent send levels for this mix in their own window"
+        >
+          <Ms name="tune" style={{ fontSize: 16 }} />
         </button>
       </div>
 

@@ -143,6 +143,11 @@ export interface BusDef {
   volume_percent: number;
   /** Muted for recorders (they hear silence). Persisted with the mix. */
   muted: boolean;
+  /** Whether the processed virtual mic feeds this mix too. Persisted. */
+  mic: boolean;
+  /** Per-member send level within this mix (0-150%); a member absent here
+   *  carries at 100%. Keyed by channel sink name, or "sink_mic". */
+  member_gains: Record<string, number>;
 }
 
 /** The channels a mix actually carries, given the full channel set. */

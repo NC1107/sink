@@ -65,8 +65,16 @@ pub trait AudioBackend: Send + Sync {
     /// Destroy a mix bus (its links go with it).
     fn destroy_bus(&self, name: &str) -> Result<(), SinkError>;
 
-    /// Replace the set of channels feeding a mix bus.
-    fn set_bus_members(&self, name: &str, channels: &[String]) -> Result<(), SinkError>;
+    /// Replace the set of channels feeding a mix bus, and whether the
+    /// processed virtual mic feeds it too (Native-only for the mic side;
+    /// the pactl fallback ignores it, same as `set_mic_config`).
+    fn set_bus_members(&self, name: &str, channels: &[String], mic: bool) -> Result<(), SinkError>;
+
+    /// Set one member's send level within one specific mix (0-150%; 100 =
+    /// no override, same as the direct path). Independent of the member's
+    /// own volume/EQ and of what you hear locally - only that mix's
+    /// recorders/listeners hear the difference. Native-only.
+    fn set_bus_member_gain(&self, bus_name: &str, member: &str, percent: u8) -> Result<(), SinkError>;
 
     /// Monitor a channel/mix/mic on the system default output (session
     /// scoped, an extra passive link set). Native-only.

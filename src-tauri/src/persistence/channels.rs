@@ -23,10 +23,21 @@ pub struct ChannelDef {
     /// Whether the channel feeds the Stream Mix source (default: yes).
     #[serde(default = "default_true")]
     pub stream_mix: bool,
+    /// Fader position (0-150%). Persisted so a channel keeps its level
+    /// across restarts even when no profile is active.
+    #[serde(default = "default_volume")]
+    pub volume_percent: u8,
+    /// Muted state, persisted alongside the volume.
+    #[serde(default)]
+    pub muted: bool,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_volume() -> u8 {
+    100
 }
 
 /// The user's channel set, stored as JSON at
@@ -43,6 +54,8 @@ impl Default for Channels {
             label: label.to_string(),
             icon: Some(icon.to_string()),
             stream_mix: true,
+            volume_percent: default_volume(),
+            muted: false,
         };
         Self {
             channels: vec![
@@ -156,6 +169,23 @@ impl Channels {
         Ok(())
     }
 
+    /// Record a channel's fader position so it survives a restart. Unknown
+    /// channels are ignored rather than erroring: this runs on every fader
+    /// tick, and a channel deleted mid-drag shouldn't surface an error.
+    pub fn set_volume(&mut self, name: &str, volume_percent: u8) {
+        if let Some(def) = self.channels.iter_mut().find(|c| c.name == name) {
+            def.volume_percent = volume_percent;
+        }
+    }
+
+    /// Record a channel's mute state (see `set_volume` for the lenient
+    /// unknown-channel handling).
+    pub fn set_muted(&mut self, name: &str, muted: bool) {
+        if let Some(def) = self.channels.iter_mut().find(|c| c.name == name) {
+            def.muted = muted;
+        }
+    }
+
     /// Add a channel for `label`, generating a unique reserved-safe sink
     /// name. Returns the new definition.
     pub fn add(&mut self, label: &str, icon: Option<String>) -> Result<ChannelDef, SinkError> {
@@ -180,6 +210,8 @@ impl Channels {
             label: label.to_string(),
             icon,
             stream_mix: true,
+            volume_percent: default_volume(),
+            muted: false,
         };
         self.channels.push(def.clone());
         Ok(def)
@@ -318,6 +350,35 @@ mod tests {
         assert_eq!(c.channels[0].icon, None);
         assert!(c.channels[0].stream_mix, "missing stream_mix defaults true");
         assert!(!c.channels[1].stream_mix);
+    }
+
+    #[test]
+    fn volume_and_mute_persist_and_default_to_unity() {
+        let mut c = Channels::default();
+        assert_eq!(c.channels[0].volume_percent, 100);
+        assert!(!c.channels[0].muted);
+
+        c.set_volume("sink_game", 42);
+        c.set_muted("sink_game", true);
+        assert_eq!(c.get("sink_game").expect("channel").volume_percent, 42);
+        assert!(c.get("sink_game").expect("channel").muted);
+        // Other channels are untouched.
+        assert_eq!(c.get("sink_music").expect("channel").volume_percent, 100);
+        // A vanished channel is a no-op, not a panic (fader tick mid-delete).
+        c.set_volume("sink_gone", 10);
+        c.set_muted("sink_gone", true);
+
+        // A round trip through JSON keeps the levels…
+        let raw = serde_json::to_string(&c).expect("serializes");
+        let back = Channels::parse(&raw).expect("reparses");
+        assert_eq!(back.get("sink_game").expect("channel").volume_percent, 42);
+        assert!(back.get("sink_game").expect("channel").muted);
+
+        // …and channels.json written before these fields loads at unity.
+        let legacy = r#"{"channels":[{"name":"sink_game","label":"Game"}]}"#;
+        let old = Channels::parse(legacy).expect("legacy loads");
+        assert_eq!(old.channels[0].volume_percent, 100);
+        assert!(!old.channels[0].muted);
     }
 
     #[test]

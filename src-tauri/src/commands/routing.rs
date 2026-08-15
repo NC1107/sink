@@ -74,12 +74,19 @@ pub fn set_channel_volume(
         .set_sink_volume(&sink_name, volume)
         .map_err(|e| e.to_string())?;
 
-    let mut mixer = state.lock_mixer()?;
-    if let Some(channel) = mixer.channel_mut(&sink_name) {
-        channel.volume_percent = volume;
-    }
-    crate::commands::profiles::autosave_active(&mixer);
-    Ok(())
+    let defs = {
+        let mut mixer = state.lock_mixer()?;
+        if let Some(channel) = mixer.channel_mut(&sink_name) {
+            channel.volume_percent = volume;
+        }
+        // Persist the level itself, not just into an active profile - a
+        // channel must come back at the volume you left it at even when
+        // no profile is bound.
+        mixer.channel_defs.set_volume(&sink_name, volume);
+        crate::commands::profiles::autosave_active(&mixer);
+        mixer.channel_defs.clone()
+    };
+    defs.save().map_err(|e| e.to_string())
 }
 
 /// Mute or unmute a channel.
@@ -97,12 +104,16 @@ pub fn toggle_channel_mute(
         .set_sink_mute(&sink_name, muted)
         .map_err(|e| e.to_string())?;
 
-    let mut mixer = state.lock_mixer()?;
-    if let Some(channel) = mixer.channel_mut(&sink_name) {
-        channel.muted = muted;
-    }
-    crate::commands::profiles::autosave_active(&mixer);
-    Ok(())
+    let defs = {
+        let mut mixer = state.lock_mixer()?;
+        if let Some(channel) = mixer.channel_mut(&sink_name) {
+            channel.muted = muted;
+        }
+        mixer.channel_defs.set_muted(&sink_name, muted);
+        crate::commands::profiles::autosave_active(&mixer);
+        mixer.channel_defs.clone()
+    };
+    defs.save().map_err(|e| e.to_string())
 }
 
 /// Listen to a channel/mix/mic on the default output (session scoped -

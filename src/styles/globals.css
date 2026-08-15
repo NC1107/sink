@@ -2417,3 +2417,61 @@ body,
 .theme-swatch-colors i:last-child { border-radius: 0 var(--r-xs) var(--r-xs) 0; }
 .theme-swatch-label { font-size: var(--fs-caption); color: var(--fg-secondary); }
 .theme-swatch.active .theme-swatch-label { color: var(--fg-primary); }
+
+/* ---------- Mix fader popout window ---------- */
+.mix-fader-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4);
+  gap: var(--sp-4);
+  overflow: hidden;
+}
+.mix-fader-hint {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-muted);
+}
+.mix-fader-rows {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  /* stretch, not flex-start: the cards take the window's full height so
+     the fader inside them grows with it (flex-start left every fader stuck
+     at its min-height no matter how tall the window got). */
+  align-items: stretch;
+  gap: var(--sp-4);
+  /* Both axes scroll: the popout can be resized smaller than a strip's
+     natural height, and clipping the readout/mute row instead of
+     scrolling to it was an earlier version's bug. */
+  overflow: auto;
+  padding-bottom: var(--sp-1);
+}
+/* The fader is the entire point of this window, so it gets the leftover
+   height (flex: 1 on .strip-body) with a floor matching the main board. */
+.mix-fader-rows .strip {
+  animation: none; /* no slide-in for a window that IS the strips */
+}
+.mix-fader-rows .strip-body {
+  min-height: 220px;
+}
+/* Reuses the main mixer board's .strip/.sbtn styling verbatim so the
+   popout's cards look identical at any window size - .strip's own fixed
+   flex-basis (132px) is what keeps them from squishing when the window is
+   scaled down, instead of the popout inventing its own (buggier) sizing. */
+.sbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.sbtn:disabled:hover {
+  background: var(--bg-main);
+  border-color: var(--border);
+  color: var(--fg-secondary);
+}
+.mix-fader-empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--sp-2);
+  color: var(--fg-muted);
+}

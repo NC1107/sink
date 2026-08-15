@@ -13,6 +13,7 @@ pub mod meter;
 mod mic;
 mod pods;
 mod ring;
+mod send_gain;
 mod thread;
 
 use std::sync::mpsc;
@@ -169,10 +170,16 @@ impl AudioBackend for PipeWireBackend {
         self.request(|reply| Cmd::DestroyBus { name, reply })
     }
 
-    fn set_bus_members(&self, name: &str, channels: &[String]) -> Result<(), SinkError> {
+    fn set_bus_members(&self, name: &str, channels: &[String], mic: bool) -> Result<(), SinkError> {
         let name = name.to_string();
         let channels = channels.to_vec();
-        self.request(|reply| Cmd::SetBusMembers { name, channels, reply })
+        self.request(|reply| Cmd::SetBusMembers { name, channels, mic, reply })
+    }
+
+    fn set_bus_member_gain(&self, bus_name: &str, member: &str, percent: u8) -> Result<(), SinkError> {
+        let bus_name = bus_name.to_string();
+        let member = member.to_string();
+        self.request(|reply| Cmd::SetBusMemberGain { bus_name, member, percent, reply })
     }
 
     fn set_monitor(&self, name: &str, enabled: bool) -> Result<(), SinkError> {

@@ -351,9 +351,15 @@ impl AudioBackend for PactlBackend {
         Ok(()) // nothing to destroy in the fallback
     }
 
-    fn set_bus_members(&self, _name: &str, _channels: &[String]) -> Result<(), SinkError> {
+    fn set_bus_members(&self, _name: &str, _channels: &[String], _mic: bool) -> Result<(), SinkError> {
         Err(SinkError::Config(
             "mix buses require the native PipeWire backend".into(),
+        ))
+    }
+
+    fn set_bus_member_gain(&self, _bus_name: &str, _member: &str, _percent: u8) -> Result<(), SinkError> {
+        Err(SinkError::Config(
+            "per-mix send levels require the native PipeWire backend".into(),
         ))
     }
 

@@ -65,9 +65,12 @@ pub fn run() {
             commands::buses::rename_bus,
             commands::buses::remove_bus,
             commands::buses::set_bus_members,
+            commands::buses::set_bus_mic,
             commands::buses::set_bus_exclude,
             commands::buses::set_bus_volume,
             commands::buses::set_bus_mute,
+            commands::buses::set_bus_member_gain,
+            commands::buses::open_mix_fader_window,
             commands::routing::route_app_to_channel,
             commands::routing::set_channel_volume,
             commands::routing::toggle_channel_mute,
@@ -121,8 +124,13 @@ pub fn run() {
             }
             Ok(())
         })
-        // Close button hides to tray instead of quitting.
+        // Close button hides to tray instead of quitting - but only for the
+        // main window. Secondary windows (e.g. a mix's fader popout) are
+        // ordinary utility windows: closing them just closes them.
         .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 if let Err(e) = window.hide() {

@@ -101,10 +101,17 @@ interface MixerStore {
   setBusMembers: (name: string, channels: string[]) => Promise<void>;
   /** Manual vs auto-include mode (carried set preserved). */
   setBusExclude: (name: string, exclude: boolean) => Promise<void>;
+  /** Whether the processed virtual mic feeds this mix too; persisted. */
+  setBusMic: (name: string, mic: boolean) => Promise<void>;
   /** A mix's playback level for recorders (0-150%); persisted. */
   setBusVolume: (name: string, volume: number) => Promise<void>;
   /** Mute a mix for recorders; persisted. */
   setBusMute: (name: string, muted: boolean) => Promise<void>;
+  /** One member's send level within one mix (0-150%; 100 = no override);
+   *  persisted, independent of the member's own volume. */
+  setBusMemberGain: (bus: string, member: string, percent: number) => Promise<void>;
+  /** Open (or focus) the standalone fader popout window for one mix. */
+  openMixFaderWindow: (bus: string, label: string) => Promise<void>;
   /** Session-scoped "listen on default output" toggles per node. */
   monitors: Record<string, boolean>;
   toggleMonitor: (name: string) => Promise<void>;
@@ -673,6 +680,18 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
+  setBusMic: async (name, mic) => {
+    set((s) => ({
+      buses: s.buses.map((b) => (b.name === name ? { ...b, mic } : b)),
+    }));
+    try {
+      await invoke("set_bus_mic", { name, mic });
+    } catch (e) {
+      set({ error: String(e) });
+      await get().fetchBuses();
+    }
+  },
+
   setBusVolume: async (name, volume) => {
     set((s) => ({
       buses: s.buses.map((b) => (b.name === name ? { ...b, volume_percent: volume } : b)),
@@ -681,6 +700,28 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       set({ error: String(e) });
       void get().fetchBuses();
     });
+  },
+
+  setBusMemberGain: async (bus, member, percent) => {
+    set((s) => ({
+      buses: s.buses.map((b) =>
+        b.name === bus
+          ? { ...b, member_gains: { ...b.member_gains, [member]: percent } }
+          : b,
+      ),
+    }));
+    debouncedInvoke(`busgain:${bus}:${member}`, "set_bus_member_gain", { bus, member, percent }, (e) => {
+      set({ error: String(e) });
+      void get().fetchBuses();
+    });
+  },
+
+  openMixFaderWindow: async (bus, label) => {
+    try {
+      await invoke("open_mix_fader_window", { bus, label });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 
   setBusMute: async (name, muted) => {
