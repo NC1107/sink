@@ -402,11 +402,9 @@ body,
 .mix-scroll {
   display: flex;
   align-items: stretch;
-  /* Centre the groups so a wide window isn't dead space on the right. The
-     `safe` keyword keeps the left edge reachable when they overflow instead
-     of clipping both sides; where it's unsupported the whole declaration is
-     dropped and this falls back to flex-start. */
-  justify-content: safe center;
+  /* Left-aligned (flex-start): the groups start right after the sidebar
+     with no centering gap, and the board reads the same regardless of how
+     many channels/mixes exist - free space accumulates on the right. */
   padding: var(--sp-5) var(--sp-6);
   height: 100%;
   min-height: 0;

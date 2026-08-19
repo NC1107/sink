@@ -87,7 +87,7 @@ export function BalanceBar() {
         type="button"
         className="bal-side"
         onClick={() => setOpen(!open)}
-        title={`${channel.label} - click to pick the channel on this side`}
+        title={channel.label}
       >
         <Ms name={channel.icon ?? "graphic_eq"} />
       </button>
@@ -112,12 +112,12 @@ export function BalanceBar() {
   );
 
   return (
-    <div className="balance-bar" title="Balance - center is both at 100%; double-click to recenter">
+    <div className="balance-bar" title="Double-click to recenter">
       {side(a, pickingA, setPickingA, b, (name) => void setBalanceChannels(name, b!.name))}
       <div
         className="bal-track"
         ref={trackRef}
-        title={`${a.label} ${a.volume_percent}% / ${b.label} ${b.volume_percent}% - slide toward a side to duck the other`}
+        title={`${a.label} ${a.volume_percent}% / ${b.label} ${b.volume_percent}%`}
         onPointerDown={(e) => {
           dragging.current = true;
           fromEvent(e.clientX);

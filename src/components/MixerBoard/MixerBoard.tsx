@@ -126,7 +126,7 @@ export function MixerBoard() {
                 icon="mic"
                 label="Capture"
                 count="1"
-                hint="Inputs: your processed microphone. Apps capture the result as Sink Mic."
+                hint="Your processed mic - apps capture it as Sink Mic"
               >
                 <MicStrip />
               </MixGroup>
@@ -138,7 +138,7 @@ export function MixerBoard() {
             icon="apps"
             label="Channels"
             count={`${channels.length}`}
-            hint="Playback: apps route into channels; each has its own volume, mute and output device."
+            hint="Apps route into channels"
             onAdd={channels.length < MAX_CHANNELS ? () => setAddingChannel(true) : undefined}
             addTitle="Add a channel"
           >
@@ -176,13 +176,13 @@ export function MixerBoard() {
             icon="podcasts"
             label="Mixes"
             count={`${buses.length}`}
-            hint="Recordable copies of your channels. In OBS, add a mix as an audio input (mic/aux) - not Desktop Audio."
+            hint="Recordable copies of your channels - add as an audio input in OBS"
             onAdd={
               buses.filter((b) => b.name !== MASTER_BUS).length < MAX_BUSES
                 ? () => setAddingMix(true)
                 : undefined
             }
-            addTitle="Add a mix (capturable source for OBS/recorders)"
+            addTitle="Add a mix"
           >
             {buses.map((bus) => (
               <BusStrip key={bus.name} bus={bus} />

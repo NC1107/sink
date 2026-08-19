@@ -50,7 +50,7 @@ export function MicStrip() {
         ) : (
           <div
             className="strip-name strip-name-editable"
-            title="Double-click to rename - other apps see this name"
+            title="Double-click to rename"
             onDoubleClick={() => {
               setDraft(micConfig.output_label);
               setEditing(true);
@@ -92,7 +92,7 @@ export function MicStrip() {
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(MIC_LEVEL_KEY)}
           aria-pressed={monitoring}
-          title="Sidetone - hear your processed mic on the default output"
+          title="Hear your own mic"
         >
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>

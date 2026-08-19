@@ -147,7 +147,7 @@ export function ProfileMenu() {
             className="select"
             onClick={create}
             disabled={!newName.trim()}
-            title="Create a fresh profile (default channels, no routing) and switch to it"
+            title="New blank profile"
           >
             <Ms name="add" />
             <span>Create</span>
