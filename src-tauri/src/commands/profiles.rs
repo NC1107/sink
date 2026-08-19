@@ -5,7 +5,6 @@ use crate::persistence::profiles::{self, Profile, ProfileInfo};
 use crate::persistence::wireplumber;
 use crate::state::AppState;
 
-
 /// Persist the current mixer state into the active profile, if any.
 /// Profiles are live-bound: every profile-relevant mutation calls this so
 /// switching away and back never loses changes.
@@ -172,12 +171,14 @@ pub fn load_profile(
                 continue;
             }
         }
-        if let Err(e) =
-            state
-                .backend
-                .set_bus_members(&bus.name, &bus.effective_members(&names), bus.mic)
+        if let Err(e) = state
+            .backend
+            .set_bus_members(&bus.name, &bus.effective_members(&names))
         {
             eprintln!("sink: profile members for mix {} failed: {e}", bus.name);
+        }
+        if let Err(e) = state.backend.set_bus_mic(&bus.name, bus.mic) {
+            eprintln!("sink: profile mic membership for mix {} failed: {e}", bus.name);
         }
         crate::commands::buses::apply_bus_level(state.backend.as_ref(), bus);
         crate::commands::buses::apply_bus_member_gains(state.backend.as_ref(), bus);
@@ -195,11 +196,6 @@ pub fn load_profile(
                     label: c.label.clone(),
                     icon: c.icon.clone(),
                     stream_mix: c.stream_mix,
-                    // Carry the profile's levels into the persisted defs,
-                    // so channels.json stays the single source of truth
-                    // for what a channel comes back at.
-                    volume_percent: c.volume_percent,
-                    muted: c.muted,
                 })
                 .collect(),
         };

@@ -1,15 +1,11 @@
-//! Per-mix send gain: an optional insert on one (member, mix) pair, used
-//! only while that member's level inside that specific mix has been moved
-//! off unity. Lets a Stream Mix carry the mic louder/quieter than your own
-//! headphones hear it, without touching the channel's real volume.
+//! Per-mix send gain: a lazy insert on one (member, mix) pair, alive only
+//! while that pair's level is off unity - at 100% the member links straight
+//! into the bus and this module costs nothing.
 //!
-//! Topology: source (channel monitor / mic) ──[loop link]──▶ capture ──gain──▶ ring ──▶ playback ──[loop link]──▶ bus
+//! source ──▶ capture ──gain──▶ ring ──▶ playback ──▶ bus
 //!
-//! Both ends are unmanaged (no autoconnect, no target): the reconciliation
-//! loop in thread.rs links them like any other device/bus target, the same
-//! way it drives the EQ insert's playback stream (`eq_chain.rs`). At unity
-//! gain no insert exists at all - the loop links the member straight into
-//! the bus, same as before this module existed.
+//! Both ends are unmanaged (no autoconnect, no target); the loop in
+//! thread.rs owns and polices every link, same as the EQ insert.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -49,14 +45,13 @@ fn percent_to_gain(percent: u8) -> f32 {
 }
 
 impl SendGainHandle {
-    /// Node id of the capture stream - the loop links the member's source
-    /// into it. `u32::MAX` until the server assigns the node (mirrors
-    /// `EqChainHandle::playback_node_id`).
+    /// The loop links the member's source into this. `u32::MAX` until the
+    /// server assigns the node.
     pub fn capture_node_id(&self) -> u32 {
         self.capture.node_id()
     }
 
-    /// Node id of the playback stream - the loop links this into the bus.
+    /// The loop links this into the bus.
     pub fn playback_node_id(&self) -> u32 {
         self.playback.node_id()
     }
@@ -67,9 +62,8 @@ impl SendGainHandle {
     }
 }
 
-/// Stereo F32 format pod for stream negotiation (matches eq_chain/channels -
-/// a mono source, like the mic, fans out to both capture ports via the
-/// loop's existing mono→stereo pairing).
+/// Stereo F32 format pod (a mono source fans out via the loop's existing
+/// mono→stereo pairing).
 fn stereo_f32_format() -> Result<Vec<u8>, SinkError> {
     let mut info = spa::param::audio::AudioInfoRaw::new();
     info.set_format(spa::param::audio::AudioFormat::F32LE);
@@ -88,9 +82,7 @@ fn stereo_f32_format() -> Result<Vec<u8>, SinkError> {
 }
 
 impl SendGainHandle {
-    /// Build both streams. `key` names the (bus, member) pair for the
-    /// node.name suffix; neither end has a target - the reconciliation
-    /// loop creates the links once the nodes exist.
+    /// Build both streams; the loop links them once the nodes exist.
     pub fn new(core: &pw::core::CoreRc, key: &str, percent: u8) -> Result<Self, SinkError> {
         let err = |stage: &str, e: pw::Error| SinkError::Config(format!("send gain {stage}: {e}"));
         let gain_bits = Arc::new(AtomicU32::new(percent_to_gain(percent).to_bits()));
@@ -98,8 +90,7 @@ impl SendGainHandle {
         let ring = Arc::new(Ring::new(8192));
 
         // ---- capture: member source -> gain -> ring ----
-        // Passive like the EQ tap: this insert must not keep an idle
-        // channel or the mic running by itself.
+        // Passive: the insert must not keep an idle member awake by itself.
         let capture_name = format!("{SEND_CAPTURE_PREFIX}{key}");
         let capture = pw::stream::StreamRc::new(
             core.clone(),
@@ -130,7 +121,10 @@ impl SendGainHandle {
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
-                let n = (valid.min(bytes.len())) / 4;
+                // Clamp to the scratch buffer's preallocated capacity: an
+                // oversized quantum must drop samples, never reallocate on
+                // the RT thread.
+                let n = ((valid.min(bytes.len())) / 4).min(ctx.scratch.capacity());
                 let gain = f32::from_bits(ctx.gain_bits.load(Ordering::Relaxed));
                 ctx.scratch.clear();
                 ctx.scratch.extend(

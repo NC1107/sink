@@ -124,9 +124,8 @@ pub fn run() {
             }
             Ok(())
         })
-        // Close button hides to tray instead of quitting - but only for the
-        // main window. Secondary windows (e.g. a mix's fader popout) are
-        // ordinary utility windows: closing them just closes them.
+        // Close button hides to tray instead of quitting - main window
+        // only; a mix's popout just closes.
         .on_window_event(|window, event| {
             if window.label() != "main" {
                 return;

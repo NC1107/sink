@@ -50,8 +50,7 @@ pub struct MixerState {
 
 impl MixerState {
     /// Populate the channel strips from the user's channel definitions,
-    /// each restored to its persisted volume/mute (100%/unmuted for a
-    /// channel that has never been touched).
+    /// each at 100% volume, unmuted.
     pub fn init_defaults(&mut self) {
         self.channels = self
             .channel_defs
@@ -61,8 +60,8 @@ impl MixerState {
                 name: def.name.clone(),
                 label: def.label.clone(),
                 icon: def.icon.clone(),
-                volume_percent: def.volume_percent,
-                muted: def.muted,
+                volume_percent: 100,
+                muted: false,
                 stream_mix: def.stream_mix,
             })
             .collect();

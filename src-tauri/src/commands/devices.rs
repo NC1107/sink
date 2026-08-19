@@ -161,16 +161,15 @@ pub fn init_virtual_devices(
             .backend
             .create_virtual_sink(&def.name, &prefs.decorate(&def.label))
             .map_err(|e| e.to_string())?;
-        // Restore the saved level explicitly - an adopted sink from a
-        // previous run may carry a stale volume/mute, so this is a set,
-        // not a "leave it alone".
+        // Known starting point - adopted sinks from a previous run may carry
+        // stale volume/mute.
         state
             .backend
-            .set_sink_volume(&def.name, def.volume_percent)
+            .set_sink_volume(&def.name, 100)
             .map_err(|e| e.to_string())?;
         state
             .backend
-            .set_sink_mute(&def.name, def.muted)
+            .set_sink_mute(&def.name, false)
             .map_err(|e| e.to_string())?;
     }
 
@@ -222,12 +221,16 @@ pub fn init_virtual_devices(
             eprintln!("sink: creating mix {} failed: {e}", bus.name);
             continue;
         }
-        if let Err(e) =
-            state
-                .backend
-                .set_bus_members(&bus.name, &bus.effective_members(&names), bus.mic)
+        if let Err(e) = state
+            .backend
+            .set_bus_members(&bus.name, &bus.effective_members(&names))
         {
             eprintln!("sink: members for mix {} failed: {e}", bus.name);
+        }
+        if bus.mic {
+            if let Err(e) = state.backend.set_bus_mic(&bus.name, true) {
+                eprintln!("sink: mic membership for mix {} failed: {e}", bus.name);
+            }
         }
         crate::commands::buses::apply_bus_level(state.backend.as_ref(), bus);
         crate::commands::buses::apply_bus_member_gains(state.backend.as_ref(), bus);

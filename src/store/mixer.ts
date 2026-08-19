@@ -110,8 +110,8 @@ interface MixerStore {
   /** One member's send level within one mix (0-150%; 100 = no override);
    *  persisted, independent of the member's own volume. */
   setBusMemberGain: (bus: string, member: string, percent: number) => Promise<void>;
-  /** Open (or focus) the standalone fader popout window for one mix. */
-  openMixFaderWindow: (bus: string, label: string) => Promise<void>;
+  /** Open (or focus) the popout window with one mix's send levels. */
+  openMixFaderWindow: (bus: string) => Promise<void>;
   /** Session-scoped "listen on default output" toggles per node. */
   monitors: Record<string, boolean>;
   toggleMonitor: (name: string) => Promise<void>;
@@ -716,9 +716,9 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     });
   },
 
-  openMixFaderWindow: async (bus, label) => {
+  openMixFaderWindow: async (bus) => {
     try {
-      await invoke("open_mix_fader_window", { bus, label });
+      await invoke("open_mix_fader_window", { bus });
     } catch (e) {
       set({ error: String(e) });
     }

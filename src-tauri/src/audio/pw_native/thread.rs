@@ -57,8 +57,10 @@ pub enum Cmd {
     CreateBus { name: String, label: String, reply: Reply<()> },
     /// Destroy a mix bus and its links.
     DestroyBus { name: String, reply: Reply<()> },
-    /// Replace the channel set feeding a bus, and whether the mic feeds it too.
-    SetBusMembers { name: String, channels: Vec<String>, mic: bool, reply: Reply<()> },
+    /// Replace the channel set feeding a bus.
+    SetBusMembers { name: String, channels: Vec<String>, reply: Reply<()> },
+    /// Include (or drop) the virtual mic as a member of a bus.
+    SetBusMic { name: String, mic: bool, reply: Reply<()> },
     /// Set one member's send level within one specific mix (0-150%).
     SetBusMemberGain { bus_name: String, member: String, percent: u8, reply: Reply<()> },
     /// Listen to a channel/mix/mic on the default output (session scoped).
@@ -149,26 +151,20 @@ struct State {
     bus_sources: HashMap<String, Node>,
     /// Bus node name -> member channel sink names.
     bus_members: HashMap<String, std::collections::HashSet<String>>,
-    /// Bus node names the processed virtual mic also feeds, alongside its
-    /// channel members.
+    /// Buses the virtual mic also feeds, alongside their channels.
     bus_mic_members: std::collections::HashSet<String>,
-    /// (bus, channel) -> live links feeding the bus. The mic's contribution
-    /// (when included) is tracked here too, keyed by `MIC_NODE`. For a
-    /// gained pair (see `send_gains`) this instead carries the insert's
-    /// playback → bus segment.
+    /// (bus, member) -> live links feeding the bus (`MIC_NODE` keys the
+    /// mic; a gained pair carries the insert's playback→bus leg instead).
     bus_links: HashMap<(String, String), LinkSet>,
-    /// (bus, member) -> the member's send level in that mix (0-150%).
-    /// Absent means 100% (no override - the member links straight into
-    /// the bus). `member` is a channel sink name or `MIC_NODE`.
+    /// (bus, member) -> send level (0-150%). Absent = 100%, direct link.
     bus_member_gains: HashMap<(String, String), u8>,
-    /// (bus, member) -> live gain insert, present only while that pair is
-    /// off unity. Torn down (and the direct link restored) once the gain
-    /// returns to 100%.
+    /// (bus, member) -> live gain insert, only while that pair is off unity.
     send_gains: HashMap<(String, String), SendGainHandle>,
-    /// (bus, member) -> live links from the member's source into its gain
-    /// insert's capture stream (mirrors `bus_links`, which carries the
-    /// insert's playback → bus segment for the same key).
+    /// (bus, member) -> links from the member's source into its insert.
     send_gain_in_links: HashMap<(String, String), LinkSet>,
+    /// Pairs whose insert failed to build - not retried until the user
+    /// touches that gain, so a persistent failure can't log every event.
+    send_gain_failed: std::collections::HashSet<(String, String)>,
     /// Nodes monitored on the default output, and their live links.
     monitored: std::collections::HashSet<String>,
     monitor_links: HashMap<String, LinkSet>,
@@ -182,7 +178,8 @@ struct State {
     /// insert's playback node.
     eq_streams: HashMap<String, EqChainHandle>,
     /// EQ playback node id -> node ids it is allowed to feed. Rebuilt
-    /// wholesale by every `ensure_all_links` pass; the link police destroys
+    /// wholesale by every `ensure_all_links` pass (send-gain insert legs
+    /// included, not just EQ); the link police destroys
     /// anything else (WirePlumber routes playback streams to the default
     /// sink - same leak the mic police exists for).
     eq_desired_targets: HashMap<u32, std::collections::HashSet<u32>>,
@@ -449,7 +446,23 @@ fn on_global(
                             .eq_desired_targets
                             .get(&out)
                             .is_some_and(|allowed| allowed.contains(&inp));
-                    mic_stray || eq_stray
+                    // Send-gain inserts are policed the same way, on both
+                    // ends: the playback stream may only feed its planned
+                    // bus (or gained mic/channel audio leaks to the default
+                    // output), and the capture stream may only be fed by
+                    // its planned member source.
+                    let allowed = |out: u32, inp: u32| {
+                        s.eq_desired_targets
+                            .get(&out)
+                            .is_some_and(|allowed| allowed.contains(&inp))
+                    };
+                    let send_stray = (s
+                        .send_gains
+                        .values()
+                        .any(|h| h.playback_node_id() == out)
+                        || s.send_gains.values().any(|h| h.capture_node_id() == inp))
+                        && !allowed(out, inp);
+                    mic_stray || eq_stray || send_stray
                 };
                 if police {
                     let _ = registry.destroy_global(global.id);
@@ -856,29 +869,21 @@ fn create_links(
     created
 }
 
-/// One member's candidate contribution to one bus, as seen by
-/// `reconcile_bus_member` - bundled into a struct so the function stays
-/// under clippy's argument-count lint without losing any named field.
+/// One member's candidate contribution to one bus.
 struct MemberLink<'a> {
     bus_name: &'a str,
     bus_id: u32,
-    /// A channel sink name, or `MIC_NODE`. Used as the (bus, member) key
-    /// and as the gain insert's node.name suffix.
+    /// A channel sink name, or `MIC_NODE`.
     member: &'a str,
-    /// The member's live audio source: a channel's EQ playback when live,
-    /// otherwise the channel/mic node itself.
+    /// A channel's EQ playback when live, else the channel/mic node itself.
     source_id: u32,
     included: bool,
 }
 
-/// Route one member's contribution into one bus: a direct link at unity
-/// gain (the default, zero extra latency/CPU), or - when that mix's send
-/// level for this member is off 100% - through a lazily-created gain
-/// insert.
-///
-/// Registers the link plan in `eq_targets` under whichever node id actually
-/// feeds the bus (the insert's capture when gained, the bus directly
-/// otherwise) so the EQ link police allows it.
+/// Route one member into one bus: a direct link at unity (the default -
+/// zero extra latency/CPU), or through a lazily-created gain insert when
+/// that mix's send level is off 100%. Every planned leg is registered in
+/// `eq_targets` so the link police allows it and destroys anything else.
 fn reconcile_bus_member(
     core: &CoreRc,
     s: &mut State,
@@ -890,8 +895,9 @@ fn reconcile_bus_member(
     let gain = s.bus_member_gains.get(&key).copied().unwrap_or(100);
 
     if !included || gain == 100 {
-        // No insert needed here: tear one down if the gain just returned
-        // to unity or the member left the mix.
+        // Tear down any insert; the failure marker goes with it so a
+        // re-included member retries the build.
+        s.send_gain_failed.remove(&key);
         if s.send_gains.remove(&key).is_some() {
             s.send_gain_in_links.remove(&key);
             s.bus_links.remove(&key);
@@ -923,8 +929,10 @@ fn reconcile_bus_member(
 
     // Off-unity: route through a gain insert instead of a direct link.
     if !s.send_gains.contains_key(&key) {
-        // A direct link may still exist from before the gain moved off
-        // unity - the insert takes over, so drop it.
+        if s.send_gain_failed.contains(&key) {
+            return;
+        }
+        // The insert takes over from any leftover direct link.
         s.bus_links.remove(&key);
         let insert_key = format!("{bus_name}-{member}");
         match SendGainHandle::new(core, &insert_key, gain) {
@@ -933,21 +941,27 @@ fn reconcile_bus_member(
             }
             Err(e) => {
                 eprintln!("sink: send gain for {member} in {bus_name} failed: {e}");
+                s.send_gain_failed.insert(key);
                 return;
             }
         }
     }
-    let (capture_id, playback_id) = {
-        let handle = s.send_gains.get(&key).expect("just inserted or already live");
-        (handle.capture_node_id(), handle.playback_node_id())
+    let Some(handle) = s.send_gains.get(&key) else {
+        return;
     };
+    let (capture_id, playback_id) = (handle.capture_node_id(), handle.playback_node_id());
+    // Ids unassigned until the server registers the streams; a later
+    // port/node event re-drives this.
     if capture_id == u32::MAX || playback_id == u32::MAX {
-        // Node not yet assigned by the server; nothing to link this pass -
-        // a later port/node event re-drives this function.
         return;
     }
 
     eq_targets.entry(source_id).or_default().insert(capture_id);
+    // The playback leg must be in the plan too: the link police destroys
+    // any link off an insert's playback stream that isn't planned, which
+    // is what stops WirePlumber's default-sink routing from leaking this
+    // (gained, possibly mic) audio to the user's own output.
+    eq_targets.entry(playback_id).or_default().insert(bus_id);
 
     // ---- member source -> gain capture ----
     let in_pairs = desired_pairs(&*s, source_id, capture_id);
@@ -1257,6 +1271,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             s.send_gains.retain(|(_, ch), _| ch != &name);
             s.send_gain_in_links.retain(|(_, ch), _| ch != &name);
             s.bus_member_gains.retain(|(_, ch), _| ch != &name);
+            s.send_gain_failed.retain(|(_, ch)| ch != &name);
             s.channel_outputs.remove(&name);
             if let Some(levels) = &s.levels {
                 levels.release(&name);
@@ -1399,6 +1414,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             s.send_gains.retain(|(bus, _), _| bus != &name);
             s.send_gain_in_links.retain(|(bus, _), _| bus != &name);
             s.bus_member_gains.retain(|(bus, _), _| bus != &name);
+            s.send_gain_failed.retain(|(bus, _)| bus != &name);
             if let Some(levels) = &s.levels {
                 levels.release(&name);
             }
@@ -1409,10 +1425,25 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             }
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetBusMembers { name, channels, mic, reply } => {
+        Cmd::SetBusMembers { name, channels, reply } => {
+            state
+                .borrow_mut()
+                .bus_members
+                .insert(name, channels.into_iter().collect());
+            ensure_all_links(state);
+            let _ = reply.send(Ok(()));
+        }
+        Cmd::SetBusMic { name, mic, reply } => {
             {
                 let mut s = state.borrow_mut();
-                s.bus_members.insert(name.clone(), channels.into_iter().collect());
+                // The command layer validates against the definition set,
+                // but a deletion can race this queue: DestroyBus may land
+                // between that check and here, and a stale insert would be
+                // inherited by a same-named mix created later.
+                if !s.desired.get(&name).is_some_and(|(_, kind)| *kind == 1) {
+                    let _ = reply.send(Err(SinkError::UnknownSink(name)));
+                    return;
+                }
                 if mic {
                     s.bus_mic_members.insert(name);
                 } else {
@@ -1426,14 +1457,24 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             let percent = percent.min(150);
             {
                 let mut s = state.borrow_mut();
+                // Same deletion race as SetBusMic: re-check both names
+                // against the loop's own live state before storing.
+                let bus_live = s.desired.get(&bus_name).is_some_and(|(_, kind)| *kind == 1);
+                let member_live = member == MIC_NODE
+                    || s.desired.get(&member).is_some_and(|(_, kind)| *kind == 0);
+                if !bus_live || !member_live {
+                    let _ = reply.send(Err(SinkError::UnknownSink(bus_name)));
+                    return;
+                }
                 let key = (bus_name, member);
+                // Touching the fader is the retry signal for a failed build.
+                s.send_gain_failed.remove(&key);
                 if percent == 100 {
                     s.bus_member_gains.remove(&key);
                 } else {
                     s.bus_member_gains.insert(key.clone(), percent);
                 }
-                // Live re-tune when the insert is already up - no relink,
-                // so dragging a fader never clicks or re-plans the graph.
+                // Live re-tune - no relink, so a drag never clicks.
                 if let Some(handle) = s.send_gains.get(&key) {
                     handle.set_gain_percent(percent);
                 }
@@ -1540,6 +1581,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     s.bus_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
                     s.send_gains.retain(|(_, member), _| member.as_str() != MIC_NODE);
                     s.send_gain_in_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gain_failed.retain(|(_, member)| member.as_str() != MIC_NODE);
                     if let Some(proxy) = s.mic_source.take() {
                         // Our own destroy - the heal path should expect this
                         // removal rather than treat it as external and race a
@@ -1569,6 +1611,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     s.bus_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
                     s.send_gains.retain(|(_, member), _| member.as_str() != MIC_NODE);
                     s.send_gain_in_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gain_failed.retain(|(_, member)| member.as_str() != MIC_NODE);
                     if let Some(proxy) = s.mic_source.take() {
                         if let Some(core) = CORE.with(|c| c.borrow().clone()) {
                             let _ = core.destroy_object(proxy);

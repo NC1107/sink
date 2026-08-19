@@ -60,7 +60,7 @@ pub fn add_channel(
     for bus in &buses.buses {
         let members = bus.effective_members(&names);
         if members.contains(&names[names.len() - 1]) {
-            if let Err(e) = state.backend.set_bus_members(&bus.name, &members, bus.mic) {
+            if let Err(e) = state.backend.set_bus_members(&bus.name, &members) {
                 eprintln!("sink: membership for mix {} failed: {e}", bus.name);
             }
         }
@@ -193,7 +193,7 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
     for bus in &buses.buses {
         let _ = state
             .backend
-            .set_bus_members(&bus.name, &bus.effective_members(&names), bus.mic);
+            .set_bus_members(&bus.name, &bus.effective_members(&names));
     }
 
     defs.save().map_err(|e| e.to_string())?;

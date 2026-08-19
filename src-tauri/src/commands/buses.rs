@@ -17,10 +17,8 @@ pub(crate) fn apply_bus_level(backend: &dyn AudioBackend, def: &BusDef) {
     }
 }
 
-/// Re-apply a mix's persisted per-member send levels to its node. Same
-/// rationale as `apply_bus_level`: inserts don't exist until a member's
-/// gain is set at least once, so a fresh/recreated bus needs this to
-/// restore any non-unity faders.
+/// Restore persisted send levels on a fresh/recreated bus (the
+/// `apply_bus_level` rationale).
 pub(crate) fn apply_bus_member_gains(backend: &dyn AudioBackend, def: &BusDef) {
     for (member, percent) in &def.member_gains {
         let _ = backend.set_bus_member_gain(&def.name, member, *percent);
@@ -55,7 +53,7 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
     }
     if let Err(e) = state
         .backend
-        .set_bus_members(&def.name, &def.effective_members(&all), def.mic)
+        .set_bus_members(&def.name, &def.effective_members(&all))
     {
         eprintln!("sink: members for new mix {} failed: {e}", def.name);
     }
@@ -93,10 +91,15 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
         .map_err(|e| e.to_string())?;
     state
         .backend
-        .set_bus_members(&def.name, &def.effective_members(&all), def.mic)
+        .set_bus_members(&def.name, &def.effective_members(&all))
         .map_err(|e| e.to_string())?;
-    // The node was recreated fresh; restore this mix's saved level and any
-    // per-member send gains.
+    // The recreate cleared mic membership in the loop's state.
+    if def.mic {
+        if let Err(e) = state.backend.set_bus_mic(&def.name, true) {
+            eprintln!("sink: mic membership for renamed mix {} failed: {e}", def.name);
+        }
+    }
+    // The node is fresh; restore its saved level and send gains.
     apply_bus_level(state.backend.as_ref(), &def);
     apply_bus_member_gains(state.backend.as_ref(), &def);
 
@@ -131,7 +134,7 @@ pub fn set_bus_members(
     // Validate against the definition set first, so a rejected request
     // (master mix, unknown name) never reaches the backend - otherwise
     // backend membership and the persisted definition could diverge.
-    let (stored, mic) = {
+    let stored = {
         let mixer = state.lock_mixer()?;
         if crate::persistence::buses::is_master(&name) {
             return Err("the master mix always carries every channel".to_string());
@@ -139,19 +142,18 @@ pub fn set_bus_members(
         let Some(def) = mixer.buses.get(&name) else {
             return Err("unknown mix".to_string());
         };
-        let stored = if def.exclude {
+        if def.exclude {
             channel_names(&mixer)
                 .into_iter()
                 .filter(|c| !channels.contains(c))
                 .collect()
         } else {
             channels.clone()
-        };
-        (stored, def.mic)
+        }
     };
     state
         .backend
-        .set_bus_members(&name, &channels, mic)
+        .set_bus_members(&name, &channels)
         .map_err(|e| e.to_string())?;
     let defs = {
         let mut mixer = state.lock_mixer()?;
@@ -165,21 +167,19 @@ pub fn set_bus_members(
     defs.save().map_err(|e| e.to_string())
 }
 
-/// Include (or drop) the processed virtual mic as a member of a mix,
-/// alongside its channels - lets a Stream Mix carry your voice plus
-/// game/media audio, selectable as one input device in Discord/OBS.
+/// Include (or drop) the processed virtual mic as a member of a mix, so
+/// one input device carries voice plus app audio.
 #[tauri::command]
 pub fn set_bus_mic(state: State<'_, AppState>, name: String, mic: bool) -> Result<(), String> {
-    let channels = {
+    {
         let mixer = state.lock_mixer()?;
-        let Some(def) = mixer.buses.get(&name) else {
+        if mixer.buses.get(&name).is_none() {
             return Err("unknown mix".to_string());
-        };
-        def.effective_members(&channel_names(&mixer))
-    };
+        }
+    }
     state
         .backend
-        .set_bus_members(&name, &channels, mic)
+        .set_bus_mic(&name, mic)
         .map_err(|e| e.to_string())?;
     let defs = {
         let mut mixer = state.lock_mixer()?;
@@ -190,11 +190,9 @@ pub fn set_bus_mic(state: State<'_, AppState>, name: String, mic: bool) -> Resul
     defs.save().map_err(|e| e.to_string())
 }
 
-/// Set one member's send level within one specific mix (0-150%; 100 = no
-/// override, same as the member's own level). Independent of the member's
-/// own volume/EQ and of what you hear locally - only this mix's
-/// recorders/listeners hear the difference. `member` is a channel sink
-/// name, or "sink_mic" for the processed microphone.
+/// One member's send level within one mix (0-150%; 100 = no override) -
+/// only this mix's recorders/listeners hear the difference. `member` is a
+/// channel sink name or "sink_mic".
 #[tauri::command]
 pub fn set_bus_member_gain(
     state: State<'_, AppState>,
@@ -202,8 +200,19 @@ pub fn set_bus_member_gain(
     member: String,
     percent: u8,
 ) -> Result<(), String> {
-    if !is_bus_name(&bus) {
-        return Err(format!("unknown mix: {bus}"));
+    // Both names validate against the definition sets before the backend
+    // is touched (the `set_bus_members` rule) - a call racing a mix's
+    // deletion could otherwise plant a gain a recreated mix would inherit.
+    {
+        let mixer = state.lock_mixer()?;
+        if mixer.buses.get(&bus).is_none() {
+            return Err(format!("unknown mix: {bus}"));
+        }
+        let known_member = member == "sink_mic"
+            || mixer.channel_defs.channels.iter().any(|c| c.name == member);
+        if !known_member {
+            return Err(format!("unknown mix member: {member}"));
+        }
     }
     let percent = percent.min(MAX_VOLUME);
     state
@@ -222,35 +231,43 @@ pub fn set_bus_member_gain(
     defs.save().map_err(|e| e.to_string())
 }
 
-/// Open (or focus, if already open) a small standalone window with the
-/// per-member send faders for one mix - meant to be left open alongside
-/// the main window while streaming/in a call.
+/// Open (or focus) a small popout window with one mix's send levels -
+/// meant to be left on screen while streaming or in a call.
 #[tauri::command]
-pub fn open_mix_fader_window(app: tauri::AppHandle, bus: String, label: String) -> Result<(), String> {
+pub fn open_mix_fader_window(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    bus: String,
+) -> Result<(), String> {
     use tauri::Manager;
 
+    // The mix must exist before any window does (also what bounds the
+    // window count to the real bus count), and the title comes from the
+    // definition set rather than trusting a caller-supplied label.
+    let label = {
+        let mixer = state.lock_mixer()?;
+        let Some(def) = mixer.buses.get(&bus) else {
+            return Err("unknown mix".to_string());
+        };
+        def.label.clone()
+    };
     let window_label = format!("mix-fader-{bus}");
     if let Some(existing) = app.get_webview_window(&window_label) {
         let _ = existing.show();
         let _ = existing.set_focus();
         return Ok(());
     }
-    let url = format!("index.html?mixFader={bus}");
     tauri::WebviewWindowBuilder::new(
         &app,
         &window_label,
-        tauri::WebviewUrl::App(url.into()),
+        tauri::WebviewUrl::App(format!("index.html?mixFader={bus}").into()),
     )
-    .title(format!("{label} \u{2013} Levels"))
-    // Frameless custom chrome, matching the main window - the popout's own
-    // React tree (MixFaderTitleBar) draws the headerbar and close button.
+    .title(label)
+    // Frameless like the main window; the popout draws its own bar.
     .decorations(false)
     .transparent(true)
-    // Roomy by default: a full-travel fader (matching the main board's
-    // strips) plus its readout and mute row, with space for a second
-    // member's strip beside it. Scrolls if resized smaller than this.
-    .inner_size(700.0, 760.0)
-    .min_inner_size(320.0, 440.0)
+    .inner_size(340.0, 300.0)
+    .min_inner_size(280.0, 200.0)
     .resizable(true)
     .build()
     .map_err(|e| e.to_string())?;

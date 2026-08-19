@@ -65,10 +65,15 @@ pub trait AudioBackend: Send + Sync {
     /// Destroy a mix bus (its links go with it).
     fn destroy_bus(&self, name: &str) -> Result<(), SinkError>;
 
-    /// Replace the set of channels feeding a mix bus, and whether the
-    /// processed virtual mic feeds it too (Native-only for the mic side;
-    /// the pactl fallback ignores it, same as `set_mic_config`).
-    fn set_bus_members(&self, name: &str, channels: &[String], mic: bool) -> Result<(), SinkError>;
+    /// Replace the set of channels feeding a mix bus.
+    fn set_bus_members(&self, name: &str, channels: &[String]) -> Result<(), SinkError>;
+
+    /// Include (or drop) the processed virtual mic as a member of a mix,
+    /// alongside its channels. Its own method rather than a flag on
+    /// `set_bus_members` (mirroring `set_channel_failover`): membership
+    /// resyncs happen on every channel add/remove/profile load, and none
+    /// of those call sites have any business touching the mic. Native-only.
+    fn set_bus_mic(&self, name: &str, mic: bool) -> Result<(), SinkError>;
 
     /// Set one member's send level within one specific mix (0-150%; 100 =
     /// no override, same as the direct path). Independent of the member's

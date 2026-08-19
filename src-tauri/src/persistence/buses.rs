@@ -46,14 +46,11 @@ pub struct BusDef {
     /// Muted for recorders (they hear silence). Persisted like the volume.
     #[serde(default)]
     pub muted: bool,
-    /// Whether the processed virtual microphone feeds this mix alongside
-    /// its channels - lets a Stream Mix carry your voice plus game/media.
+    /// The processed virtual mic feeds this mix alongside its channels.
     #[serde(default)]
     pub mic: bool,
-    /// Per-member send level within this mix (0-150%; a member absent here
-    /// carries at 100%, same as its normal level). Independent of the
-    /// member's own volume - only this mix's recorders/listeners hear the
-    /// difference. Keyed by channel sink name, or "sink_mic" for the mic.
+    /// Per-member send level (0-150%; absent = 100%), independent of the
+    /// member's own volume. Keyed by sink name, or "sink_mic".
     #[serde(default)]
     pub member_gains: HashMap<String, u8>,
 }
@@ -132,9 +129,11 @@ impl Buses {
             Err(_) => return Self::default(),
         };
         match fs::read_to_string(&path) {
-            Ok(raw) => serde_json::from_str::<Self>(&raw)
-                .ok()
-                .unwrap_or_default(),
+            Ok(raw) => {
+                let mut buses = serde_json::from_str::<Self>(&raw).ok().unwrap_or_default();
+                buses.clamp_loaded();
+                buses
+            }
             Err(_) => {
                 let mut buses = Self::default();
                 buses.buses[0].channels = legacy_channels
@@ -145,6 +144,18 @@ impl Buses {
                     .collect();
                 buses
             }
+        }
+    }
+
+    /// A hand-edited buses.json degrades to the documented ranges instead
+    /// of riding through to the UI (the `EqConfig::clamp_ranges` rule).
+    fn clamp_loaded(&mut self) {
+        for bus in &mut self.buses {
+            bus.volume_percent = bus.volume_percent.min(150);
+            bus.member_gains.retain(|_, percent| {
+                *percent = (*percent).min(150);
+                *percent != 100
+            });
         }
     }
 
@@ -317,9 +328,8 @@ impl Buses {
         Ok(())
     }
 
-    /// Include (or drop) the processed virtual mic as a member of a mix,
-    /// alongside its channels. Allowed on the master mix too - unlike
-    /// channel membership, mic inclusion isn't auto-managed.
+    /// Allowed on the master mix too - unlike channel membership, mic
+    /// inclusion isn't auto-managed.
     pub fn set_mic(&mut self, name: &str, mic: bool) -> Result<(), SinkError> {
         let def = self
             .buses
@@ -330,10 +340,8 @@ impl Buses {
         Ok(())
     }
 
-    /// Set one member's send level within one specific mix (0-150%).
-    /// Storing 100 (unity, the default for an absent entry) drops the
-    /// entry instead, so a fader returned to its rest position doesn't
-    /// bloat the persisted file forever.
+    /// Unity (100) drops the entry, so a fader back at rest doesn't bloat
+    /// the persisted file.
     pub fn set_member_gain(&mut self, name: &str, member: &str, percent: u8) -> Result<(), SinkError> {
         let def = self
             .buses
@@ -538,6 +546,22 @@ mod tests {
         let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false}]}"#;
         let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
         assert!(loaded.buses[0].member_gains.is_empty());
+    }
+
+    #[test]
+    fn clamp_loaded_bounds_hand_edited_values() {
+        // A hand-edited file with out-of-range numbers degrades to the
+        // documented bounds instead of riding through to the UI.
+        let raw = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],
+            "exclude":false,"volume_percent":250,
+            "member_gains":{"sink_game":255,"sink_chat":100,"sink_music":60}}]}"#;
+        let mut b: Buses = serde_json::from_str(raw).expect("parses");
+        b.clamp_loaded();
+        assert_eq!(b.buses[0].volume_percent, 150);
+        assert_eq!(b.buses[0].member_gains.get("sink_game"), Some(&150));
+        // A stored unity entry is dropped, same as set_member_gain does.
+        assert!(!b.buses[0].member_gains.contains_key("sink_chat"));
+        assert_eq!(b.buses[0].member_gains.get("sink_music"), Some(&60));
     }
 
     #[test]

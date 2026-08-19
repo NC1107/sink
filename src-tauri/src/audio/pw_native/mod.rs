@@ -170,10 +170,15 @@ impl AudioBackend for PipeWireBackend {
         self.request(|reply| Cmd::DestroyBus { name, reply })
     }
 
-    fn set_bus_members(&self, name: &str, channels: &[String], mic: bool) -> Result<(), SinkError> {
+    fn set_bus_members(&self, name: &str, channels: &[String]) -> Result<(), SinkError> {
         let name = name.to_string();
         let channels = channels.to_vec();
-        self.request(|reply| Cmd::SetBusMembers { name, channels, mic, reply })
+        self.request(|reply| Cmd::SetBusMembers { name, channels, reply })
+    }
+
+    fn set_bus_mic(&self, name: &str, mic: bool) -> Result<(), SinkError> {
+        let name = name.to_string();
+        self.request(|reply| Cmd::SetBusMic { name, mic, reply })
     }
 
     fn set_bus_member_gain(&self, bus_name: &str, member: &str, percent: u8) -> Result<(), SinkError> {
