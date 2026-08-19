@@ -227,7 +227,13 @@ pub fn init_virtual_devices(
         {
             eprintln!("sink: members for mix {} failed: {e}", bus.name);
         }
+        if bus.mic {
+            if let Err(e) = state.backend.set_bus_mic(&bus.name, true) {
+                eprintln!("sink: mic membership for mix {} failed: {e}", bus.name);
+            }
+        }
         crate::commands::buses::apply_bus_level(state.backend.as_ref(), bus);
+        crate::commands::buses::apply_bus_member_gains(state.backend.as_ref(), bus);
     }
 
     // Bring the mic chain up if it was enabled last session.

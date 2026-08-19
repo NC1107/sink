@@ -68,6 +68,19 @@ pub trait AudioBackend: Send + Sync {
     /// Replace the set of channels feeding a mix bus.
     fn set_bus_members(&self, name: &str, channels: &[String]) -> Result<(), SinkError>;
 
+    /// Include (or drop) the processed virtual mic as a member of a mix,
+    /// alongside its channels. Its own method rather than a flag on
+    /// `set_bus_members` (mirroring `set_channel_failover`): membership
+    /// resyncs happen on every channel add/remove/profile load, and none
+    /// of those call sites have any business touching the mic. Native-only.
+    fn set_bus_mic(&self, name: &str, mic: bool) -> Result<(), SinkError>;
+
+    /// Set one member's send level within one specific mix (0-150%; 100 =
+    /// no override, same as the direct path). Independent of the member's
+    /// own volume/EQ and of what you hear locally - only that mix's
+    /// recorders/listeners hear the difference. Native-only.
+    fn set_bus_member_gain(&self, bus_name: &str, member: &str, percent: u8) -> Result<(), SinkError>;
+
     /// Monitor a channel/mix/mic on the system default output (session
     /// scoped, an extra passive link set). Native-only.
     fn set_monitor(&self, name: &str, enabled: bool) -> Result<(), SinkError>;

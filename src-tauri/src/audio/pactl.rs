@@ -357,6 +357,18 @@ impl AudioBackend for PactlBackend {
         ))
     }
 
+    fn set_bus_mic(&self, _name: &str, _mic: bool) -> Result<(), SinkError> {
+        Err(SinkError::Config(
+            "mic-in-mix requires the native PipeWire backend".into(),
+        ))
+    }
+
+    fn set_bus_member_gain(&self, _bus_name: &str, _member: &str, _percent: u8) -> Result<(), SinkError> {
+        Err(SinkError::Config(
+            "per-mix send levels require the native PipeWire backend".into(),
+        ))
+    }
+
     fn set_monitor(&self, _name: &str, _enabled: bool) -> Result<(), SinkError> {
         Err(SinkError::Config(
             "monitoring requires the native PipeWire backend".into(),

@@ -17,6 +17,14 @@ pub(crate) fn apply_bus_level(backend: &dyn AudioBackend, def: &BusDef) {
     }
 }
 
+/// Restore persisted send levels on a fresh/recreated bus (the
+/// `apply_bus_level` rationale).
+pub(crate) fn apply_bus_member_gains(backend: &dyn AudioBackend, def: &BusDef) {
+    for (member, percent) in &def.member_gains {
+        let _ = backend.set_bus_member_gain(&def.name, member, *percent);
+    }
+}
+
 /// The user's mixes (buses) with their member channels.
 #[tauri::command]
 pub fn list_buses(state: State<'_, AppState>) -> Result<Vec<BusDef>, String> {
@@ -85,8 +93,15 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
         .backend
         .set_bus_members(&def.name, &def.effective_members(&all))
         .map_err(|e| e.to_string())?;
-    // The node was recreated fresh; restore this mix's saved level.
+    // The recreate cleared mic membership in the loop's state.
+    if def.mic {
+        if let Err(e) = state.backend.set_bus_mic(&def.name, true) {
+            eprintln!("sink: mic membership for renamed mix {} failed: {e}", def.name);
+        }
+    }
+    // The node is fresh; restore its saved level and send gains.
     apply_bus_level(state.backend.as_ref(), &def);
+    apply_bus_member_gains(state.backend.as_ref(), &def);
 
     defs.save().map_err(|e| e.to_string())?;
     let mixer = state.lock_mixer()?;
@@ -150,6 +165,113 @@ pub fn set_bus_members(
         mixer.buses.clone()
     };
     defs.save().map_err(|e| e.to_string())
+}
+
+/// Include (or drop) the processed virtual mic as a member of a mix, so
+/// one input device carries voice plus app audio.
+#[tauri::command]
+pub fn set_bus_mic(state: State<'_, AppState>, name: String, mic: bool) -> Result<(), String> {
+    {
+        let mixer = state.lock_mixer()?;
+        if mixer.buses.get(&name).is_none() {
+            return Err("unknown mix".to_string());
+        }
+    }
+    state
+        .backend
+        .set_bus_mic(&name, mic)
+        .map_err(|e| e.to_string())?;
+    let defs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer.buses.set_mic(&name, mic).map_err(|e| e.to_string())?;
+        crate::commands::profiles::autosave_active(&mixer);
+        mixer.buses.clone()
+    };
+    defs.save().map_err(|e| e.to_string())
+}
+
+/// One member's send level within one mix (0-150%; 100 = no override) -
+/// only this mix's recorders/listeners hear the difference. `member` is a
+/// channel sink name or "sink_mic".
+#[tauri::command]
+pub fn set_bus_member_gain(
+    state: State<'_, AppState>,
+    bus: String,
+    member: String,
+    percent: u8,
+) -> Result<(), String> {
+    // Both names validate against the definition sets before the backend
+    // is touched (the `set_bus_members` rule) - a call racing a mix's
+    // deletion could otherwise plant a gain a recreated mix would inherit.
+    {
+        let mixer = state.lock_mixer()?;
+        if mixer.buses.get(&bus).is_none() {
+            return Err(format!("unknown mix: {bus}"));
+        }
+        let known_member = member == "sink_mic"
+            || mixer.channel_defs.channels.iter().any(|c| c.name == member);
+        if !known_member {
+            return Err(format!("unknown mix member: {member}"));
+        }
+    }
+    let percent = percent.min(MAX_VOLUME);
+    state
+        .backend
+        .set_bus_member_gain(&bus, &member, percent)
+        .map_err(|e| e.to_string())?;
+    let defs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer
+            .buses
+            .set_member_gain(&bus, &member, percent)
+            .map_err(|e| e.to_string())?;
+        crate::commands::profiles::autosave_active(&mixer);
+        mixer.buses.clone()
+    };
+    defs.save().map_err(|e| e.to_string())
+}
+
+/// Open (or focus) a small popout window with one mix's send levels -
+/// meant to be left on screen while streaming or in a call.
+#[tauri::command]
+pub fn open_mix_fader_window(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    bus: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    // The mix must exist before any window does (also what bounds the
+    // window count to the real bus count), and the title comes from the
+    // definition set rather than trusting a caller-supplied label.
+    let label = {
+        let mixer = state.lock_mixer()?;
+        let Some(def) = mixer.buses.get(&bus) else {
+            return Err("unknown mix".to_string());
+        };
+        def.label.clone()
+    };
+    let window_label = format!("mix-fader-{bus}");
+    if let Some(existing) = app.get_webview_window(&window_label) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        &window_label,
+        tauri::WebviewUrl::App(format!("index.html?mixFader={bus}").into()),
+    )
+    .title(label)
+    // Frameless like the main window; the popout draws its own bar.
+    .decorations(false)
+    .transparent(true)
+    .inner_size(340.0, 300.0)
+    .min_inner_size(280.0, 200.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Switch a mix between manual selection and auto-include mode. The

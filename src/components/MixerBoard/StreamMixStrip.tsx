@@ -5,7 +5,7 @@ import { busMembers, MASTER_BUS, MAX_VOLUME } from "../../types";
 import { perceptual, volToDb } from "../../lib/audio";
 import { Ms } from "../Icons";
 import { ConfirmModal } from "../ConfirmModal";
-import { MenuCheckItem } from "../MenuItem";
+import { MenuCheckItem, MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Fader } from "./Fader";
 import { VuMeter } from "./VuMeter";
@@ -17,16 +17,21 @@ import { VuMeter } from "./VuMeter";
  * not what you hear.
  */
 /** Compact "what this mix carries" label for the membership button. */
-function memberLabel(exclude: boolean, carried: number, all: number): string {
-  if (!exclude) return `${carried} ${carried === 1 ? "channel" : "channels"}`;
-  if (carried === all) return "all channels";
-  return `all but ${all - carried}`;
+function memberLabel(exclude: boolean, carried: number, all: number, mic: boolean): string {
+  const channels = !exclude
+    ? `${carried} ${carried === 1 ? "channel" : "channels"}`
+    : carried === all
+      ? "all channels"
+      : `all but ${all - carried}`;
+  return mic ? `${channels} + mic` : channels;
 }
 
 export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const channels = useMixerStore((s) => s.channels);
   const setBusMembers = useMixerStore((s) => s.setBusMembers);
   const setBusExclude = useMixerStore((s) => s.setBusExclude);
+  const setBusMic = useMixerStore((s) => s.setBusMic);
+  const micEnabled = useMixerStore((s) => s.micConfig?.enabled ?? false);
   const renameBus = useMixerStore((s) => s.renameBus);
   const removeBus = useMixerStore((s) => s.removeBus);
   const level = useMixerStore((s) => s.levels[bus.name]);
@@ -34,6 +39,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const toggleMonitor = useMixerStore((s) => s.toggleMonitor);
   const setBusVolume = useMixerStore((s) => s.setBusVolume);
   const setBusMute = useMixerStore((s) => s.setBusMute);
+  const openMixFaderWindow = useMixerStore((s) => s.openMixFaderWindow);
 
   const [managing, setManaging] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -81,6 +87,15 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
           <Ms name="close" />
         </button>
       )}
+      <button
+        type="button"
+        className="strip-pop"
+        aria-label={`Open send levels for ${bus.label} in a window`}
+        title="Set channel levels"
+        onClick={() => void openMixFaderWindow(bus.name)}
+      >
+        <Ms name="open_in_new" />
+      </button>
 
       <div className="strip-head">
         <div className="strip-icon strip-icon-bus">
@@ -102,7 +117,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         ) : (
           <div
             className="strip-name strip-name-editable"
-            title='Double-click to rename - recorders see this name'
+            title="Double-click to rename"
             onDoubleClick={() => {
               setDraft(bus.label);
               setEditing(true);
@@ -111,48 +126,66 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
             {bus.label}
           </div>
         )}
-        {isMaster ? (
-          <div className="strip-meta" title="The master mix always carries every channel">
-            all channels
-          </div>
-        ) : (
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              className="strip-meta strip-meta-btn"
-              title="Choose which channels this mix carries"
-              onClick={() => setManaging(true)}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            className="strip-meta strip-meta-btn"
+            title={isMaster ? "Mic and levels" : "Channels and levels"}
+            onClick={() => setManaging(true)}
+          >
+            {memberLabel(bus.exclude, carried.length, allNames.length, bus.mic)}
+            <Ms name="expand_more" style={{ fontSize: 13 }} />
+          </button>
+          <Popover
+            open={managing}
+            onClose={() => setManaging(false)}
+            side="bottom"
+            align="center"
+            style={{ minWidth: 260 }}
+          >
+            <MenuCheckItem
+              checked={bus.mic}
+              title={micEnabled ? undefined : "Enable the mic first (Mic tab)"}
+              onClick={() => void setBusMic(bus.name, !bus.mic)}
             >
-              {memberLabel(bus.exclude, carried.length, allNames.length)}
-              <Ms name="expand_more" style={{ fontSize: 13 }} />
-            </button>
-            <Popover
-              open={managing}
-              onClose={() => setManaging(false)}
-              side="bottom"
-              align="center"
-              style={{ minWidth: 220 }}
-            >
-              {channels.map((c) => (
+              <span className="menu-item-label">Microphone</span>
+            </MenuCheckItem>
+            {/* The master mix always carries every channel - no membership
+                editing there, but its mic and send levels are fair game. */}
+            {!isMaster && (
+              <>
+                <div className="menu-div" />
+                {channels.map((c) => (
+                  <MenuCheckItem
+                    key={c.name}
+                    checked={carried.includes(c.name)}
+                    onClick={() => toggleMember(c.name)}
+                  >
+                    <span className="menu-item-label">{c.label}</span>
+                  </MenuCheckItem>
+                ))}
+                <div className="menu-div" />
                 <MenuCheckItem
-                  key={c.name}
-                  checked={carried.includes(c.name)}
-                  onClick={() => toggleMember(c.name)}
+                  checked={bus.exclude}
+                  title="New channels join automatically"
+                  onClick={() => void setBusExclude(bus.name, !bus.exclude)}
                 >
-                  <span className="menu-item-label">{c.label}</span>
+                  <span className="menu-item-label">Auto-include new channels</span>
                 </MenuCheckItem>
-              ))}
-              <div className="menu-div" />
-              <MenuCheckItem
-                checked={bus.exclude}
-                title="New channels join this mix automatically - keep the ones you don't want unchecked"
-                onClick={() => void setBusExclude(bus.name, !bus.exclude)}
-              >
-                <span className="menu-item-label">Auto-include new channels</span>
-              </MenuCheckItem>
-            </Popover>
-          </div>
-        )}
+              </>
+            )}
+            <div className="menu-div" />
+            <MenuItem
+              icon="open_in_new"
+              onClick={() => {
+                setManaging(false);
+                void openMixFaderWindow(bus.name);
+              }}
+            >
+              Set channel levels…
+            </MenuItem>
+          </Popover>
+        </div>
       </div>
 
       <div className="strip-body">
@@ -171,7 +204,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
           className={"sbtn" + (muted ? " on-mute" : "")}
           onClick={toggleMute}
           aria-pressed={muted}
-          title={muted ? "Unmute this mix" : "Mute this mix (recorders hear silence)"}
+          title={muted ? "Unmute" : "Mute for recorders"}
         >
           <Ms name={muted ? "volume_off" : "volume_up"} style={{ fontSize: 16 }} />
         </button>
@@ -180,7 +213,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(bus.name)}
           aria-pressed={monitoring}
-          title="Monitor - hear what this mix carries on the default output"
+          title="Listen to this mix"
         >
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>
@@ -188,7 +221,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
 
       <div
         className="strip-route"
-        title={`Select "${bus.label}" as an audio source in OBS or any recorder`}
+        title={`Capture "${bus.label}" in OBS`}
       />
 
       <ConfirmModal

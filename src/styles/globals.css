@@ -523,6 +523,35 @@ body,
 .strip:hover .strip-x {
   opacity: 1;
 }
+/* pop-out: the opposite corner, same hover reveal */
+.strip-pop {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 4;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-sm);
+  border: none;
+  background: var(--bg-active);
+  color: var(--fg-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-family: inherit;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.strip:hover .strip-pop {
+  opacity: 1;
+}
+.strip-pop:hover {
+  background: var(--bg-surface-hover);
+  color: var(--fg-primary);
+}
+.strip-pop .ms {
+  font-size: 13px;
+}
 .strip-x:hover {
   background: var(--danger);
   color: #fff;
@@ -2417,3 +2446,62 @@ body,
 .theme-swatch-colors i:last-child { border-radius: 0 var(--r-xs) var(--r-xs) 0; }
 .theme-swatch-label { font-size: var(--fs-caption); color: var(--fg-secondary); }
 .theme-swatch.active .theme-swatch-label { color: var(--fg-primary); }
+
+/* ---------- send levels (mix membership popover) ---------- */
+.send-levels-hint {
+  padding: 4px 10px 2px;
+  font-size: var(--fs-caption);
+  color: var(--fg-muted);
+}
+.send-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px 10px;
+  color: var(--fg-secondary);
+}
+.send-row-label {
+  font-size: var(--fs-meta);
+  width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.send-row .hslider {
+  flex: 1;
+}
+.send-row-btn {
+  flex: none;
+  width: 26px;
+  height: 26px;
+}
+.send-row.muted .hslider {
+  opacity: 0.5;
+}
+
+/* ---------- mix send-levels popout window ---------- */
+.popout {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+.popout-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-3) 0;
+}
+
+.sbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.sbtn:disabled:hover {
+  background: var(--bg-main);
+  border-color: var(--border);
+  color: var(--fg-secondary);
+}
