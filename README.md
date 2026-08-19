@@ -27,7 +27,11 @@ processed virtual microphone for voice chat.
   forever
 - **Mixes** - recordable sources for OBS. Master Mix carries everything;
   custom mixes can carry "everything except music" and stay current as
-  channels change. In OBS, add a mix as an audio input - not Desktop Audio.
+  channels change. A mix can also carry your processed microphone, so one
+  input device holds your voice plus app audio (Sonar-style Stream Mix),
+  and each member gets its own send level and mute inside the mix - what
+  recorders hear, independent of your own volume (pop out a mix's levels
+  from its strip). In OBS, add a mix as an audio input - not Desktop Audio.
 - **Equalizer** - per-channel parametric EQ (up to 10 bands) with a
   draggable response curve, bundled community presets, and import/export
   including AutoEq text blocks
