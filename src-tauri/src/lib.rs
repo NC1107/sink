@@ -38,6 +38,17 @@ pub fn run() {
     let app_state = AppState::new(backend, backend_native);
 
     let result = tauri::Builder::default()
+        // Single-instance guard (must be the first plugin). A second launch
+        // focuses the running window instead of spawning a duplicate - two
+        // instances would create clashing virtual sinks and fight over the
+        // audio graph. Sink hides to tray, so unhide + focus the existing one.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
