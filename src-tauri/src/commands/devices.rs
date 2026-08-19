@@ -161,15 +161,16 @@ pub fn init_virtual_devices(
             .backend
             .create_virtual_sink(&def.name, &prefs.decorate(&def.label))
             .map_err(|e| e.to_string())?;
-        // Known starting point - adopted sinks from a previous run may carry
-        // stale volume/mute.
+        // Restore the saved level explicitly - an adopted sink from a
+        // previous run may carry a stale volume/mute, so this is a set,
+        // not a "leave it alone".
         state
             .backend
-            .set_sink_volume(&def.name, 100)
+            .set_sink_volume(&def.name, def.volume_percent)
             .map_err(|e| e.to_string())?;
         state
             .backend
-            .set_sink_mute(&def.name, false)
+            .set_sink_mute(&def.name, def.muted)
             .map_err(|e| e.to_string())?;
     }
 

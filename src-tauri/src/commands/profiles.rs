@@ -196,6 +196,11 @@ pub fn load_profile(
                     label: c.label.clone(),
                     icon: c.icon.clone(),
                     stream_mix: c.stream_mix,
+                    // Carry the profile's levels into the persisted defs,
+                    // so channels.json stays the single source of truth
+                    // for what a channel comes back at.
+                    volume_percent: c.volume_percent,
+                    muted: c.muted,
                 })
                 .collect(),
         };
