@@ -103,7 +103,7 @@ export function OutputSelect({
               button of its own. */}
           <div
             className="menu-item static"
-            title="Off: this channel plays only on the device above (or the exact system default) and stays silent if it's gone, instead of failing over to another output."
+            title="Off: stays silent if this device disappears"
           >
             <Ms name="sync_alt" />
             <span className="menu-item-label">Fail over to another device</span>

@@ -66,7 +66,7 @@ export function VuMeter({ target }: Readonly<VuMeterProps>) {
   }, []);
 
   return (
-    <div className="vu-col" title="Peak level in dBFS - tick at −6, red above −3, light latches on clipping">
+    <div className="vu-col">
       <div className="vu-clip" ref={clipRef} />
       <div className="meter">
         <div className="meter-fill" ref={fillRef} />

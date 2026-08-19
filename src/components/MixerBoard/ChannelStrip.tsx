@@ -158,7 +158,7 @@ export function ChannelStrip({
           <button
             type="button"
             className="strip-meta strip-meta-btn"
-            title="Choose which apps play through this channel"
+            title="Assign apps"
             onClick={() => setManagingApps(true)}
           >
             {appCount} {appCount === 1 ? "app" : "apps"}
@@ -202,7 +202,7 @@ export function ChannelStrip({
           className={"sbtn" + (monitoring ? " on-mon" : "")}
           onClick={() => void toggleMonitor(channel.name)}
           aria-pressed={monitoring}
-          title="Monitor - listen to this channel on the default output"
+          title="Listen to this channel"
         >
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>
