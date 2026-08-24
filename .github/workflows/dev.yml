@@ -33,16 +33,24 @@ jobs:
           workspaces: .
 
       - name: Install system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libpipewire-0.3-dev \
-            clang
+          # A stalled runner mirror can hang apt for the job's full 6h
+          # limit (two Release runs on 2026-08-19); bound each attempt
+          # and retry so a transient mirror outage costs minutes.
+          apt_try() {
+            sudo timeout 300 apt-get update &&
+              sudo timeout 600 apt-get install -y -o Acquire::Retries=3 \
+              libwebkit2gtk-4.1-dev \
+              libxdo-dev \
+              libssl-dev \
+              libayatana-appindicator3-dev \
+              librsvg2-dev \
+              libpipewire-0.3-dev \
+              clang
+          }
+          apt_try || { sleep 30; apt_try; } || { sleep 120; apt_try; }
 
       - run: npm ci
       - run: npx tsc --noEmit
@@ -69,21 +77,29 @@ jobs:
           workspaces: .
 
       - name: Install system dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libpipewire-0.3-dev \
-            clang \
-            jq
+          # A stalled runner mirror can hang apt for the job's full 6h
+          # limit (two Release runs on 2026-08-19); bound each attempt
+          # and retry so a transient mirror outage costs minutes.
+          apt_try() {
+            sudo timeout 300 apt-get update &&
+              sudo timeout 600 apt-get install -y -o Acquire::Retries=3 \
+              libwebkit2gtk-4.1-dev \
+              build-essential \
+              curl \
+              wget \
+              file \
+              libxdo-dev \
+              libssl-dev \
+              libayatana-appindicator3-dev \
+              librsvg2-dev \
+              libpipewire-0.3-dev \
+              clang \
+              jq
+          }
+          apt_try || { sleep 30; apt_try; } || { sleep 120; apt_try; }
 
       - run: npm ci
       - run: npm run tauri build
