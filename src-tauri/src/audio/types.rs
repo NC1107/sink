@@ -2,10 +2,12 @@ use serde::{Deserialize, Serialize};
 
 /// True if `sink_name` is one of our managed virtual channels. Channels
 /// are user-defined (see persistence::channels) but always carry the
-/// `sink_` prefix; Sink's own service nodes are excluded.
+/// `sink_` prefix; Sink's own service nodes and mix buses are excluded,
+/// so channel-scoped commands can't reach into the bus namespace.
 pub fn is_virtual_sink(sink_name: &str) -> bool {
     sink_name.starts_with("sink_")
         && !crate::persistence::channels::RESERVED_SINK_NAMES.contains(&sink_name)
+        && !crate::persistence::buses::is_bus_name(sink_name)
 }
 
 /// Property values that are useless as names - media frameworks announcing

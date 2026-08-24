@@ -131,6 +131,7 @@ impl Channels {
             let name = def.name.as_str();
             let valid = name.starts_with("sink_")
                 && !RESERVED_SINK_NAMES.contains(&name)
+                && !crate::persistence::buses::is_bus_name(name)
                 && seen.insert(def.name.clone());
             if valid && channels.len() < MAX_CHANNELS {
                 channels.push(def);
@@ -198,7 +199,13 @@ impl Channels {
                 "at most {MAX_CHANNELS} channels are supported"
             )));
         }
-        let base = format!("sink_{}", slugify(label));
+        let mut base = format!("sink_{}", slugify(label));
+        if crate::persistence::buses::is_bus_name(&base) {
+            // A label like "Bus Foo" would slug straight into the mix-bus
+            // namespace, where every suffixed variant still matches the
+            // prefix; step out of it instead of trying to disambiguate.
+            base = base.replacen("sink_bus_", "sink_ch_bus_", 1);
+        }
         let mut name = base.clone();
         let mut counter = 2;
         while self.get(&name).is_some() || RESERVED_SINK_NAMES.contains(&name.as_str()) {
@@ -294,6 +301,24 @@ mod tests {
         assert_eq!(d2.name, "sink_channel_2");
         // Whitespace-only labels are rejected outright.
         assert!(c.add("   ", None).is_err());
+    }
+
+    #[test]
+    fn bus_namespace_labels_stay_out_of_the_bus_prefix() {
+        let mut c = Channels::default();
+        let d = c.add("Bus Foo", None).expect("adds");
+        assert_eq!(d.name, "sink_ch_bus_foo");
+        assert!(!crate::persistence::buses::is_bus_name(&d.name));
+        assert!(crate::audio::types::is_virtual_sink(&d.name));
+
+        // A hand-edited channels.json can't smuggle one in either.
+        let raw = r#"{"channels":[
+            {"name":"sink_bus_evil","label":"Evil"},
+            {"name":"sink_game","label":"Game"}
+        ]}"#;
+        let parsed = Channels::parse(raw).expect("parses");
+        assert_eq!(parsed.channels.len(), 1);
+        assert_eq!(parsed.channels[0].name, "sink_game");
     }
 
     #[test]
