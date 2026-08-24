@@ -1067,9 +1067,15 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         let pinned = explicit.is_some();
         let explicit_id = explicit.as_deref().and_then(|name| node_ids.get(name).copied());
         let strict = s.channel_strict.contains(sink_name);
+        // A user can make one of our channels the system default; following
+        // it would loop every follow-default channel (and the channel's own
+        // EQ playback) back into it. Treat that as "no default" so the real
+        // device fallback applies - pick_fallback_sink never picks a
+        // virtual sink.
         let default_id = s
             .default_sink_name
             .as_ref()
+            .filter(|name| !is_virtual_sink(name))
             .and_then(|name| node_ids.get(name))
             .copied();
         let target_id = resolve_target(explicit_id, pinned, strict, default_id, fallback);
@@ -1142,9 +1148,12 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     }
 
     // ---- monitor links (listen on the default output, session scoped) ----
+    // Same virtual-default guard as the channel links above: never treat
+    // one of our own channels as the listening device.
     let default_id = s
         .default_sink_name
         .as_ref()
+        .filter(|name| !is_virtual_sink(name))
         .and_then(|name| node_ids.get(name))
         .copied();
     let monitored: Vec<String> = s.monitored.iter().cloned().collect();
