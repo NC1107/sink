@@ -112,6 +112,14 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
 /// Delete a mix.
 #[tauri::command]
 pub fn remove_bus(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    // Validate before the node goes away. Rejecting afterwards (unknown
+    // name, or the master mix, which can't be deleted) would leave the mix
+    // torn down in PipeWire but still defined here.
+    state
+        .lock_mixer()?
+        .buses
+        .removable(&name)
+        .map_err(|e| e.to_string())?;
     state.backend.destroy_bus(&name).map_err(|e| e.to_string())?;
     let defs = {
         let mut mixer = state.lock_mixer()?;

@@ -130,7 +130,15 @@ impl Buses {
         };
         match fs::read_to_string(&path) {
             Ok(raw) => {
-                let mut buses = serde_json::from_str::<Self>(&raw).ok().unwrap_or_default();
+                // A present-but-broken file is a torn or hand-edited write:
+                // log it rather than resetting the user's mixes in silence.
+                let mut buses = match serde_json::from_str::<Self>(&raw) {
+                    Ok(buses) => buses,
+                    Err(e) => {
+                        eprintln!("sink: buses.json is unreadable ({e}); using defaults");
+                        Self::default()
+                    }
+                };
                 buses.clamp_loaded();
                 buses
             }
@@ -281,15 +289,21 @@ impl Buses {
         Ok(())
     }
 
-    pub fn remove(&mut self, name: &str) -> Result<(), SinkError> {
+    /// Whether `remove` would succeed, so callers can reject a bad name
+    /// before tearing the node down.
+    pub fn removable(&self, name: &str) -> Result<(), SinkError> {
         if is_master(name) {
             return Err(SinkError::Config("the master mix can't be deleted".into()));
         }
-        let before = self.buses.len();
-        self.buses.retain(|b| b.name != name);
-        if self.buses.len() == before {
+        if !self.buses.iter().any(|b| b.name == name) {
             return Err(SinkError::UnknownSink(name.to_string()));
         }
+        Ok(())
+    }
+
+    pub fn remove(&mut self, name: &str) -> Result<(), SinkError> {
+        self.removable(name)?;
+        self.buses.retain(|b| b.name != name);
         Ok(())
     }
 
@@ -420,6 +434,22 @@ mod tests {
         b.sync_master(&["sink_game".into()]);
         assert_eq!(b.buses[0].label, "Master Mix");
         assert_eq!(b.buses[0].channels, vec!["sink_game"]);
+    }
+
+    #[test]
+    fn removable_matches_remove_without_mutating() {
+        let mut b = Buses::default();
+        let name = b.add("Game Capture").expect("adds").name;
+
+        // The master mix and unknown names are rejected by the probe, and
+        // the probe leaves the set untouched either way.
+        assert!(b.removable("sink_stream").is_err());
+        assert!(b.removable("sink_bus_nope").is_err());
+        assert!(b.removable(&name).is_ok());
+        assert!(b.get(&name).is_some());
+
+        b.remove(&name).expect("removes");
+        assert!(b.removable(&name).is_err());
     }
 
     #[test]
