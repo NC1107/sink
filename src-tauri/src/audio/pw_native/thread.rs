@@ -334,6 +334,14 @@ fn setup_and_run(
                                 Heal::Relink
                             } else {
                                 s.meters.remove(&name);
+                                // The insert captures from a fixed node id
+                                // and never reconnects, so it is dead once
+                                // the sink is. Dropping it here lets the
+                                // rebuild hook in `on_node` fire against the
+                                // recreated sink; leaving it would keep
+                                // `resolve_source` routing the channel
+                                // through a stream with no input.
+                                s.eq_streams.remove(&name);
                                 Heal::Recreate(name, label, kind)
                             }
                         }
