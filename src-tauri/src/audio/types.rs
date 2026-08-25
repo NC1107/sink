@@ -202,6 +202,13 @@ mod identity_tests {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppStream {
     pub index: u32,
+    /// Globally unique, never-reused stream id (PipeWire's `object.serial`).
+    /// `index` is a node id, and PipeWire recycles those within seconds - a
+    /// browser closing one stream and opening another lands on the same
+    /// number - so anything that remembers "this exact stream" keys on the
+    /// serial instead.
+    #[serde(default)]
+    pub serial: u64,
     /// Display name (possibly prettified - not for matching).
     pub app_name: String,
     /// PipeWire property the identity was read from (e.g. "application.name").

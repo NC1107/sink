@@ -34,6 +34,27 @@ pub fn route_app_to_channel(
         return Ok(()); // stream vanished between move and lookup
     };
 
+    // The app's other live streams follow. Assignments are per app, not per
+    // stream, and an app can hold several at once (a browser opens one per
+    // playing tab) - leaving those behind would split one app across
+    // channels and look like the choice didn't take.
+    let siblings: Vec<&crate::audio::types::AppStream> = streams
+        .iter()
+        .filter(|s| {
+            s.index != stream_index
+                && s.match_prop == stream.match_prop
+                && s.match_value == stream.match_value
+        })
+        .collect();
+    for sibling in &siblings {
+        if let Err(e) = state.backend.move_stream_to_sink(sibling.index, &sink_name) {
+            eprintln!(
+                "sink: moving {} (#{}) failed: {e}",
+                stream.app_name, sibling.index
+            );
+        }
+    }
+
     let assignments = {
         let mut mixer = state.lock_mixer()?;
         if sink_name.is_empty() {
@@ -45,8 +66,9 @@ pub fn route_app_to_channel(
                 .assignments
                 .set(&stream.match_prop, &stream.match_value, &sink_name);
         }
-        // The user explicitly placed this stream; don't auto-route it again.
-        mixer.auto_routed.insert(stream_index);
+        // The user explicitly placed these streams; don't auto-route them again.
+        mixer.auto_routed.insert(stream.serial);
+        mixer.auto_routed.extend(siblings.iter().map(|s| s.serial));
         crate::commands::profiles::autosave_active(&mixer);
         mixer.assignments.clone()
     };

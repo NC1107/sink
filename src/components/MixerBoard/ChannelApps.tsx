@@ -35,12 +35,18 @@ export function ChannelApps({
   const routeApp = useMixerStore((s) => s.routeApp);
   const setAppAssignment = useMixerStore((s) => s.setAppAssignment);
 
-  const entries: Entry[] = [];
-  const seenKeys = new Set<string>();
+  // One entry per app, not per stream: an app can hold several streams at
+  // once (a browser opens one per playing tab) and they route together.
+  const live = new Map<string, Entry>();
   for (const s of appStreams) {
     const key = `${s.match_prop}\0${s.match_value}`;
-    seenKeys.add(key);
-    entries.push({
+    const existing = live.get(key);
+    if (existing) {
+      existing.checked ||= s.assigned_sink === channel.name;
+      existing.active ||= s.active;
+      continue;
+    }
+    live.set(key, {
       key,
       name: s.alias ?? s.app_name,
       iconPath: s.icon_path,
@@ -51,9 +57,10 @@ export function ChannelApps({
       matchValue: s.match_value,
     });
   }
+  const entries: Entry[] = [...live.values()];
   for (const a of seenApps) {
     const key = `${a.match_prop}\0${a.match_value}`;
-    if (a.ignored || seenKeys.has(key)) continue;
+    if (a.ignored || live.has(key)) continue;
     entries.push({
       key,
       name: a.alias ?? a.display_name,

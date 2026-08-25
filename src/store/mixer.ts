@@ -340,13 +340,19 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   },
 
   routeApp: async (streamIndex, sinkName) => {
-    set((s) => ({
-      appStreams: s.appStreams.map((a) =>
-        a.index === streamIndex
-          ? { ...a, assigned_sink: sinkName === "" ? null : sinkName }
-          : a,
-      ),
-    }));
+    set((s) => {
+      // The backend moves every live stream of this app, so the optimistic
+      // update follows the identity, not the one index that was clicked.
+      const moved = s.appStreams.find((a) => a.index === streamIndex);
+      if (!moved) return {};
+      return {
+        appStreams: s.appStreams.map((a) =>
+          a.match_prop === moved.match_prop && a.match_value === moved.match_value
+            ? { ...a, assigned_sink: sinkName === "" ? null : sinkName }
+            : a,
+        ),
+      };
+    });
     try {
       await invoke("route_app_to_channel", { streamIndex, sinkName });
     } catch (e) {

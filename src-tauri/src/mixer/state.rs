@@ -42,10 +42,13 @@ pub struct MixerState {
     pub buses: crate::persistence::buses::Buses,
     /// App preferences (device naming etc.), persisted to disk.
     pub prefs: crate::persistence::prefs::Prefs,
-    /// Stream indices already considered for auto-routing this session.
-    /// Each stream is enforced once, on first sight, so a user moving a
-    /// stream elsewhere (here or in pavucontrol) isn't fought every poll.
-    pub auto_routed: HashSet<u32>,
+    /// Streams already considered for auto-routing this session, by
+    /// `object.serial`. Each stream is enforced once, on first sight, so a
+    /// user moving a stream elsewhere (here or in pavucontrol) isn't fought
+    /// every poll. Serials, not node ids: PipeWire recycles node ids fast
+    /// enough that an app closing one stream and opening another between two
+    /// polls would inherit the old entry and never get routed.
+    pub auto_routed: HashSet<u64>,
 }
 
 impl MixerState {

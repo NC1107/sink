@@ -7,10 +7,13 @@ import { ChannelSelect } from "./ChannelSelect";
 import { HSlider } from "./HSlider";
 
 interface AppRowProps {
-  stream: AppStream;
+  /** Every live stream of one app on one channel, lowest index first. An
+   *  app can hold several at once - a browser opens one per playing tab -
+   *  and they share an identity, so they share a row. */
+  streams: AppStream[];
 }
 
-export function AppRow({ stream }: Readonly<AppRowProps>) {
+export function AppRow({ streams }: Readonly<AppRowProps>) {
   const routeApp = useMixerStore((s) => s.routeApp);
   const setAppVolume = useMixerStore((s) => s.setAppVolume);
   const renameApp = useMixerStore((s) => s.renameApp);
@@ -19,7 +22,11 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
+  // The oldest stream stands for the app: routing and renaming are keyed by
+  // identity anyway, and volume is applied to all of them below.
+  const stream = streams[0];
   const displayName = stream.alias ?? stream.app_name;
+  const active = streams.some((s) => s.active);
 
   const startEdit = () => {
     setDraft(displayName);
@@ -55,8 +62,8 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
         ) : (
           <div className="rtitle" title={stream.app_name}>
             <span
-              className={"eq" + (stream.active ? " on" : "")}
-              title={stream.active ? "Playing audio" : "Silent"}
+              className={"eq" + (active ? " on" : "")}
+              title={active ? "Playing audio" : "Silent"}
               aria-hidden="true"
             >
               <i />
@@ -87,13 +94,15 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
             />
           </div>
         )}
-        <div className="rsub">stream #{stream.index}</div>
+        {streams.length > 1 && <div className="rsub">{streams.length} streams</div>}
       </div>
       <div className="rtrail">
         <HSlider
           value={stream.volume_percent}
           max={100}
-          onChange={(v) => void setAppVolume(stream.index, v)}
+          onChange={(v) => {
+            for (const s of streams) void setAppVolume(s.index, v);
+          }}
         />
         <ChannelSelect
           value={stream.assigned_sink}

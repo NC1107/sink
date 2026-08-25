@@ -6,9 +6,9 @@ const POLL_INTERVAL_MS = 2000;
 
 /**
  * Boots the audio layer: creates the virtual sinks on mount, polls the app
- * stream list + device list every 2s (also the auto-route enforcement
- * trigger), subscribes to live VU level events, and auto-loads profiles
- * bound to newly connected devices (Phase 5).
+ * stream list + device list every 2s while the window is on screen,
+ * subscribes to live VU level events, and auto-loads profiles bound to
+ * newly connected devices (Phase 5).
  */
 export function useAudio() {
   const initialize = useMixerStore((s) => s.initialize);
@@ -41,7 +41,9 @@ export function useAudio() {
       }
     };
     // Pause the 4-IPC poll while hidden in the tray - the product's dominant
-    // idle state - instead of round-tripping every 2s forever (TD-009).
+    // idle state - instead of round-tripping every 2s forever (TD-009). This
+    // only stops the UI refreshing: auto-routing is enforced by a backend
+    // ticker, so assignments hold while the window is away.
     const onVisibility = () => (document.hidden ? stop() : start());
     if (!document.hidden) start();
     document.addEventListener("visibilitychange", onVisibility);

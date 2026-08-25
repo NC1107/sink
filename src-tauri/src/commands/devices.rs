@@ -14,13 +14,21 @@ pub fn get_virtual_devices(state: State<'_, AppState>) -> Result<Vec<VirtualSink
 }
 
 /// All running app audio streams.
-///
-/// Doubles as the auto-routing enforcement point (Phase 2): the frontend
-/// polls this every 2s, and any stream seen for the first time whose app has
-/// a saved assignment is moved onto its channel. Each stream is enforced
-/// once, so manual re-routing (here or in pavucontrol) isn't fought.
 #[tauri::command]
 pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, String> {
+    state.note_ui_stream_poll();
+    refresh_streams(state.inner())
+}
+
+/// List the live streams, record them in the app history, and enforce saved
+/// assignments (Phase 2): any stream seen for the first time whose app has a
+/// saved assignment is moved onto its channel. Each stream is enforced once,
+/// so manual re-routing (here or in pavucontrol) isn't fought.
+///
+/// Driven by a backend ticker (see `lib::spawn_route_enforcer`) so routing
+/// holds while Sink sits in the tray, and by the frontend's own poll for the
+/// stream list it renders. Both paths run the same work; it is idempotent.
+pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
     let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
 
     // Desktop-entry resolution: real icon files and polished display names
@@ -80,7 +88,7 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
         let mut planned: Vec<(u32, String, String)> = Vec::new();
         if mixer.initialized {
             for stream in &streams {
-                if mixer.auto_routed.contains(&stream.index) {
+                if mixer.auto_routed.contains(&stream.serial) {
                     continue;
                 }
                 if let Some(target) = mixer
@@ -93,13 +101,12 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
                 }
                 // Marked handled once (before the move, so a concurrent poll
                 // can't re-plan it); manual re-routing then isn't fought.
-                mixer.auto_routed.insert(stream.index);
+                mixer.auto_routed.insert(stream.serial);
             }
             // Forget streams that have gone away, so the ledger can't grow
-            // without bound and a recycled PipeWire index isn't mistaken for one
-            // we already handled (which would skip auto-routing a new stream).
-            let live: std::collections::HashSet<u32> = streams.iter().map(|s| s.index).collect();
-            mixer.auto_routed.retain(|i| live.contains(i));
+            // without bound.
+            let live: std::collections::HashSet<u64> = streams.iter().map(|s| s.serial).collect();
+            mixer.auto_routed.retain(|serial| live.contains(serial));
         }
 
         // User-chosen display names (in-memory read, cheap enough to keep here).
