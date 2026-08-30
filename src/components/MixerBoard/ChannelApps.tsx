@@ -35,8 +35,7 @@ export function ChannelApps({
   const routeApp = useMixerStore((s) => s.routeApp);
   const setAppAssignment = useMixerStore((s) => s.setAppAssignment);
 
-  // One entry per app, not per stream: an app can hold several streams at
-  // once (a browser opens one per playing tab) and they route together.
+  // One entry per app, not per stream - they route together.
   const live = new Map<string, Entry>();
   for (const s of appStreams) {
     const key = `${s.match_prop}\0${s.match_value}`;

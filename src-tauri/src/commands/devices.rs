@@ -20,14 +20,9 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
     refresh_streams(state.inner())
 }
 
-/// List the live streams, record them in the app history, and enforce saved
-/// assignments (Phase 2): any stream seen for the first time whose app has a
-/// saved assignment is moved onto its channel. Each stream is enforced once,
-/// so manual re-routing (here or in pavucontrol) isn't fought.
-///
-/// Driven by a backend ticker (see `lib::spawn_route_enforcer`) so routing
-/// holds while Sink sits in the tray, and by the frontend's own poll for the
-/// stream list it renders. Both paths run the same work; it is idempotent.
+/// List live streams, record history, and enforce saved assignments - each
+/// stream once, on first sight, so manual re-routing isn't fought. Idempotent:
+/// driven by both the backend ticker and the UI's own poll.
 pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
     let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
 

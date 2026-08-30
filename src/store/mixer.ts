@@ -341,8 +341,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
 
   routeApp: async (streamIndex, sinkName) => {
     set((s) => {
-      // The backend moves every live stream of this app, so the optimistic
-      // update follows the identity, not the one index that was clicked.
+      // The backend moves every live stream of the app; follow the identity.
       const moved = s.appStreams.find((a) => a.index === streamIndex);
       if (!moved) return {};
       return {

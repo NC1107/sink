@@ -7,9 +7,7 @@ import { ChannelSelect } from "./ChannelSelect";
 import { HSlider } from "./HSlider";
 
 interface AppRowProps {
-  /** Every live stream of one app on one channel, lowest index first. An
-   *  app can hold several at once - a browser opens one per playing tab -
-   *  and they share an identity, so they share a row. */
+  /** Every live stream of one app on one channel, lowest index first. */
   streams: AppStream[];
 }
 
@@ -22,8 +20,7 @@ export function AppRow({ streams }: Readonly<AppRowProps>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
-  // The oldest stream stands for the app: routing and renaming are keyed by
-  // identity anyway, and volume is applied to all of them below.
+  // The oldest stream stands for the app; volume applies to all below.
   const stream = streams[0];
   const displayName = stream.alias ?? stream.app_name;
   const active = streams.some((s) => s.active);

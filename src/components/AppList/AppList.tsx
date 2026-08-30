@@ -17,9 +17,7 @@ export function AppList() {
   const byName = (a: AppStream[], b: AppStream[]) =>
     (a[0].alias ?? a[0].app_name).localeCompare(b[0].alias ?? b[0].app_name);
 
-  /** One entry per app, holding all of its streams on this channel: an app
-   *  playing several streams at once (a browser tab per video) is one row,
-   *  not one row per stream. */
+  /** One row per app, not per stream - a browser holds one per playing tab. */
   const byApp = (streams: AppStream[]): AppStream[][] => {
     const apps = new Map<string, AppStream[]>();
     for (const s of streams) {

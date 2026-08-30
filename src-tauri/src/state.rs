@@ -10,9 +10,8 @@ pub struct AppState {
     /// True when the native PipeWire backend is driving (vs pactl fallback).
     pub backend_native: bool,
     pub mixer: Mutex<MixerState>,
-    /// When the UI last asked for the stream list. The backend's routing
-    /// ticker uses this to stay out of the way while the window is doing
-    /// the same work (see `lib::spawn_route_enforcer`).
+    /// Lets the pactl-backend ticker yield while an on-screen window is
+    /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
 }
 

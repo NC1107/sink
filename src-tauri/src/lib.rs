@@ -157,38 +157,21 @@ pub fn run() {
     }
 }
 
-/// How often the backend re-checks live streams against saved assignments on
-/// the native backend, and so the worst-case delay before a just-opened
-/// stream lands on its channel. A browser tears down and rebuilds its stream
-/// on every new video, so this window is audible - the first fraction of a
-/// second plays on the default output - and it is kept short because the
-/// check is cheap: one channel round-trip to the PipeWire thread, which
-/// answers from the node map it already maintains. Measured at ~150us per
-/// tick for 8 live streams in a debug build, so ~0.1% of a core at this
-/// cadence.
+/// Worst-case delay before a new stream lands on its channel; the gap is
+/// audible (it plays on the default output). Affordable because a native
+/// check is one round-trip answered from the loop's node map (~150us).
 const ROUTE_ENFORCE_INTERVAL: Duration = Duration::from_millis(200);
 
-/// The same, for the pactl fallback, which forks two `pactl` processes per
-/// check (~13ms). Far too expensive to run five times a second, and that
-/// backend is the compatibility path, not the one people run.
+/// The pactl fallback forks two processes per check - too dear for 5 Hz.
 const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
 
-/// How stale the UI's own stream poll must get before the pactl fallback's
-/// ticker takes over enforcement. Longer than the UI's 2s interval, so an
-/// on-screen window doesn't have every poll duplicated behind it. The native
-/// backend skips this dedup entirely: its ticker is faster than the UI poll,
-/// and deferring to the UI would put the 2s delay back.
+/// Longer than the UI's 2s poll, so an on-screen window isn't shadowed by
+/// the ticker; clock-based so a stalled webview is still covered.
 const UI_POLL_GRACE: Duration = Duration::from_secs(5);
 
-/// Keeps saved app→channel assignments enforced from the backend, whether or
-/// not anyone is looking at the window.
-///
-/// The UI's own poll pauses while Sink is hidden in the tray (TD-009), and
-/// that used to pause auto-routing with it: an app that opened a new stream
-/// meanwhile - a browser starts one per playing tab - landed on the default
-/// sink and stayed there, which reads as Sink forgetting its routing. The
-/// enforcement therefore lives here, on a timer that never sleeps, and the
-/// frontend poll is now only about what it draws.
+/// Enforces saved app→channel assignments from the backend. The UI poll
+/// pauses in the tray (TD-009), and enforcement used to pause with it -
+/// streams opened meanwhile stayed on the default sink.
 fn spawn_route_enforcer(handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         let native = handle.state::<AppState>().backend_native;
@@ -201,17 +184,12 @@ fn spawn_route_enforcer(handle: tauri::AppHandle) {
         loop {
             std::thread::sleep(interval);
             let state = handle.state::<AppState>();
-            // On the fallback backend a check is expensive enough to be worth
-            // skipping when an on-screen window already ran one. Waiting on
-            // the clock rather than on window visibility means a webview that
-            // stalls or sleeps is covered too.
             if !native && state.ui_polled_within(UI_POLL_GRACE) {
                 continue;
             }
             match commands::devices::refresh_streams(state.inner()) {
                 Ok(_) => last_error = None,
-                // Failures here are usually transient (the backend restarting
-                // its loop). Log a given message once rather than every tick.
+                // Usually transient; log each message once, not every tick.
                 Err(e) => {
                     if last_error.as_deref() != Some(e.as_str()) {
                         eprintln!("sink: auto-route enforcement failed: {e}");

@@ -34,10 +34,8 @@ pub fn route_app_to_channel(
         return Ok(()); // stream vanished between move and lookup
     };
 
-    // The app's other live streams follow. Assignments are per app, not per
-    // stream, and an app can hold several at once (a browser opens one per
-    // playing tab) - leaving those behind would split one app across
-    // channels and look like the choice didn't take.
+    // Assignments are per app, not per stream; leaving an app's other live
+    // streams behind would split it across channels.
     let siblings: Vec<&crate::audio::types::AppStream> = streams
         .iter()
         .filter(|s| {
