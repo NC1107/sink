@@ -7,10 +7,14 @@ import { ChannelSelect } from "./ChannelSelect";
 import { HSlider } from "./HSlider";
 
 interface AppRowProps {
-  stream: AppStream;
+  /** Every live stream of one app on one channel, lowest index first. */
+  streams: AppStream[];
+  /** The app's stream count across all channels; more than this row holds
+   *  when something external split the app, and routing here moves all. */
+  total?: number;
 }
 
-export function AppRow({ stream }: Readonly<AppRowProps>) {
+export function AppRow({ streams, total }: Readonly<AppRowProps>) {
   const routeApp = useMixerStore((s) => s.routeApp);
   const setAppVolume = useMixerStore((s) => s.setAppVolume);
   const renameApp = useMixerStore((s) => s.renameApp);
@@ -19,7 +23,10 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
+  // The oldest stream stands for the app; volume applies to all below.
+  const stream = streams[0];
   const displayName = stream.alias ?? stream.app_name;
+  const active = streams.some((s) => s.active);
 
   const startEdit = () => {
     setDraft(displayName);
@@ -55,8 +62,8 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
         ) : (
           <div className="rtitle" title={stream.app_name}>
             <span
-              className={"eq" + (stream.active ? " on" : "")}
-              title={stream.active ? "Playing audio" : "Silent"}
+              className={"eq" + (active ? " on" : "")}
+              title={active ? "Playing audio" : "Silent"}
               aria-hidden="true"
             >
               <i />
@@ -87,13 +94,21 @@ export function AppRow({ stream }: Readonly<AppRowProps>) {
             />
           </div>
         )}
-        <div className="rsub">stream #{stream.index}</div>
+        {(total ?? streams.length) > streams.length ? (
+          <div className="rsub">
+            {streams.length} of {total} streams
+          </div>
+        ) : (
+          streams.length > 1 && <div className="rsub">{streams.length} streams</div>
+        )}
       </div>
       <div className="rtrail">
         <HSlider
           value={stream.volume_percent}
           max={100}
-          onChange={(v) => void setAppVolume(stream.index, v)}
+          onChange={(v) => {
+            for (const s of streams) void setAppVolume(s.index, v);
+          }}
         />
         <ChannelSelect
           value={stream.assigned_sink}

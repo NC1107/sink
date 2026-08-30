@@ -242,6 +242,8 @@ impl AudioBackend for PactlBackend {
 
                 AppStream {
                     index: input.index,
+                    // PulseAudio's sink-input index is itself never reused.
+                    serial: u64::from(input.index),
                     app_name,
                     match_prop,
                     match_value,

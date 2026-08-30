@@ -13,23 +13,41 @@ export function AppList() {
   const seenApps = useMixerStore((s) => s.seenApps);
   const [showIgnored, setShowIgnored] = useState(false);
 
-  const byName = (a: AppStream, b: AppStream) =>
-    (a.alias ?? a.app_name).localeCompare(b.alias ?? b.app_name);
+  const identity = (s: AppStream) => `${s.match_prop}\0${s.match_value}`;
+  const byName = (a: AppStream[], b: AppStream[]) =>
+    (a[0].alias ?? a[0].app_name).localeCompare(b[0].alias ?? b[0].app_name);
+
+  /** One row per app, not per stream - a browser holds one per playing tab. */
+  const byApp = (streams: AppStream[]): AppStream[][] => {
+    const apps = new Map<string, AppStream[]>();
+    for (const s of streams) {
+      const group = apps.get(identity(s));
+      if (group) group.push(s);
+      else apps.set(identity(s), [s]);
+    }
+    for (const group of apps.values()) group.sort((a, b) => a.index - b.index);
+    return [...apps.values()].sort(byName);
+  };
 
   const groups = [
     ...channels.map((c) => ({
       key: c.name,
       label: c.label,
-      streams: appStreams.filter((s) => s.assigned_sink === c.name).sort(byName),
+      apps: byApp(appStreams.filter((s) => s.assigned_sink === c.name)),
     })),
     {
       key: "unrouted",
       label: "Unrouted",
-      streams: appStreams.filter((s) => !s.assigned_sink).sort(byName),
+      apps: byApp(appStreams.filter((s) => !s.assigned_sink)),
     },
-  ].filter((g) => g.streams.length > 0);
+  ].filter((g) => g.apps.length > 0);
 
-  const liveIdentity = new Set(appStreams.map((s) => `${s.match_prop}\0${s.match_value}`));
+  const liveIdentity = new Set(appStreams.map(identity));
+  const streamTotals = new Map<string, number>();
+  for (const s of appStreams) {
+    const key = identity(s);
+    streamTotals.set(key, (streamTotals.get(key) ?? 0) + 1);
+  }
   const inactive = seenApps
     .filter((a) => !a.ignored && !liveIdentity.has(`${a.match_prop}\0${a.match_value}`))
     .sort((a, b) => b.last_seen - a.last_seen);
@@ -43,7 +61,7 @@ export function AppList() {
         <div className="screen-head-actions">
           <span className="tag">
             <Ms name="graphic_eq" />
-            {appStreams.length} {appStreams.length === 1 ? "stream" : "streams"}
+            {liveIdentity.size} {liveIdentity.size === 1 ? "app" : "apps"}
           </span>
         </div>
       </div>
@@ -58,11 +76,15 @@ export function AppList() {
           groups.map((group) => (
             <div key={group.key}>
               <div className="section-label">
-                {group.label} · {group.streams.length}
+                {group.label} · {group.apps.length}
               </div>
               <div className="card">
-                {group.streams.map((stream) => (
-                  <AppRow key={stream.index} stream={stream} />
+                {group.apps.map((streams) => (
+                  <AppRow
+                    key={identity(streams[0])}
+                    streams={streams}
+                    total={streamTotals.get(identity(streams[0])) ?? streams.length}
+                  />
                 ))}
               </div>
             </div>

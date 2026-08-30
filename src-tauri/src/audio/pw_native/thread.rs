@@ -1322,6 +1322,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                         crate::audio::types::resolve_identity(|key| n.props.get(key).cloned());
                     AppStream {
                         index: n.id,
+                        serial: n.serial.unwrap_or_else(|| u64::from(n.id)),
                         app_name,
                         match_prop,
                         match_value,

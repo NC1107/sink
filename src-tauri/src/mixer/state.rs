@@ -42,10 +42,9 @@ pub struct MixerState {
     pub buses: crate::persistence::buses::Buses,
     /// App preferences (device naming etc.), persisted to disk.
     pub prefs: crate::persistence::prefs::Prefs,
-    /// Stream indices already considered for auto-routing this session.
-    /// Each stream is enforced once, on first sight, so a user moving a
-    /// stream elsewhere (here or in pavucontrol) isn't fought every poll.
-    pub auto_routed: HashSet<u32>,
+    /// Streams already auto-routed once, by `object.serial` (node ids
+    /// recycle); manual re-routing isn't fought.
+    pub auto_routed: HashSet<u64>,
 }
 
 impl MixerState {

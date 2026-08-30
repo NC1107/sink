@@ -133,6 +133,7 @@ pub fn run() {
             if let Some(levels) = levels {
                 spawn_level_emitter(app.handle().clone(), levels);
             }
+            spawn_route_enforcer(app.handle().clone());
             Ok(())
         })
         // Close button hides to tray instead of quitting - main window
@@ -154,6 +155,51 @@ pub fn run() {
         eprintln!("sink: fatal error while running tauri application: {e}");
         std::process::exit(1);
     }
+}
+
+/// The gap before a new stream lands on its channel is audible; a native
+/// check costs ~150us.
+const ROUTE_ENFORCE_INTERVAL: Duration = Duration::from_millis(200);
+
+/// pactl forks two processes per check.
+const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
+
+/// Longer than the UI's 2s poll; clock-based so a stalled webview is covered.
+const UI_POLL_GRACE: Duration = Duration::from_secs(5);
+
+/// Enforces assignments from the backend; the UI poll pauses in the tray (TD-009).
+fn spawn_route_enforcer(handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        let native = handle.state::<AppState>().backend_native;
+        let interval = if native {
+            ROUTE_ENFORCE_INTERVAL
+        } else {
+            ROUTE_ENFORCE_INTERVAL_PACTL
+        };
+        let mut last_error: Option<String> = None;
+        let mut failures: u32 = 0;
+        loop {
+            let pause = if failures >= 3 { interval * 10 } else { interval };
+            std::thread::sleep(pause);
+            let state = handle.state::<AppState>();
+            if !native && state.ui_polled_within(UI_POLL_GRACE) {
+                continue;
+            }
+            match commands::devices::refresh_streams(state.inner()) {
+                Ok(_) => {
+                    last_error = None;
+                    failures = 0;
+                }
+                Err(e) => {
+                    failures = failures.saturating_add(1);
+                    if last_error.as_deref() != Some(e.as_str()) {
+                        eprintln!("sink: auto-route enforcement failed: {e}");
+                        last_error = Some(e);
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// Streams per-channel peak levels to the UI at 10 Hz as `levels` events.

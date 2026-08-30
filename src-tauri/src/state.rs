@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::audio::backend::AudioBackend;
 use crate::mixer::state::MixerState;
@@ -9,9 +10,29 @@ pub struct AppState {
     /// True when the native PipeWire backend is driving (vs pactl fallback).
     pub backend_native: bool,
     pub mixer: Mutex<MixerState>,
+    /// Lets the pactl-backend ticker yield while an on-screen window is
+    /// already polling (see `lib::spawn_route_enforcer`).
+    ui_stream_poll: Mutex<Option<Instant>>,
+    pub refresh_gate: Mutex<()>,
 }
 
 impl AppState {
+    /// Record that the UI just polled the stream list.
+    pub fn note_ui_stream_poll(&self) {
+        if let Ok(mut last) = self.ui_stream_poll.lock() {
+            *last = Some(Instant::now());
+        }
+    }
+
+    /// Whether the UI polled the stream list within `window`.
+    pub fn ui_polled_within(&self, window: Duration) -> bool {
+        self.ui_stream_poll
+            .lock()
+            .ok()
+            .and_then(|last| *last)
+            .is_some_and(|last| last.elapsed() < window)
+    }
+
     /// Lock the mixer state, mapping poisoning to a command-friendly error.
     /// All command handlers go through this instead of hand-rolled map_errs.
     pub fn lock_mixer(&self) -> Result<std::sync::MutexGuard<'_, MixerState>, String> {
@@ -57,6 +78,8 @@ impl AppState {
             backend,
             backend_native,
             mixer: Mutex::new(mixer),
+            ui_stream_poll: Mutex::new(None),
+            refresh_gate: Mutex::new(()),
         }
     }
 

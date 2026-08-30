@@ -21,19 +21,27 @@ pub fn route_app_to_channel(
     if !sink_name.is_empty() && !is_virtual_sink(&sink_name) {
         return Err(format!("unknown channel: {sink_name}"));
     }
-    state
-        .backend
-        .move_stream_to_sink(stream_index, &sink_name)
-        .map_err(|e| e.to_string())?;
 
-    // Resolve the stream's identity to record the assignment. The stream is
-    // already moved at this point, so persistence failures are reported but
-    // the live routing stands.
+    // Assignments are per app, not per stream: siblings move too.
     let streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
     let Some(stream) = streams.iter().find(|s| s.index == stream_index) else {
-        return Ok(()); // stream vanished between move and lookup
+        // Vanished between the click and now; move the raw index anyway in
+        // case the listing raced, with nothing to record against it.
+        return state
+            .backend
+            .move_stream_to_sink(stream_index, &sink_name)
+            .map_err(|e| e.to_string());
     };
+    let siblings: Vec<&crate::audio::types::AppStream> = streams
+        .iter()
+        .filter(|s| {
+            s.index != stream_index
+                && s.match_prop == stream.match_prop
+                && s.match_value == stream.match_value
+        })
+        .collect();
 
+    // Record intent before moving, or a concurrent tick undoes the move.
     let assignments = {
         let mut mixer = state.lock_mixer()?;
         if sink_name.is_empty() {
@@ -45,11 +53,25 @@ pub fn route_app_to_channel(
                 .assignments
                 .set(&stream.match_prop, &stream.match_value, &sink_name);
         }
-        // The user explicitly placed this stream; don't auto-route it again.
-        mixer.auto_routed.insert(stream_index);
+        // The user explicitly placed these streams; don't auto-route them again.
+        mixer.auto_routed.insert(stream.serial);
+        mixer.auto_routed.extend(siblings.iter().map(|s| s.serial));
         crate::commands::profiles::autosave_active(&mixer);
         mixer.assignments.clone()
     };
+
+    state
+        .backend
+        .move_stream_to_sink(stream_index, &sink_name)
+        .map_err(|e| e.to_string())?;
+    for sibling in &siblings {
+        if let Err(e) = state.backend.move_stream_to_sink(sibling.index, &sink_name) {
+            eprintln!(
+                "sink: moving {} (#{}) failed: {e}",
+                stream.app_name, sibling.index
+            );
+        }
+    }
 
     assignments.save().map_err(|e| e.to_string())?;
     wireplumber::write(&assignments).map_err(|e| e.to_string())?;
