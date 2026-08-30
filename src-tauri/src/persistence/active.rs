@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::error::SinkError;
 
 fn marker_path() -> Result<PathBuf, SinkError> {
-    let dir = dirs::config_dir()
+    let dir = crate::persistence::config_root()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
     Ok(dir.join("sink").join("active_profile"))
 }

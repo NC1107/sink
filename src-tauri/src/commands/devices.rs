@@ -369,3 +369,55 @@ pub fn teardown_virtual_devices(state: State<'_, AppState>) -> Result<(), String
         Err(errors.join("; "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::mock::{stream, MockBackend};
+    use crate::persistence::testing::TempConfig;
+    use std::sync::Arc;
+
+    #[test]
+    fn refresh_enforces_an_assignment_once() {
+        let _cfg = TempConfig::new("refresh-once");
+        let backend = Arc::new(MockBackend::with_streams(vec![stream(
+            7, 100, "Firefox", None,
+        )]));
+        let state = AppState::new(backend.clone(), true);
+        {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            mixer.init_defaults();
+            mixer
+                .assignments
+                .set("application.name", "Firefox", "sink_game");
+        }
+
+        refresh_streams(&state).expect("first pass");
+        assert_eq!(backend.moves(), vec![(7, "sink_game".to_string())]);
+
+        // The user drags it elsewhere in pavucontrol. The ticker runs five
+        // times a second; it must leave that alone rather than dragging the
+        // stream back on the next pass.
+        backend.set_assigned(7, Some("sink_chat"));
+        refresh_streams(&state).expect("second pass");
+        assert_eq!(
+            backend.moves().len(),
+            1,
+            "a manual re-route must not be fought"
+        );
+    }
+
+    #[test]
+    fn refresh_leaves_unassigned_apps_alone() {
+        let _cfg = TempConfig::new("refresh-unassigned");
+        let backend = Arc::new(MockBackend::with_streams(vec![stream(
+            9, 300, "Spotify", None,
+        )]));
+        let state = AppState::new(backend.clone(), true);
+        state.lock_mixer().expect("mixer").init_defaults();
+
+        let streams = refresh_streams(&state).expect("pass");
+        assert!(backend.moves().is_empty());
+        assert_eq!(streams.len(), 1);
+    }
+}

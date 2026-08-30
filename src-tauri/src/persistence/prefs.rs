@@ -60,7 +60,7 @@ impl Default for Prefs {
 
 impl Prefs {
     pub fn config_path() -> Result<PathBuf, SinkError> {
-        let dir = dirs::config_dir()
+        let dir = crate::persistence::config_root()
             .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
         Ok(dir.join("sink").join("prefs.json"))
     }

@@ -7,7 +7,7 @@ use crate::error::SinkError;
 /// Mic chain configuration, stored as JSON at
 /// `$XDG_CONFIG_HOME/sink/mic.json`.
 pub fn config_path() -> Result<PathBuf, SinkError> {
-    let dir = dirs::config_dir()
+    let dir = crate::persistence::config_root()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
     Ok(dir.join("sink").join("mic.json"))
 }

@@ -11,7 +11,7 @@ use crate::error::SinkError;
 use crate::persistence::profiles::sanitize_name;
 
 fn presets_dir() -> Result<PathBuf, SinkError> {
-    let dir = dirs::config_dir()
+    let dir = crate::persistence::config_root()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
     Ok(dir.join("sink").join("eq_presets"))
 }
