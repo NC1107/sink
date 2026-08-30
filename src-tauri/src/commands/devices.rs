@@ -21,11 +21,8 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
 }
 
 /// List live streams, record history, and enforce saved assignments - each
-/// stream once, on first sight, so manual re-routing isn't fought. Idempotent:
-/// driven by both the backend ticker and the UI's own poll.
+/// stream once, on first sight. Idempotent; the ticker and the UI both call it.
 pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
-    // One pass at a time; the gate carries no data, so a poisoned lock is
-    // safe to reclaim.
     let _gate = state
         .refresh_gate
         .lock()

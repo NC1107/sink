@@ -5,7 +5,6 @@ export interface AppStream {
   /** Unique, never-reused stream id (PipeWire's object.serial). */
   serial: number;
   app_name: string;
-  /** PipeWire property the identity was read from. */
   match_prop: string;
   /** Raw property value (stream identity for persistence). */
   match_value: string;

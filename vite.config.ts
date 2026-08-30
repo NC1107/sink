@@ -8,8 +8,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {
-    // Vite's default binding can answer only on [::1] while the webview
-    // resolves the devUrl's "localhost" to 127.0.0.1 - blank window.
     host: "127.0.0.1",
     port: 1420,
     strictPort: true,

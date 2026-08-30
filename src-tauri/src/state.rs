@@ -13,9 +13,6 @@ pub struct AppState {
     /// Lets the pactl-backend ticker yield while an on-screen window is
     /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
-    /// Serializes `refresh_streams` across the ticker and UI invokes: two
-    /// interleaved passes could otherwise race their `seen.save()` calls on
-    /// one temp path and publish the older snapshot.
     pub refresh_gate: Mutex<()>,
 }
 

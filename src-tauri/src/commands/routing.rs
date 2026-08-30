@@ -22,9 +22,7 @@ pub fn route_app_to_channel(
         return Err(format!("unknown channel: {sink_name}"));
     }
 
-    // Resolve the stream's identity and siblings before anything moves.
-    // Assignments are per app, not per stream; leaving an app's other live
-    // streams behind would split it across channels.
+    // Assignments are per app, not per stream: siblings move too.
     let streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
     let Some(stream) = streams.iter().find(|s| s.index == stream_index) else {
         // Vanished between the click and now; move the raw index anyway in
@@ -43,9 +41,7 @@ pub fn route_app_to_channel(
         })
         .collect();
 
-    // Record intent before moving: the enforcement ticker runs concurrently,
-    // and a stream it hasn't ledgered yet must not be seen mid-move against
-    // a stale assignment (it would be "corrected" right back).
+    // Record intent before moving, or a concurrent tick undoes the move.
     let assignments = {
         let mut mixer = state.lock_mixer()?;
         if sink_name.is_empty() {

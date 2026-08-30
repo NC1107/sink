@@ -157,21 +157,17 @@ pub fn run() {
     }
 }
 
-/// Worst-case delay before a new stream lands on its channel; the gap is
-/// audible (it plays on the default output). Affordable because a native
-/// check is one round-trip answered from the loop's node map (~150us).
+/// The gap before a new stream lands on its channel is audible; a native
+/// check costs ~150us.
 const ROUTE_ENFORCE_INTERVAL: Duration = Duration::from_millis(200);
 
-/// The pactl fallback forks two processes per check - too dear for 5 Hz.
+/// pactl forks two processes per check.
 const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
 
-/// Longer than the UI's 2s poll, so an on-screen window isn't shadowed by
-/// the ticker; clock-based so a stalled webview is still covered.
+/// Longer than the UI's 2s poll; clock-based so a stalled webview is covered.
 const UI_POLL_GRACE: Duration = Duration::from_secs(5);
 
-/// Enforces saved app→channel assignments from the backend. The UI poll
-/// pauses in the tray (TD-009), and enforcement used to pause with it -
-/// streams opened meanwhile stayed on the default sink.
+/// Enforces assignments from the backend; the UI poll pauses in the tray (TD-009).
 fn spawn_route_enforcer(handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         let native = handle.state::<AppState>().backend_native;
@@ -183,9 +179,6 @@ fn spawn_route_enforcer(handle: tauri::AppHandle) {
         let mut last_error: Option<String> = None;
         let mut failures: u32 = 0;
         loop {
-            // A wedged backend must not be fed a request per tick forever -
-            // the loop's command queue is unbounded, and each timed-out call
-            // already costs 3s. Back off once errors look persistent.
             let pause = if failures >= 3 { interval * 10 } else { interval };
             std::thread::sleep(pause);
             let state = handle.state::<AppState>();
@@ -197,7 +190,6 @@ fn spawn_route_enforcer(handle: tauri::AppHandle) {
                     last_error = None;
                     failures = 0;
                 }
-                // Usually transient; log each message once, not every tick.
                 Err(e) => {
                     failures = failures.saturating_add(1);
                     if last_error.as_deref() != Some(e.as_str()) {
