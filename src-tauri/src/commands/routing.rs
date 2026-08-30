@@ -6,6 +6,22 @@ use crate::state::AppState;
 
 pub(crate) const MAX_VOLUME: u8 = 150;
 
+/// An app's other live streams: same identity, different stream. Routing is
+/// per app, so these move with the one the user clicked.
+fn siblings_of<'a>(
+    streams: &'a [crate::audio::types::AppStream],
+    stream: &crate::audio::types::AppStream,
+) -> Vec<&'a crate::audio::types::AppStream> {
+    streams
+        .iter()
+        .filter(|s| {
+            s.index != stream.index
+                && s.match_prop == stream.match_prop
+                && s.match_value == stream.match_value
+        })
+        .collect()
+}
+
 /// Move an app stream onto a channel. An empty `sink_name` unassigns the
 /// stream (returns it to the system default sink).
 ///
@@ -32,14 +48,7 @@ pub fn route_app_to_channel(
             .move_stream_to_sink(stream_index, &sink_name)
             .map_err(|e| e.to_string());
     };
-    let siblings: Vec<&crate::audio::types::AppStream> = streams
-        .iter()
-        .filter(|s| {
-            s.index != stream_index
-                && s.match_prop == stream.match_prop
-                && s.match_value == stream.match_value
-        })
-        .collect();
+    let siblings: Vec<&crate::audio::types::AppStream> = siblings_of(&streams, stream);
 
     // Record intent before moving, or a concurrent tick undoes the move.
     let assignments = {
@@ -191,4 +200,44 @@ pub fn set_app_volume(
         .backend
         .set_app_volume(stream_index, volume.min(MAX_VOLUME))
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::types::AppStream;
+
+    fn stream(index: u32, prop: &str, value: &str) -> AppStream {
+        AppStream {
+            index,
+            serial: u64::from(index) + 1000,
+            app_name: value.to_string(),
+            match_prop: prop.into(),
+            match_value: value.into(),
+            alias: None,
+            icon_name: None,
+            icon_path: None,
+            pid: None,
+            assigned_sink: None,
+            volume_percent: 100,
+            muted: false,
+            active: true,
+        }
+    }
+
+    #[test]
+    fn siblings_are_the_apps_other_streams() {
+        let streams = vec![
+            stream(1, "application.name", "Firefox"),
+            stream(2, "application.name", "Firefox"),
+            stream(3, "application.name", "Spotify"),
+            // Same value under a different property is a different identity.
+            stream(4, "application.process.binary", "Firefox"),
+        ];
+        let picked = siblings_of(&streams, &streams[0]);
+        let indices: Vec<u32> = picked.iter().map(|s| s.index).collect();
+        assert_eq!(indices, vec![2], "only same-identity streams, never itself");
+
+        assert!(siblings_of(&streams, &streams[2]).is_empty());
+    }
 }

@@ -81,31 +81,7 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         // Hide ignored identities (also exempts them from auto-routing).
         streams.retain(|s| !mixer.seen.is_ignored(&s.match_prop, &s.match_value));
 
-        // Only enforce once the virtual sinks exist; otherwise streams would be
-        // marked handled while their target sink can't be moved to yet.
-        let mut planned: Vec<(u32, String, String)> = Vec::new();
-        if mixer.initialized {
-            for stream in &streams {
-                if mixer.auto_routed.contains(&stream.serial) {
-                    continue;
-                }
-                if let Some(target) = mixer
-                    .assignments
-                    .sink_for(&stream.match_prop, &stream.match_value)
-                {
-                    if stream.assigned_sink.as_deref() != Some(target) {
-                        planned.push((stream.index, target.to_string(), stream.app_name.clone()));
-                    }
-                }
-                // Marked handled once (before the move, so a concurrent poll
-                // can't re-plan it); manual re-routing then isn't fought.
-                mixer.auto_routed.insert(stream.serial);
-            }
-            // Forget streams that have gone away, so the ledger can't grow
-            // without bound.
-            let live: std::collections::HashSet<u64> = streams.iter().map(|s| s.serial).collect();
-            mixer.auto_routed.retain(|serial| live.contains(serial));
-        }
+        let planned = mixer.plan_auto_routes(&streams);
 
         // User-chosen display names (in-memory read, cheap enough to keep here).
         for stream in &mut streams {
