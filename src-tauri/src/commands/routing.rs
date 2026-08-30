@@ -34,7 +34,11 @@ pub fn route_app_to_channel(
     stream_index: u32,
     sink_name: String,
 ) -> Result<(), String> {
-    if !sink_name.is_empty() && !is_virtual_sink(&sink_name) {
+    route_app(state.inner(), stream_index, &sink_name)
+}
+
+pub fn route_app(state: &AppState, stream_index: u32, sink_name: &str) -> Result<(), String> {
+    if !sink_name.is_empty() && !is_virtual_sink(sink_name) {
         return Err(format!("unknown channel: {sink_name}"));
     }
 
@@ -45,7 +49,7 @@ pub fn route_app_to_channel(
         // case the listing raced, with nothing to record against it.
         return state
             .backend
-            .move_stream_to_sink(stream_index, &sink_name)
+            .move_stream_to_sink(stream_index, sink_name)
             .map_err(|e| e.to_string());
     };
     let siblings: Vec<&crate::audio::types::AppStream> = siblings_of(&streams, stream);
@@ -60,7 +64,7 @@ pub fn route_app_to_channel(
         } else {
             mixer
                 .assignments
-                .set(&stream.match_prop, &stream.match_value, &sink_name);
+                .set(&stream.match_prop, &stream.match_value, sink_name);
         }
         // The user explicitly placed these streams; don't auto-route them again.
         mixer.auto_routed.insert(stream.serial);
@@ -71,10 +75,10 @@ pub fn route_app_to_channel(
 
     state
         .backend
-        .move_stream_to_sink(stream_index, &sink_name)
+        .move_stream_to_sink(stream_index, sink_name)
         .map_err(|e| e.to_string())?;
     for sibling in &siblings {
-        if let Err(e) = state.backend.move_stream_to_sink(sibling.index, &sink_name) {
+        if let Err(e) = state.backend.move_stream_to_sink(sibling.index, sink_name) {
             eprintln!(
                 "sink: moving {} (#{}) failed: {e}",
                 stream.app_name, sibling.index
@@ -205,7 +209,115 @@ pub fn set_app_volume(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::audio::mock::{stream as mock_stream, MockBackend};
     use crate::audio::types::AppStream;
+    use crate::persistence::testing::TempConfig;
+    use std::sync::Arc;
+
+    /// An AppState on a private config root, channels created, with one
+    /// saved assignment for Firefox.
+    fn app(backend: Arc<MockBackend>) -> AppState {
+        let state = AppState::new(backend, true);
+        {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            mixer.init_defaults();
+            mixer
+                .assignments
+                .set("application.name", "Firefox", "sink_game");
+        }
+        state
+    }
+
+    #[test]
+    fn routing_records_the_assignment_before_it_moves_anything() {
+        let _cfg = TempConfig::new("route-order");
+        let backend = Arc::new(MockBackend::with_streams(vec![mock_stream(
+            7, 100, "Firefox", None,
+        )]));
+        let state = Arc::new(app(backend.clone()));
+
+        // Observe from inside the move: the enforcement ticker runs
+        // concurrently, so the assignment and the ledger must already say
+        // where this stream belongs, or a tick landing here corrects the
+        // move straight back.
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (probe, probed_state) = (Arc::clone(&seen), Arc::clone(&state));
+        backend.on_move(move |_, _| {
+            let mixer = probed_state.lock_mixer().expect("mixer");
+            probe.lock().expect("probe").push((
+                mixer
+                    .assignments
+                    .sink_for("application.name", "Firefox")
+                    .map(str::to_string),
+                mixer.auto_routed.contains(&100),
+            ));
+        });
+
+        route_app(&state, 7, "sink_chat").expect("routes");
+
+        assert_eq!(
+            seen.lock().expect("probe").as_slice(),
+            [(Some("sink_chat".to_string()), true)],
+            "assignment and ledger must be recorded before the move"
+        );
+    }
+
+    #[test]
+    fn routing_moves_every_stream_of_the_app() {
+        let _cfg = TempConfig::new("route-siblings");
+        let backend = Arc::new(MockBackend::with_streams(vec![
+            mock_stream(7, 100, "Firefox", None),
+            mock_stream(8, 101, "Firefox", None),
+            mock_stream(9, 102, "Spotify", None),
+        ]));
+        let state = app(backend.clone());
+
+        route_app(&state, 7, "sink_chat").expect("routes");
+
+        let mut moved: Vec<u32> = backend.moves().into_iter().map(|(i, _)| i).collect();
+        moved.sort_unstable();
+        assert_eq!(moved, vec![7, 8], "siblings follow, other apps don't");
+        assert!(backend.moves().iter().all(|(_, s)| s == "sink_chat"));
+
+        // Every moved stream is ledgered, so the ticker leaves them alone.
+        let mixer = state.lock_mixer().expect("mixer");
+        assert!(mixer.auto_routed.contains(&100) && mixer.auto_routed.contains(&101));
+        assert!(!mixer.auto_routed.contains(&102));
+    }
+
+    #[test]
+    fn unrouting_clears_the_assignment() {
+        let _cfg = TempConfig::new("route-clear");
+        let backend = Arc::new(MockBackend::with_streams(vec![mock_stream(
+            7,
+            100,
+            "Firefox",
+            Some("sink_game"),
+        )]));
+        let state = app(backend.clone());
+
+        route_app(&state, 7, "").expect("unroutes");
+
+        assert_eq!(backend.moves(), vec![(7, String::new())]);
+        assert!(state
+            .lock_mixer()
+            .expect("mixer")
+            .assignments
+            .sink_for("application.name", "Firefox")
+            .is_none());
+    }
+
+    #[test]
+    fn routing_rejects_a_sink_that_is_not_one_of_ours() {
+        let _cfg = TempConfig::new("route-reject");
+        let backend = Arc::new(MockBackend::with_streams(vec![mock_stream(
+            7, 100, "Firefox", None,
+        )]));
+        let state = app(backend.clone());
+
+        assert!(route_app(&state, 7, "alsa_output.hw_0").is_err());
+        assert!(backend.moves().is_empty(), "nothing moves on a bad target");
+    }
 
     fn stream(index: u32, prop: &str, value: &str) -> AppStream {
         AppStream {

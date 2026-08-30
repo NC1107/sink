@@ -38,7 +38,7 @@ pub struct ProfileInfo {
 }
 
 fn profiles_dir() -> Result<PathBuf, SinkError> {
-    let dir = dirs::config_dir()
+    let dir = crate::persistence::config_root()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
     Ok(dir.join("sink").join("profiles"))
 }

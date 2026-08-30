@@ -21,6 +21,56 @@ pub fn unix_now() -> u64 {
         .unwrap_or(0)
 }
 
+/// Where Sink's own config directory lives. Release builds always resolve
+/// `$XDG_CONFIG_HOME`; the test override below does not exist in them.
+pub fn config_root() -> Option<std::path::PathBuf> {
+    #[cfg(test)]
+    if let Some(root) = testing::config_root_override() {
+        return Some(root);
+    }
+    dirs::config_dir()
+}
+
+/// Redirects [`config_root`] per thread, so a test can exercise a real save
+/// path without writing into the developer's own config.
+#[cfg(test)]
+pub mod testing {
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+
+    thread_local! {
+        static ROOT: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    }
+
+    pub fn config_root_override() -> Option<PathBuf> {
+        ROOT.with(|r| r.borrow().clone())
+    }
+
+    /// A private config root for this test, removed when the guard drops.
+    pub struct TempConfig(PathBuf);
+
+    impl TempConfig {
+        pub fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "sink-test-{tag}-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("temp config root");
+            ROOT.with(|r| *r.borrow_mut() = Some(dir.clone()));
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempConfig {
+        fn drop(&mut self) {
+            ROOT.with(|r| *r.borrow_mut() = None);
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 /// Create Sink's config directory (and parents) with owner-only access -
 /// routing rules and app history are nobody else's business. Used by every
 /// save path that writes under `$XDG_CONFIG_HOME/sink`.
@@ -66,7 +116,7 @@ pub fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> std::
 /// directory (channels, mixes, profiles, assignments, history, prefs)
 /// and the WirePlumber routing rules.
 pub fn wipe_all() -> Result<(), crate::error::SinkError> {
-    if let Some(dir) = dirs::config_dir() {
+    if let Some(dir) = crate::persistence::config_root() {
         let sink_dir = dir.join("sink");
         if sink_dir.exists() {
             std::fs::remove_dir_all(&sink_dir)?;

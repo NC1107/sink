@@ -13,7 +13,7 @@ use crate::error::SinkError;
 const UNIT_NAME: &str = "sink.service";
 
 fn unit_path() -> Result<PathBuf, SinkError> {
-    let dir = dirs::config_dir()
+    let dir = crate::persistence::config_root()
         .ok_or_else(|| SinkError::Config("cannot resolve the user config directory".into()))?;
     Ok(dir.join("systemd").join("user").join(UNIT_NAME))
 }
