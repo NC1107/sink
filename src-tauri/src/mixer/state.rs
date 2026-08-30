@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::audio::types::VirtualSink;
+use crate::audio::types::{AppStream, VirtualSink};
 use crate::persistence::aliases::Aliases;
 use crate::persistence::assignments::Assignments;
 use crate::persistence::channels::Channels;
@@ -93,6 +93,39 @@ impl MixerState {
         )
     }
 
+    /// Decide which live streams to move onto their saved channel, and
+    /// record them as handled. Each stream is considered once, on first
+    /// sight, so a manual re-route (here or in pavucontrol) isn't fought;
+    /// streams that have gone away are forgotten so the ledger stays bounded.
+    ///
+    /// Returns `(stream index, target sink, app name)` for the caller to
+    /// execute once it has released the lock.
+    pub fn plan_auto_routes(&mut self, streams: &[AppStream]) -> Vec<(u32, String, String)> {
+        // Enforce only once the virtual sinks exist, or streams would be
+        // marked handled while their target can't be moved to yet.
+        if !self.initialized {
+            return Vec::new();
+        }
+        let mut planned = Vec::new();
+        for stream in streams {
+            if self.auto_routed.contains(&stream.serial) {
+                continue;
+            }
+            if let Some(target) = self
+                .assignments
+                .sink_for(&stream.match_prop, &stream.match_value)
+            {
+                if stream.assigned_sink.as_deref() != Some(target) {
+                    planned.push((stream.index, target.to_string(), stream.app_name.clone()));
+                }
+            }
+            self.auto_routed.insert(stream.serial);
+        }
+        let live: HashSet<u64> = streams.iter().map(|s| s.serial).collect();
+        self.auto_routed.retain(|serial| live.contains(serial));
+        planned
+    }
+
     pub fn reset(&mut self) {
         self.channels.clear();
         self.initialized = false;
@@ -132,6 +165,98 @@ mod tests {
         assert!(state.seen.get("application.name", "plain").is_none());
         assert!(state.seen.get("application.name", "assigned").is_some());
         assert!(state.seen.get("application.name", "aliased").is_some());
+    }
+
+    fn stream(index: u32, serial: u64, value: &str, on: Option<&str>) -> AppStream {
+        AppStream {
+            index,
+            serial,
+            app_name: value.to_string(),
+            match_prop: "application.name".into(),
+            match_value: value.into(),
+            alias: None,
+            icon_name: None,
+            icon_path: None,
+            pid: None,
+            assigned_sink: on.map(str::to_string),
+            volume_percent: 100,
+            muted: false,
+            active: true,
+        }
+    }
+
+    #[test]
+    fn auto_route_plans_once_and_respects_a_manual_move() {
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("application.name", "Firefox", "sink_game");
+
+        // First sight: planned, and marked handled.
+        let planned = state.plan_auto_routes(&[stream(7, 100, "Firefox", None)]);
+        assert_eq!(
+            planned,
+            vec![(7, "sink_game".to_string(), "Firefox".to_string())]
+        );
+
+        // Seen again, moved elsewhere by hand: not fought.
+        let planned = state.plan_auto_routes(&[stream(7, 100, "Firefox", Some("sink_chat"))]);
+        assert!(planned.is_empty());
+    }
+
+    #[test]
+    fn auto_route_skips_a_stream_already_on_target() {
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("application.name", "Firefox", "sink_game");
+        assert!(state
+            .plan_auto_routes(&[stream(7, 100, "Firefox", Some("sink_game"))])
+            .is_empty());
+    }
+
+    #[test]
+    fn auto_route_waits_for_the_sinks_to_exist() {
+        let mut state = MixerState::default();
+        state
+            .assignments
+            .set("application.name", "Firefox", "sink_game");
+        // Nothing planned, and nothing marked handled - marking here would
+        // strand the stream once the sinks arrive.
+        assert!(state
+            .plan_auto_routes(&[stream(7, 100, "Firefox", None)])
+            .is_empty());
+        assert!(state.auto_routed.is_empty());
+    }
+
+    #[test]
+    fn auto_route_reroutes_a_restarted_stream_on_a_recycled_node_id() {
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("application.name", "Firefox", "sink_game");
+        assert_eq!(
+            state.plan_auto_routes(&[stream(7, 100, "Firefox", None)]).len(),
+            1
+        );
+
+        // The app reopened its stream and PipeWire reused the node id;
+        // serials never repeat, so the new stream is still routed.
+        let planned = state.plan_auto_routes(&[stream(7, 101, "Firefox", None)]);
+        assert_eq!(planned.len(), 1);
+    }
+
+    #[test]
+    fn auto_route_ledger_forgets_dead_streams() {
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state.plan_auto_routes(&[stream(1, 10, "A", None), stream(2, 11, "B", None)]);
+        assert_eq!(state.auto_routed.len(), 2);
+        state.plan_auto_routes(&[stream(1, 10, "A", None)]);
+        assert_eq!(state.auto_routed, HashSet::from([10]));
     }
 
     #[test]
