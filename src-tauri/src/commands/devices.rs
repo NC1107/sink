@@ -24,6 +24,12 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
 /// stream once, on first sight, so manual re-routing isn't fought. Idempotent:
 /// driven by both the backend ticker and the UI's own poll.
 pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
+    // One pass at a time; the gate carries no data, so a poisoned lock is
+    // safe to reclaim.
+    let _gate = state
+        .refresh_gate
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
 
     // Desktop-entry resolution: real icon files and polished display names

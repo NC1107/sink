@@ -43,6 +43,11 @@ export function AppList() {
   ].filter((g) => g.apps.length > 0);
 
   const liveIdentity = new Set(appStreams.map(identity));
+  const streamTotals = new Map<string, number>();
+  for (const s of appStreams) {
+    const key = identity(s);
+    streamTotals.set(key, (streamTotals.get(key) ?? 0) + 1);
+  }
   const inactive = seenApps
     .filter((a) => !a.ignored && !liveIdentity.has(`${a.match_prop}\0${a.match_value}`))
     .sort((a, b) => b.last_seen - a.last_seen);
@@ -75,7 +80,11 @@ export function AppList() {
               </div>
               <div className="card">
                 {group.apps.map((streams) => (
-                  <AppRow key={identity(streams[0])} streams={streams} />
+                  <AppRow
+                    key={identity(streams[0])}
+                    streams={streams}
+                    total={streamTotals.get(identity(streams[0])) ?? streams.length}
+                  />
                 ))}
               </div>
             </div>

@@ -181,16 +181,25 @@ fn spawn_route_enforcer(handle: tauri::AppHandle) {
             ROUTE_ENFORCE_INTERVAL_PACTL
         };
         let mut last_error: Option<String> = None;
+        let mut failures: u32 = 0;
         loop {
-            std::thread::sleep(interval);
+            // A wedged backend must not be fed a request per tick forever -
+            // the loop's command queue is unbounded, and each timed-out call
+            // already costs 3s. Back off once errors look persistent.
+            let pause = if failures >= 3 { interval * 10 } else { interval };
+            std::thread::sleep(pause);
             let state = handle.state::<AppState>();
             if !native && state.ui_polled_within(UI_POLL_GRACE) {
                 continue;
             }
             match commands::devices::refresh_streams(state.inner()) {
-                Ok(_) => last_error = None,
+                Ok(_) => {
+                    last_error = None;
+                    failures = 0;
+                }
                 // Usually transient; log each message once, not every tick.
                 Err(e) => {
+                    failures = failures.saturating_add(1);
                     if last_error.as_deref() != Some(e.as_str()) {
                         eprintln!("sink: auto-route enforcement failed: {e}");
                         last_error = Some(e);

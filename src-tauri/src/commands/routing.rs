@@ -21,21 +21,19 @@ pub fn route_app_to_channel(
     if !sink_name.is_empty() && !is_virtual_sink(&sink_name) {
         return Err(format!("unknown channel: {sink_name}"));
     }
-    state
-        .backend
-        .move_stream_to_sink(stream_index, &sink_name)
-        .map_err(|e| e.to_string())?;
 
-    // Resolve the stream's identity to record the assignment. The stream is
-    // already moved at this point, so persistence failures are reported but
-    // the live routing stands.
-    let streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
-    let Some(stream) = streams.iter().find(|s| s.index == stream_index) else {
-        return Ok(()); // stream vanished between move and lookup
-    };
-
+    // Resolve the stream's identity and siblings before anything moves.
     // Assignments are per app, not per stream; leaving an app's other live
     // streams behind would split it across channels.
+    let streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
+    let Some(stream) = streams.iter().find(|s| s.index == stream_index) else {
+        // Vanished between the click and now; move the raw index anyway in
+        // case the listing raced, with nothing to record against it.
+        return state
+            .backend
+            .move_stream_to_sink(stream_index, &sink_name)
+            .map_err(|e| e.to_string());
+    };
     let siblings: Vec<&crate::audio::types::AppStream> = streams
         .iter()
         .filter(|s| {
@@ -44,15 +42,10 @@ pub fn route_app_to_channel(
                 && s.match_value == stream.match_value
         })
         .collect();
-    for sibling in &siblings {
-        if let Err(e) = state.backend.move_stream_to_sink(sibling.index, &sink_name) {
-            eprintln!(
-                "sink: moving {} (#{}) failed: {e}",
-                stream.app_name, sibling.index
-            );
-        }
-    }
 
+    // Record intent before moving: the enforcement ticker runs concurrently,
+    // and a stream it hasn't ledgered yet must not be seen mid-move against
+    // a stale assignment (it would be "corrected" right back).
     let assignments = {
         let mut mixer = state.lock_mixer()?;
         if sink_name.is_empty() {
@@ -70,6 +63,19 @@ pub fn route_app_to_channel(
         crate::commands::profiles::autosave_active(&mixer);
         mixer.assignments.clone()
     };
+
+    state
+        .backend
+        .move_stream_to_sink(stream_index, &sink_name)
+        .map_err(|e| e.to_string())?;
+    for sibling in &siblings {
+        if let Err(e) = state.backend.move_stream_to_sink(sibling.index, &sink_name) {
+            eprintln!(
+                "sink: moving {} (#{}) failed: {e}",
+                stream.app_name, sibling.index
+            );
+        }
+    }
 
     assignments.save().map_err(|e| e.to_string())?;
     wireplumber::write(&assignments).map_err(|e| e.to_string())?;

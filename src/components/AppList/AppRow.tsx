@@ -9,9 +9,12 @@ import { HSlider } from "./HSlider";
 interface AppRowProps {
   /** Every live stream of one app on one channel, lowest index first. */
   streams: AppStream[];
+  /** The app's stream count across all channels; more than this row holds
+   *  when something external split the app, and routing here moves all. */
+  total?: number;
 }
 
-export function AppRow({ streams }: Readonly<AppRowProps>) {
+export function AppRow({ streams, total }: Readonly<AppRowProps>) {
   const routeApp = useMixerStore((s) => s.routeApp);
   const setAppVolume = useMixerStore((s) => s.setAppVolume);
   const renameApp = useMixerStore((s) => s.renameApp);
@@ -91,7 +94,13 @@ export function AppRow({ streams }: Readonly<AppRowProps>) {
             />
           </div>
         )}
-        {streams.length > 1 && <div className="rsub">{streams.length} streams</div>}
+        {(total ?? streams.length) > streams.length ? (
+          <div className="rsub">
+            {streams.length} of {total} streams
+          </div>
+        ) : (
+          streams.length > 1 && <div className="rsub">{streams.length} streams</div>
+        )}
       </div>
       <div className="rtrail">
         <HSlider
