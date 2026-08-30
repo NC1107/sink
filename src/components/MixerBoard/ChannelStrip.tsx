@@ -10,6 +10,7 @@ import { EqModal } from "../Eq/EqModal";
 import { ChannelApps } from "./ChannelApps";
 import { Fader } from "./Fader";
 import { OutputSelect } from "./OutputSelect";
+import { StripName } from "./StripName";
 import { VuMeter } from "./VuMeter";
 
 interface ChannelStripProps {
@@ -47,20 +48,10 @@ export function ChannelStrip({
 
   const eqEnabled = useMixerStore((s) => s.eqConfigs[channel.name]?.enabled ?? false);
 
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pickingIcon, setPickingIcon] = useState(false);
   const [managingApps, setManagingApps] = useState(false);
   const [editingEq, setEditingEq] = useState(false);
-
-  const commitRename = () => {
-    setEditing(false);
-    const label = draft.trim();
-    if (label && label !== channel.label) {
-      void renameChannel(channel.name, label);
-    }
-  };
 
   // Mono meter: show the louder of L/R.
   const amplitude = Math.max(level?.[0] ?? 0, level?.[1] ?? 0);
@@ -129,31 +120,10 @@ export function ChannelStrip({
             </div>
           </Popover>
         </div>
-        {editing ? (
-          <input
-            className="menu-input strip-name-input"
-            value={draft}
-            autoFocus
-            maxLength={24}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitRename();
-              if (e.key === "Escape") setEditing(false);
-            }}
-          />
-        ) : (
-          <div
-            className="strip-name strip-name-editable"
-            title="Double-click to rename"
-            onDoubleClick={() => {
-              setDraft(channel.label);
-              setEditing(true);
-            }}
-          >
-            {channel.label}
-          </div>
-        )}
+        <StripName
+          label={channel.label}
+          onRename={(label) => void renameChannel(channel.name, label)}
+        />
         <div style={{ position: "relative" }}>
           <button
             type="button"

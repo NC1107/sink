@@ -8,6 +8,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { MenuCheckItem, MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Fader } from "./Fader";
+import { StripName } from "./StripName";
 import { VuMeter } from "./VuMeter";
 
 /**
@@ -42,8 +43,6 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const openMixFaderWindow = useMixerStore((s) => s.openMixFaderWindow);
 
   const [managing, setManaging] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // The master mix always exists and carries every channel.
@@ -58,11 +57,6 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
 
   const applyVolume = (v: number) => void setBusVolume(bus.name, v);
   const toggleMute = () => void setBusMute(bus.name, !muted);
-  const commitRename = () => {
-    setEditing(false);
-    const label = draft.trim();
-    if (label && label !== bus.label) void renameBus(bus.name, label);
-  };
   // What this mix actually carries (mode-aware).
   const allNames = channels.map((c) => c.name);
   const carried = busMembers(bus, allNames);
@@ -101,31 +95,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         <div className="strip-icon strip-icon-bus">
           <Ms name="radio_button_checked" />
         </div>
-        {editing ? (
-          <input
-            className="menu-input strip-name-input"
-            value={draft}
-            autoFocus
-            maxLength={24}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitRename();
-              if (e.key === "Escape") setEditing(false);
-            }}
-          />
-        ) : (
-          <div
-            className="strip-name strip-name-editable"
-            title="Double-click to rename"
-            onDoubleClick={() => {
-              setDraft(bus.label);
-              setEditing(true);
-            }}
-          >
-            {bus.label}
-          </div>
-        )}
+        <StripName label={bus.label} onRename={(label) => void renameBus(bus.name, label)} />
         <div style={{ position: "relative" }}>
           <button
             type="button"
