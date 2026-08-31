@@ -113,7 +113,7 @@ struct WorkerPrefs {
 enum AutoSwitchAction {
     None,
     Claim,
-    Restore(String),
+    Release(Option<String>),
 }
 
 /// Pure transition state: no first-sample action and no shutdown action.
@@ -157,9 +157,11 @@ impl AutoSwitchState {
             let restore = current_default
                 .filter(|name| controlled.iter().any(|candidate| candidate == name))
                 .and_then(|_| self.previous_default.take());
-            restore
-                .map(AutoSwitchAction::Restore)
-                .unwrap_or(AutoSwitchAction::None)
+            // Always release the temporary Balance A/B output claim. The
+            // previous system default is optional because a manual default
+            // change must still be preserved.
+            self.previous_default = None;
+            AutoSwitchAction::Release(restore)
         }
     }
 }
@@ -530,9 +532,31 @@ fn apply_auto_switch(app: &tauri::AppHandle, machine: &mut AutoSwitchState, onli
         .and_then(|(output, _)| output);
     match machine.observe(online, prefs.auto_switch, current.as_deref(), &controlled) {
         AutoSwitchAction::None => {}
-        AutoSwitchAction::Restore(previous) => {
-            if let Err(e) = state.backend.set_default_output(&previous) {
-                eprintln!("sink: restoring the pre-headset output failed: {e}");
+        AutoSwitchAction::Release(previous) => {
+            // Hardware claims are deliberately transient: `Claim` changes
+            // the live PipeWire links without replacing the user's saved
+            // per-channel choices. Restore those choices when the wireless
+            // link goes away, so applications stay assigned to Sink while
+            // their channels return to speakers/default routing.
+            if let Some((a, b)) = balance_pair(app) {
+                if let Ok(mixer) = state.lock_mixer() {
+                    let (a_output, b_output) = (
+                        mixer.outputs.get(&a).map(str::to_string),
+                        mixer.outputs.get(&b).map(str::to_string),
+                    );
+                    drop(mixer);
+                    if let Err(e) = state.backend.set_channel_output(&a, a_output.as_deref()) {
+                        eprintln!("sink: releasing ChatMix output for {a} failed: {e}");
+                    }
+                    if let Err(e) = state.backend.set_channel_output(&b, b_output.as_deref()) {
+                        eprintln!("sink: releasing ChatMix output for {b} failed: {e}");
+                    }
+                }
+            }
+            if let Some(previous) = previous {
+                if let Err(e) = state.backend.set_default_output(&previous) {
+                    eprintln!("sink: restoring the pre-headset output failed: {e}");
+                }
             }
         }
         AutoSwitchAction::Claim => {
@@ -820,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn disconnect_and_reconnect_claim_and_restore() {
+    fn disconnect_and_reconnect_claim_and_release() {
         let mut state = AutoSwitchState::default();
         let controlled = vec!["sink_game".to_string(), "sink_chat".to_string()];
         assert_eq!(
@@ -834,7 +858,7 @@ mod tests {
         assert_eq!(state.previous_default.as_deref(), Some("speakers"));
         assert_eq!(
             state.observe(false, true, Some("sink_game"), &controlled),
-            AutoSwitchAction::Restore("speakers".into())
+            AutoSwitchAction::Release(Some("speakers".into()))
         );
         assert_eq!(
             state.observe(true, true, Some("speakers"), &controlled),
@@ -843,14 +867,14 @@ mod tests {
     }
 
     #[test]
-    fn disconnect_does_not_undo_a_manual_default_change() {
+    fn disconnect_releases_channels_without_undoing_a_manual_default_change() {
         let mut state = AutoSwitchState::default();
         let controlled = vec!["sink_game".to_string(), "sink_chat".to_string()];
         state.observe(false, true, Some("speakers"), &controlled);
         state.observe(true, true, Some("speakers"), &controlled);
         assert_eq!(
             state.observe(false, true, Some("usb_dac"), &controlled),
-            AutoSwitchAction::None
+            AutoSwitchAction::Release(None)
         );
     }
 }

@@ -510,7 +510,7 @@ export function SettingsScreen() {
             <div className="ricon"><Ms name="swap_horiz" /></div>
             <div className="rmain">
               <div className="rtitle">Headset auto-switch</div>
-              <div className="rsub">On wireless connect, use Game; on disconnect, restore only if Sink still owns the default</div>
+              <div className="rsub">On connect, route Balance A/B to the headset; on disconnect, return them to their saved outputs</div>
             </div>
             <Toggle
               on={headsetAutoSwitch}

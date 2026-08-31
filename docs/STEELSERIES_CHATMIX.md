@@ -45,6 +45,8 @@ Auto-switch reacts only after the first confirmed wireless state sample. Merely
 starting or quitting the GUI does not claim or restore an output. On a real
 disconnected-to-connected transition, Sink remembers the prior system default,
 activates the configured destination for Balance A/B, and makes Game the system
-default. On disconnect it restores the remembered output only if the current
-default is still one of Sink's channels, preserving an intervening manual
-selection of a physical or processing output.
+default. On disconnect it releases that temporary Balance A/B destination and
+restores each channel's saved output choice. It restores the remembered system
+default only if the current default is still one of Sink's channels, preserving
+an intervening manual selection of a physical or processing output. Application
+assignments remain on Sink's channels throughout both transitions.
