@@ -111,6 +111,12 @@ npm run tauri build    # package
 
 Config lives in `~/.config/sink` as plain JSON.
 
+Optional SteelSeries Arctis Nova 7 Gen 1 (`1038:2202`) hardware ChatMix and
+wireless-state auto-switch support is available in Settings. Both are disabled
+by default. Debian packages include a device-scoped udev rule; see
+[`docs/STEELSERIES_CHATMIX.md`](docs/STEELSERIES_CHATMIX.md) for permissions,
+protocol attribution, and Easy Effects routing guidance.
+
 ## License
 
 [GPL-3.0](LICENSE)

@@ -99,6 +99,66 @@ pub fn set_balance_channels(
     prefs.save().map_err(|e| e.to_string())
 }
 
+/// Enable or disable the Nova 7 hidraw worker. The worker is part of Sink's
+/// backend process, so hiding the window to the tray does not stop it.
+#[tauri::command]
+pub fn set_hardware_chatmix_enabled(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let prefs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer.prefs.hardware_chatmix_enabled = enabled;
+        mixer.prefs.clone()
+    };
+    prefs.save().map_err(|e| e.to_string())?;
+    state.hardware.notify_settings_changed();
+    Ok(())
+}
+
+/// Enable or disable wireless-state-driven default output switching.
+#[tauri::command]
+pub fn set_headset_auto_switch(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let prefs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer.prefs.headset_auto_switch = enabled;
+        mixer.prefs.clone()
+    };
+    prefs.save().map_err(|e| e.to_string())?;
+    state.hardware.notify_settings_changed();
+    Ok(())
+}
+
+/// Pick a common physical/processing destination for the two Balance
+/// channels. None means keep their individual output selections.
+#[tauri::command]
+pub fn set_arctis_output(state: State<'_, AppState>, output: Option<String>) -> Result<(), String> {
+    if let Some(name) = output.as_deref() {
+        let available = state
+            .backend
+            .list_output_devices()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .any(|device| device.name == name);
+        if !available {
+            return Err(format!("unknown output device: {name}"));
+        }
+    }
+    let prefs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer.prefs.arctis_output = output;
+        mixer.prefs.clone()
+    };
+    prefs.save().map_err(|e| e.to_string())?;
+    state.hardware.notify_settings_changed();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_arctis_status(state: State<'_, AppState>) -> crate::hardware::ArctisStatus {
+    state.hardware.status()
+}
+
 /// Mark the first-run tutorial as completed (never shown again, until a
 /// factory reset).
 #[tauri::command]

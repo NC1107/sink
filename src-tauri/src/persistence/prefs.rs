@@ -39,6 +39,18 @@ pub struct Prefs {
     /// showing the window (only meaningful with autostart enabled).
     #[serde(default)]
     pub start_minimized: bool,
+    /// Read the physical ChatMix dial from a SteelSeries Arctis Nova 7 Gen 1.
+    /// Off by default because hidraw access requires an explicitly installed
+    /// device-scoped udev rule.
+    #[serde(default)]
+    pub hardware_chatmix_enabled: bool,
+    /// Switch the system default only on confirmed wireless state changes.
+    #[serde(default)]
+    pub headset_auto_switch: bool,
+    /// Optional shared destination for the two Balance channels. None keeps
+    /// each channel's existing output selection.
+    #[serde(default)]
+    pub arctis_output: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -54,6 +66,9 @@ impl Default for Prefs {
             balance_b: None,
             show_balance: true,
             start_minimized: false,
+            hardware_chatmix_enabled: false,
+            headset_auto_switch: false,
+            arctis_output: None,
         }
     }
 }

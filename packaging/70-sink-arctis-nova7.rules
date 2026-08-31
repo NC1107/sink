@@ -1,0 +1,4 @@
+# Sink hardware ChatMix access for the SteelSeries Arctis Nova 7 Gen 1 only.
+# uaccess grants the active local desktop session access; it does not make all
+# HID devices or all local users writable.
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="1038", ATTRS{idProduct}=="2202", TAG+="uaccess"

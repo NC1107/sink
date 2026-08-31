@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod error;
+mod hardware;
 mod mixer;
 mod persistence;
 mod state;
@@ -118,6 +119,10 @@ pub fn run() {
             commands::settings::set_balance_channels,
             commands::settings::set_balance_visible,
             commands::settings::set_start_minimized,
+            commands::settings::set_hardware_chatmix_enabled,
+            commands::settings::set_headset_auto_switch,
+            commands::settings::set_arctis_output,
+            commands::settings::get_arctis_status,
             commands::settings::reset_app,
         ])
         .setup(move |app| {
@@ -134,6 +139,7 @@ pub fn run() {
                 spawn_level_emitter(app.handle().clone(), levels);
             }
             spawn_route_enforcer(app.handle().clone());
+            hardware::spawn(app.handle().clone());
             Ok(())
         })
         // Close button hides to tray instead of quitting - main window

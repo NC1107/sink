@@ -3238,6 +3238,7 @@ name = "sink"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "libc",
  "pipewire",
  "serde",
  "serde_json",

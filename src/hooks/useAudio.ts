@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { useMixerStore, type Levels } from "../store/mixer";
+import {
+  useMixerStore,
+  type HardwareChatMixEvent,
+  type Levels,
+} from "../store/mixer";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -16,6 +20,7 @@ export function useAudio() {
   const fetchOutputs = useMixerStore((s) => s.fetchOutputs);
   const fetchSeenApps = useMixerStore((s) => s.fetchSeenApps);
   const setLevels = useMixerStore((s) => s.setLevels);
+  const applyHardwareChatMix = useMixerStore((s) => s.applyHardwareChatMix);
   const outputDevices = useMixerStore((s) => s.outputDevices);
   const profiles = useMixerStore((s) => s.profiles);
   const loadProfile = useMixerStore((s) => s.loadProfile);
@@ -59,6 +64,18 @@ export function useAudio() {
       void unlisten.then((fn) => fn());
     };
   }, [setLevels]);
+
+  // Hardware reports already changed PipeWire and Rust's in-memory model.
+  // Mirror them locally without calling setChannelVolume, which would send
+  // the same update back through IPC and create redundant work.
+  useEffect(() => {
+    const unlisten = listen<HardwareChatMixEvent>("arctis-chatmix", (event) => {
+      applyHardwareChatMix(event.payload);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [applyHardwareChatMix]);
 
   // Profile switched from the tray menu - sync the whole UI.
   const onProfileChanged = useMixerStore((s) => s.onProfileChanged);

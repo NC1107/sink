@@ -48,7 +48,10 @@
           "pulseaudio-utils",
           "pipewire-pulse",
           "wireplumber"
-        ]
+        ],
+        "files": {
+          "/usr/lib/udev/rules.d/70-sink-arctis-nova7.rules": "../packaging/70-sink-arctis-nova7.rules"
+        }
       },
       "rpm": {
         "depends": [

@@ -30,6 +30,13 @@ function debouncedInvoke(key: string, cmd: string, args: Record<string, unknown>
 /** Per-sink [left, right] peak amplitudes (0-1), streamed from the native backend. */
 export type Levels = Record<string, [number, number]>;
 
+export interface HardwareChatMixEvent {
+  a: string;
+  b: string;
+  a_volume: number;
+  b_volume: number;
+}
+
 interface MixerStore {
   channels: VirtualSink[];
   appStreams: AppStream[];
@@ -139,6 +146,8 @@ interface MixerStore {
   setBalanceChannels: (a: string | null, b: string | null) => Promise<void>;
   showBalance: boolean;
   setBalanceVisible: (visible: boolean) => Promise<void>;
+  /** Reflect a backend-originated dial event without invoking Rust again. */
+  applyHardwareChatMix: (event: HardwareChatMixEvent) => void;
 
   /** Create the virtual sinks and load initial state. */
   initialize: () => Promise<void>;
@@ -216,6 +225,16 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     }
+  },
+
+  applyHardwareChatMix: (event) => {
+    set((s) => ({
+      channels: s.channels.map((channel) => {
+        if (channel.name === event.a) return { ...channel, volume_percent: event.a_volume };
+        if (channel.name === event.b) return { ...channel, volume_percent: event.b_volume };
+        return channel;
+      }),
+    }));
   },
 
   finishOnboarding: async (blank) => {

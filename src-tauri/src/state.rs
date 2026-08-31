@@ -14,6 +14,9 @@ pub struct AppState {
     /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
     pub refresh_gate: Mutex<()>,
+    /// Long-lived hardware worker state. The worker itself is spawned during
+    /// Tauri setup and remains active while the app is hidden in the tray.
+    pub hardware: Arc<crate::hardware::HardwareRuntime>,
 }
 
 impl AppState {
@@ -80,6 +83,7 @@ impl AppState {
             mixer: Mutex::new(mixer),
             ui_stream_poll: Mutex::new(None),
             refresh_gate: Mutex::new(()),
+            hardware: Arc::new(crate::hardware::HardwareRuntime::default()),
         }
     }
 
