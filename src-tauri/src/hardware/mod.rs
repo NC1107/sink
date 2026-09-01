@@ -23,7 +23,7 @@ const HID_ID: &str = "0003:00001038:00002202";
 const COMMAND_INTERFACE_SUFFIX: &str = "/input3";
 const DIAL_INTERFACE_SUFFIX: &str = "/input5";
 const REPORT_LEN: usize = 64;
-const STATUS_INTERVAL: Duration = Duration::from_secs(10);
+const STATUS_INTERVAL: Duration = Duration::from_secs(2);
 const PERSIST_DEBOUNCE: Duration = Duration::from_millis(350);
 const SESSION_POLL_MS: i32 = 250;
 
@@ -535,21 +535,19 @@ fn apply_auto_switch(app: &tauri::AppHandle, machine: &mut AutoSwitchState, onli
         AutoSwitchAction::Release(previous) => {
             // Hardware claims are deliberately transient: `Claim` changes
             // the live PipeWire links without replacing the user's saved
-            // per-channel choices. Restore those choices when the wireless
-            // link goes away, so applications stay assigned to Sink while
-            // their channels return to speakers/default routing.
-            if let Some((a, b)) = balance_pair(app) {
-                if let Ok(mixer) = state.lock_mixer() {
-                    let (a_output, b_output) = (
-                        mixer.outputs.get(&a).map(str::to_string),
-                        mixer.outputs.get(&b).map(str::to_string),
-                    );
-                    drop(mixer);
-                    if let Err(e) = state.backend.set_channel_output(&a, a_output.as_deref()) {
-                        eprintln!("sink: releasing ChatMix output for {a} failed: {e}");
-                    }
-                    if let Err(e) = state.backend.set_channel_output(&b, b_output.as_deref()) {
-                        eprintln!("sink: releasing ChatMix output for {b} failed: {e}");
+            // per-channel choices. Restore every channel on disconnect, not
+            // just the current Balance pair: a channel that used to be A/B
+            // must not retain a stale headset target after the pair changes.
+            let saved_outputs = state.lock_mixer().map(|mixer| {
+                controlled
+                    .iter()
+                    .map(|name| (name.clone(), mixer.outputs.get(name).map(str::to_string)))
+                    .collect::<Vec<_>>()
+            });
+            if let Ok(saved_outputs) = saved_outputs {
+                for (name, output) in saved_outputs {
+                    if let Err(e) = state.backend.set_channel_output(&name, output.as_deref()) {
+                        eprintln!("sink: releasing ChatMix output for {name} failed: {e}");
                     }
                 }
             }
