@@ -46,6 +46,12 @@ impl MeterHandle {
             "node.name" => format!("{METER_PREFIX}{sink_name}"),
             // For sinks: capture the monitor, don't keep the sink busy.
             "stream.capture.sink" => if capture_sink { "true" } else { "false" },
+            // Pin the meter to the channel it represents. Without an
+            // explicit target WirePlumber may move the first-created meter
+            // to a newly selected default device, making (for example) Game
+            // display the combined speaker output instead of Game itself.
+            "target.object" => sink_name,
+            "node.dont-reconnect" => "true",
             "node.passive" => "true",
         };
         let stream = pw::stream::StreamRc::new(core.clone(), "sink-meter", props)
@@ -98,7 +104,9 @@ impl MeterHandle {
             .connect(
                 spa::utils::Direction::Input,
                 Some(sink_id),
-                pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
+                pw::stream::StreamFlags::AUTOCONNECT
+                    | pw::stream::StreamFlags::DONT_RECONNECT
+                    | pw::stream::StreamFlags::MAP_BUFFERS,
                 &mut params,
             )
             .map_err(|e| err("connect", e))?;
