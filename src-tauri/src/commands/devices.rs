@@ -53,6 +53,7 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
                 &stream.match_value,
                 &stream.app_name,
                 stream.icon_name.as_deref(),
+                stream.icon_path.as_deref(),
                 now,
             );
         }
@@ -530,7 +531,7 @@ mod tests {
             mixer.aliases.set("application.name", "Spotify", "Tunes");
             mixer
                 .seen
-                .upsert("application.name", "Spotify", "Spotify", None, 1);
+                .upsert("application.name", "Spotify", "Spotify", None, None, 1);
         }
 
         let streams = refresh_streams(&state).expect("pass");
