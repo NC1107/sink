@@ -98,6 +98,30 @@ fn scan() -> HashMap<String, String> {
     names
 }
 
+/// The game's icon: a desktop-shortcut icon if one was ever made, else the
+/// small client icon Steam caches per app.
+pub fn icon_path(app_id: &str) -> Option<String> {
+    if let Some(p) = crate::audio::icons::icon_name_to_path(&format!("steam_icon_{app_id}")) {
+        return Some(p);
+    }
+    for root in steam_roots() {
+        let Ok(read) = std::fs::read_dir(root.join("appcache/librarycache").join(app_id)) else {
+            continue;
+        };
+        let mut jpgs: Vec<PathBuf> = read
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "jpg"))
+            .collect();
+        // The icon is the small one; the rest is library art.
+        jpgs.sort_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(u64::MAX));
+        if let Some(p) = jpgs.first() {
+            return Some(p.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
 /// The installed Steam library, scanned lazily.
 pub struct SteamLibrary;
 

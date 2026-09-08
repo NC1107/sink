@@ -195,17 +195,20 @@ pub fn legacy_matchers(props: &HashMap<String, String>) -> Vec<(String, String)>
 }
 
 /// A pid-less stream borrows a sibling's identity only when exactly one
-/// process-backed stream claims the same real (non-runtime) app name.
+/// process-backed stream claims the same real (non-runtime) app name, by
+/// its stream name or by what it resolved to (a game's engine stream says
+/// "FMOD Audio" while the game's own stream carries its manifest name).
 pub fn adopt_from_siblings(identities: &mut [Identity], props: &[&HashMap<String, String>]) {
-    let name_of = |p: &HashMap<String, String>| {
-        p.get("application.name")
-            .map(|n| n.trim().to_string())
-            .filter(|n| !n.is_empty() && !types::is_generic_name(n) && !types::is_wrapper_name(n))
+    let real = |n: &str| {
+        let n = n.trim();
+        (!n.is_empty() && !types::is_generic_name(n) && !types::is_wrapper_name(n))
+            .then(|| n.to_lowercase())
     };
+    let name_of = |p: &HashMap<String, String>| p.get("application.name").and_then(|n| real(n));
     let mut by_name: HashMap<String, Vec<Identity>> = HashMap::new();
     for (id, p) in identities.iter().zip(props) {
         if id.pid.is_some() && is_process_prop(&id.prop) {
-            if let Some(name) = name_of(p) {
+            for name in name_of(p).into_iter().chain(real(&id.display)) {
                 let bucket = by_name.entry(name).or_default();
                 if !bucket
                     .iter()
@@ -538,6 +541,22 @@ mod tests {
             (ids[1].prop.as_str(), ids[1].value.as_str()),
             (PROP_STEAM, "730")
         );
+
+        // The engine's stream says "FMOD Audio"; the pid-less one carries the
+        // game's real name, which the donor resolved to from its manifest.
+        let engine = props(&[
+            ("application.name", "FMOD Audio"),
+            ("application.process.id", "100"),
+            ("pipewire.sec.pid", "100"),
+        ]);
+        let named = props(&[("application.name", "Counter-Strike 2")]);
+        let mut ids = vec![resolve_with(&engine, &proc), resolve_with(&named, &proc)];
+        adopt_from_siblings(&mut ids, &[&engine, &named]);
+        assert_eq!(
+            (ids[1].prop.as_str(), ids[1].value.as_str()),
+            (PROP_STEAM, "730")
+        );
+        assert_eq!(ids[1].display, "Counter-Strike 2");
 
         // "Chromium" is a runtime name shared by unrelated apps: never a donor.
         proc.exe.insert(200, "spotify");

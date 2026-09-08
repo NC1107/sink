@@ -33,7 +33,11 @@
           "/usr/share/pixmaps/**",
           "/var/lib/flatpak/exports/share/icons/**",
           "$HOME/.local/share/icons/**",
-          "$HOME/.local/share/flatpak/exports/share/icons/**"
+          "$HOME/.local/share/flatpak/exports/share/icons/**",
+          "/var/lib/flatpak/app/**/export/share/icons/**",
+          "$HOME/.local/share/flatpak/app/**/export/share/icons/**",
+          "$HOME/.local/share/Steam/appcache/librarycache/**",
+          "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/**"
         ]
       }
     }
