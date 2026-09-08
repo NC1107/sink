@@ -90,7 +90,7 @@ impl ProcReader for Proc {
 
 /// Executables that stand for a runtime rather than a program. Matching
 /// them would merge every app on that runtime into one identity.
-fn is_wrapper_exe(exe: &str) -> bool {
+pub(crate) fn is_wrapper_exe(exe: &str) -> bool {
     let e = exe.to_ascii_lowercase();
     types::is_wrapper_name(&e)
         || e.starts_with("python")
@@ -126,13 +126,11 @@ fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option
     if parse_pid(props.get("pipewire.sec.pid")) == Some(reported) {
         return Some(reported);
     }
-    match props.get("application.process.binary") {
-        None => Some(reported),
-        Some(binary) => {
-            let exe = proc.exe_basename(reported)?;
-            (exe.eq_ignore_ascii_case(binary.trim()) || is_wrapper_exe(&exe)).then_some(reported)
-        }
-    }
+    // Otherwise the pid must at least agree with the reported binary; with
+    // nothing to check it against, it is not used.
+    let binary = props.get("application.process.binary")?;
+    let exe = proc.exe_basename(reported)?;
+    (exe.eq_ignore_ascii_case(binary.trim()) || is_wrapper_exe(&exe)).then_some(reported)
 }
 
 fn identity(prop: &str, value: &str, display: String, pid: Option<u32>) -> Identity {
@@ -371,6 +369,18 @@ mod tests {
         let id = resolve_with(&p, &proc);
         assert_eq!(id.prop, "application.name");
         assert_eq!(id.pid, None, "must not read /proc for a mismatched pid");
+    }
+
+    #[test]
+    fn a_pid_with_nothing_to_verify_it_against_is_not_trusted() {
+        let mut proc = FakeProc::new();
+        proc.exe.insert(31, "somegame");
+        proc.env.insert((31, "SteamAppId"), "730");
+        // No sec.pid, no binary: could be any sandbox reporting its own pid.
+        let p = props(&[("application.name", "Some Game"), ("application.process.id", "31")]);
+        let id = resolve_with(&p, &proc);
+        assert_eq!(id.pid, None);
+        assert_eq!(id.prop, "application.name");
     }
 
     #[test]

@@ -262,6 +262,10 @@ pub struct AppStream {
     /// command layer. Backend-internal: never crosses to the UI.
     #[serde(skip)]
     pub props: HashMap<String, String>,
+    /// False while the stream's client has not yet reported its full
+    /// property set; an identity resolved before that is not cached.
+    #[serde(skip)]
+    pub settled: bool,
 }
 
 fn default_true() -> bool {
