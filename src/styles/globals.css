@@ -407,11 +407,18 @@ body,
   overflow: auto;
 }
 /* Auto margins centre the board while it fits and fall back to the top-left
-   corner once it overflows, so a scrolled board still starts at its edge. */
+   corner once it overflows, so a scrolled board still starts at its edge.
+   The box is sized to the scaled board so centring and scrolling see the
+   real footprint; the transform itself doesn't change layout. */
+.mix-fit {
+  flex: none;
+  margin: auto;
+}
 .mix-board {
   display: flex;
   align-items: stretch;
-  margin: auto;
+  width: max-content;
+  transform-origin: top left;
 }
 .mix-group {
   display: flex;
