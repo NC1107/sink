@@ -1,7 +1,6 @@
 use tauri::State;
 
 use crate::audio::types::is_virtual_sink;
-use crate::persistence::wireplumber;
 use crate::state::AppState;
 
 pub(crate) const MAX_VOLUME: u8 = 150;
@@ -87,7 +86,6 @@ pub fn route_app(state: &AppState, stream_index: u32, sink_name: &str) -> Result
     }
 
     assignments.save().map_err(|e| e.to_string())?;
-    wireplumber::write(&assignments).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -334,6 +332,7 @@ mod tests {
             volume_percent: 100,
             muted: false,
             active: true,
+            props: Default::default(),
         }
     }
 

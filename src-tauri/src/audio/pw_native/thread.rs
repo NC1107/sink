@@ -100,9 +100,18 @@ struct NodeEntry {
     active: bool,
 }
 
+/// A connected client. Stream nodes made through pipewire-pulse carry an
+/// abbreviated property set; the pid, binary and sandbox facts live here.
+struct ClientEntry {
+    props: HashMap<String, String>,
+    _proxy: pw::client::Client,
+    _listener: pw::client::ClientListener,
+}
+
 #[derive(Default)]
 struct State {
     nodes: HashMap<u32, NodeEntry>,
+    clients: HashMap<u32, ClientEntry>,
     /// link global id -> (output node id, input node id)
     links: HashMap<u32, (u32, u32)>,
     metadata: Option<Metadata>,
@@ -288,6 +297,7 @@ fn setup_and_run(
                     let mut s = state.borrow_mut();
                     s.links.remove(&id);
                     s.ports.remove(&id);
+                    s.clients.remove(&id);
                     let Some(node) = s.nodes.remove(&id) else {
                         return;
                     };
@@ -405,6 +415,7 @@ fn on_global(
 ) {
     match global.type_ {
         ObjectType::Node => on_node(state, registry, core, levels, global),
+        ObjectType::Client => on_client(state, registry, global),
         ObjectType::Port => {
             let Some(props) = global.props else { return };
             let Some(node_id) = props.get("node.id").and_then(|v| v.parse().ok()) else {
@@ -540,6 +551,39 @@ fn on_global(
         }
         _ => {}
     }
+}
+
+fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalObject<&DictRef>) {
+    let Ok(proxy) = registry.bind::<pw::client::Client, _>(global) else {
+        return;
+    };
+    let props: HashMap<String, String> = global
+        .props
+        .map(|d| d.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
+        .unwrap_or_default();
+    // The registry global is abbreviated; the info event carries the full
+    // dict (pipewire.sec.pid, the portal app id, application.process.*).
+    let state_i = state.clone();
+    let client_id = global.id;
+    let listener = proxy
+        .add_listener_local()
+        .info(move |info| {
+            let mut s = state_i.borrow_mut();
+            if let (Some(entry), Some(props)) = (s.clients.get_mut(&client_id), info.props()) {
+                for (k, v) in props.iter() {
+                    entry.props.insert(k.to_string(), v.to_string());
+                }
+            }
+        })
+        .register();
+    state.borrow_mut().clients.insert(
+        global.id,
+        ClientEntry {
+            props,
+            _proxy: proxy,
+            _listener: listener,
+        },
+    );
 }
 
 fn on_node(
@@ -1320,7 +1364,20 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 .map(|n| {
                     let (app_name, match_prop, match_value) =
                         crate::audio::types::resolve_identity(|key| n.props.get(key).cloned());
+                    // Node props win; the client fills what the node left out.
+                    let mut props = n.props.clone();
+                    if let Some(client) = n
+                        .props
+                        .get("client.id")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .and_then(|cid| s.clients.get(&cid))
+                    {
+                        for (k, v) in &client.props {
+                            props.entry(k.clone()).or_insert_with(|| v.clone());
+                        }
+                    }
                     AppStream {
+                        props,
                         index: n.id,
                         serial: n.serial.unwrap_or_else(|| u64::from(n.id)),
                         app_name,

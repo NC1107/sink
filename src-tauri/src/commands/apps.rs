@@ -2,7 +2,6 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::audio::types::is_virtual_sink;
-use crate::persistence::wireplumber;
 use crate::state::AppState;
 
 
@@ -102,7 +101,7 @@ pub fn forget_app(
     seen.save().map_err(|e| e.to_string())?;
     assignments.save().map_err(|e| e.to_string())?;
     aliases.save().map_err(|e| e.to_string())?;
-    wireplumber::write(&assignments).map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// Edit an app's routing assignment while it isn't running (pre-routing):
@@ -129,5 +128,5 @@ pub fn set_app_assignment(
         mixer.assignments.clone()
     };
     assignments.save().map_err(|e| e.to_string())?;
-    wireplumber::write(&assignments).map_err(|e| e.to_string())
+    Ok(())
 }
