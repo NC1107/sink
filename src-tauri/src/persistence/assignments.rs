@@ -83,7 +83,8 @@ impl Assignments {
     }
 
     /// Adopt into a process identity, once per pair; `Some(sink)` when a
-    /// rule was created.
+    /// rule was created. Every legacy rule the app matches is marked, or
+    /// the second one would bring a removed rule back.
     pub fn adopt(
         &mut self,
         match_prop: &str,
@@ -101,6 +102,9 @@ impl Assignments {
         }
         legacy.adopted_by.push(key);
         let sink = legacy.sink_name.clone();
+        if self.sink_for(into_prop, into_value).is_some() {
+            return None;
+        }
         self.set(into_prop, into_value, &sink);
         Some(sink)
     }
@@ -150,6 +154,25 @@ mod tests {
         a.remove("steam.app_id", "1");
         assert!(a.adopt("application.name", "SDL Application", "steam.app_id", "1").is_none());
         assert!(a.sink_for("steam.app_id", "1").is_none());
+
+        // A second legacy rule the same app matches is marked without
+        // overriding the sink, so it can't resurrect the rule either.
+        let mut a = Assignments::default();
+        a.set("application.name", "Rocket League", "sink_game");
+        a.set("application.name", "RocketLeague.exe", "sink_music");
+        assert_eq!(
+            a.adopt("application.name", "Rocket League", "steam.app_id", "9"),
+            Some("sink_game".into())
+        );
+        assert!(a
+            .adopt("application.name", "RocketLeague.exe", "steam.app_id", "9")
+            .is_none());
+        assert_eq!(a.sink_for("steam.app_id", "9"), Some("sink_game"));
+        a.remove("steam.app_id", "9");
+        assert!(a
+            .adopt("application.name", "RocketLeague.exe", "steam.app_id", "9")
+            .is_none());
+        assert!(a.sink_for("steam.app_id", "9").is_none());
     }
 
     #[test]

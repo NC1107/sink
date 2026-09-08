@@ -236,7 +236,7 @@ fn load_desktops() -> Vec<DesktopEntry> {
 }
 
 /// Resolve an icon name to a file path across the freedesktop dirs.
-fn icon_name_to_path(name: &str) -> Option<String> {
+pub fn icon_name_to_path(name: &str) -> Option<String> {
     if name.starts_with('/') && Path::new(name).exists() {
         return Some(name.to_string());
     }

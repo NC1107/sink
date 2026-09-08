@@ -166,7 +166,11 @@ fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
             stream.icon_name.as_deref(),
             stream.pid,
         );
-        stream.icon_path = resolved.icon_path;
+        stream.icon_path = resolved.icon_path.or_else(|| {
+            (stream.match_prop == identity::PROP_STEAM)
+                .then(|| steam::icon_path(&stream.match_value))
+                .flatten()
+        });
         // A desktop entry's name beats a bare exe or stream name.
         if let Some(name) = resolved.display_name {
             if !identity::is_process_prop(&stream.match_prop)
@@ -188,8 +192,10 @@ fn adopt_legacy(mixer: &mut MixerState, streams: &[AppStream]) -> (bool, bool) {
         }
         let (prop, value) = (&stream.match_prop, &stream.match_value);
         for (lprop, lvalue) in identity::legacy_matchers(&stream.props) {
-            if mixer.assignments.sink_for(prop, value).is_none()
-                && mixer.assignments.adopt(&lprop, &lvalue, prop, value).is_some()
+            if mixer
+                .assignments
+                .adopt(&lprop, &lvalue, prop, value)
+                .is_some()
             {
                 rules = true;
             }
