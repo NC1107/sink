@@ -45,7 +45,11 @@ pub fn get_seen_apps(state: State<'_, AppState>) -> Result<Vec<SeenApp>, String>
                 .display_name
                 .unwrap_or_else(|| entry.display_name.clone()),
             icon_name: entry.icon_name.clone(),
-            icon_path: resolved.icon_path,
+            icon_path: crate::audio::icons::identity_icon(
+                &entry.match_prop,
+                &entry.match_value,
+                resolved.icon_path,
+            ),
             last_seen: entry.last_seen,
             ignored: entry.ignored,
             assigned_sink: mixer

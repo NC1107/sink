@@ -166,11 +166,8 @@ fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
             stream.icon_name.as_deref(),
             stream.pid,
         );
-        stream.icon_path = resolved.icon_path.or_else(|| {
-            (stream.match_prop == identity::PROP_STEAM)
-                .then(|| steam::icon_path(&stream.match_value))
-                .flatten()
-        });
+        stream.icon_path =
+            icons::identity_icon(&stream.match_prop, &stream.match_value, resolved.icon_path);
         // A desktop entry's name beats a bare exe or stream name.
         if let Some(name) = resolved.display_name {
             if !identity::is_process_prop(&stream.match_prop)
