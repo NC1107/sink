@@ -117,8 +117,7 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
         return None;
     }
     let name = name?;
-    // The program is the first token that isn't a launcher prefix
-    // (`env FOO=1 app`, `sh -c app`, `flatpak-spawn --host app`).
+    // Skip launcher prefixes (env FOO=1, sh -c, flatpak-spawn --host).
     let exec_base = exec.and_then(|e| {
         let first = e.split_whitespace().find(|t| {
             let base = Path::new(t).file_name().map(|f| f.to_string_lossy().into_owned());
@@ -327,11 +326,8 @@ pub fn resolve(
     let app_lower = app_name.to_lowercase();
     let binary_lower = binary.map(str::to_lowercase);
 
-    // The PID beats name-matching: the process's cgroup scope, flatpak id,
-    // or launch environment names its desktop entry, and the real exe path
-    // sees through wrapper binaries. A scope is inherited from whatever
-    // launched the process (a terminal, Steam), so a candidate only counts
-    // when its Exec runs this very executable.
+    // A scope is inherited from the launcher (a terminal, Steam), so a
+    // candidate only counts when its Exec runs this executable.
     let pid_desktop = pid.and_then(|p| {
         let candidates = desktop_id_candidates(p);
         let exe = exe_basename(p);

@@ -1,8 +1,5 @@
-//! The WirePlumber conf fragment earlier versions rendered routing rules
-//! into. It could only match a stream's own properties, which is exactly
-//! what identities no longer key on, and it only ever acted in the moment
-//! between Sink creating its sinks and the enforcer's first pass. Routing
-//! lives in `commands::devices` now; this module just retires the file.
+//! Retires the conf fragment earlier versions rendered rules into: it could
+//! only match stream props, and only acted before the enforcer's first pass.
 
 use std::path::PathBuf;
 
