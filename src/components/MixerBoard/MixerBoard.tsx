@@ -120,75 +120,77 @@ export function MixerBoard() {
     <div className="content">
       <div className="screen-scroll" style={{ padding: 0 }}>
         <div className="mix-scroll">
-          {micConfig?.enabled && (
-            <>
-              <MixGroup
-                icon="mic"
-                label="Capture"
-                count="1"
-                hint="Your processed mic - apps capture it as Sink Mic"
-              >
-                <MicStrip />
-              </MixGroup>
-              <div className="group-div" />
-            </>
-          )}
+          <div className="mix-board">
+            {micConfig?.enabled && (
+              <>
+                <MixGroup
+                  icon="mic"
+                  label="Capture"
+                  count="1"
+                  hint="Your processed mic - apps capture it as Sink Mic"
+                >
+                  <MicStrip />
+                </MixGroup>
+                <div className="group-div" />
+              </>
+            )}
 
-          <MixGroup
-            icon="apps"
-            label="Channels"
-            count={`${channels.length}`}
-            hint="Apps route into channels"
-            onAdd={channels.length < MAX_CHANNELS ? () => setAddingChannel(true) : undefined}
-            addTitle="Add a channel"
-          >
-            {channels.map((channel) => (
-              <ChannelStrip
-                key={channel.name}
-                channel={channel}
-                appCount={counts.get(channel.name) ?? 0}
-                dragging={draggingChannel === channel.name}
-                onGripDragStart={(e) => {
-                  setDraggingChannel(channel.name);
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", channel.name);
-                }}
-                onGripDragEnd={() => {
-                  setDraggingChannel(null);
-                  void commitChannelOrder();
-                }}
-                onStripDragOver={(e) => {
-                  if (draggingChannel && draggingChannel !== channel.name) {
-                    e.preventDefault();
-                    moveChannel(draggingChannel, channel.name);
-                  }
-                }}
-              />
-            ))}
-          </MixGroup>
+            <MixGroup
+              icon="apps"
+              label="Channels"
+              count={`${channels.length}`}
+              hint="Apps route into channels"
+              onAdd={channels.length < MAX_CHANNELS ? () => setAddingChannel(true) : undefined}
+              addTitle="Add a channel"
+            >
+              {channels.map((channel) => (
+                <ChannelStrip
+                  key={channel.name}
+                  channel={channel}
+                  appCount={counts.get(channel.name) ?? 0}
+                  dragging={draggingChannel === channel.name}
+                  onGripDragStart={(e) => {
+                    setDraggingChannel(channel.name);
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", channel.name);
+                  }}
+                  onGripDragEnd={() => {
+                    setDraggingChannel(null);
+                    void commitChannelOrder();
+                  }}
+                  onStripDragOver={(e) => {
+                    if (draggingChannel && draggingChannel !== channel.name) {
+                      e.preventDefault();
+                      moveChannel(draggingChannel, channel.name);
+                    }
+                  }}
+                />
+              ))}
+            </MixGroup>
 
-          {backendNative !== false && <div className="group-div" />}
+            {backendNative !== false && <div className="group-div" />}
 
-          {/* Mixes need the native backend; hide them on the pactl
-           * fallback instead of showing strips that can't work. */}
-          {backendNative !== false && (
-          <MixGroup
-            icon="podcasts"
-            label="Mixes"
-            count={`${buses.length}`}
-            hint="Recordable copies of your channels - add as an audio input in OBS"
-            onAdd={
-              buses.filter((b) => b.name !== MASTER_BUS).length < MAX_BUSES
-                ? () => setAddingMix(true)
-                : undefined
-            }
-            addTitle="Add a mix"
-          >
-            {buses.map((bus) => (
-              <BusStrip key={bus.name} bus={bus} />
-            ))}
-          </MixGroup>
-          )}
+            {/* Mixes need the native backend; hide them on the pactl
+             * fallback instead of showing strips that can't work. */}
+            {backendNative !== false && (
+            <MixGroup
+              icon="podcasts"
+              label="Mixes"
+              count={`${buses.length}`}
+              hint="Recordable copies of your channels - add as an audio input in OBS"
+              onAdd={
+                buses.filter((b) => b.name !== MASTER_BUS).length < MAX_BUSES
+                  ? () => setAddingMix(true)
+                  : undefined
+              }
+              addTitle="Add a mix"
+            >
+              {buses.map((bus) => (
+                <BusStrip key={bus.name} bus={bus} />
+              ))}
+            </MixGroup>
+            )}
+          </div>
         </div>
       </div>
 
