@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useMixerStore } from "../../store/mixer";
+import { useFitScale } from "../../hooks/useFitScale";
 import { MASTER_BUS } from "../../types";
 import { Ms, ICON_CHOICES } from "../Icons";
 import { Modal } from "../Modal";
@@ -70,6 +71,9 @@ export function MixerBoard() {
   const [addingMix, setAddingMix] = useState(false);
   const [mixLabel, setMixLabel] = useState("");
   const [draggingChannel, setDraggingChannel] = useState<string | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const fit = useFitScale(viewportRef, boardRef, [channels.length, buses.length, micConfig?.enabled]);
 
   if (channels.length === 0) {
     return (
@@ -119,8 +123,12 @@ export function MixerBoard() {
   return (
     <div className="content">
       <div className="screen-scroll" style={{ padding: 0 }}>
-        <div className="mix-scroll">
-          <div className="mix-board">
+        <div className="mix-scroll" ref={viewportRef}>
+          <div
+            className="mix-fit"
+            style={fit.width ? { width: fit.width * fit.scale, height: fit.height * fit.scale } : undefined}
+          >
+          <div className="mix-board" ref={boardRef} style={{ transform: `scale(${fit.scale})` }}>
             {micConfig?.enabled && (
               <>
                 <MixGroup
@@ -190,6 +198,7 @@ export function MixerBoard() {
               ))}
             </MixGroup>
             )}
+          </div>
           </div>
         </div>
       </div>
