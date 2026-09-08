@@ -30,7 +30,7 @@ fn value_after(tokens: &[&str], label: &str) -> Option<f32> {
         .iter()
         .position(|t| t.eq_ignore_ascii_case(label))
         .and_then(|i| tokens.get(i + 1))
-        .and_then(|v| v.parse().ok())
+        .and_then(|v| v.replace(',', ".").parse().ok())
 }
 
 fn parse_filter_line(line: &str) -> Option<EqBand> {
@@ -71,7 +71,7 @@ pub fn parse_autoeq(text: &str) -> Result<EqConfig, SinkError> {
                 .split(':')
                 .nth(1)
                 .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|v| v.parse::<f32>().ok())
+                .and_then(|v| v.replace(',', ".").parse::<f32>().ok())
             {
                 preamp_db = v;
             }
@@ -100,6 +100,21 @@ pub fn parse_autoeq(text: &str) -> Result<EqConfig, SinkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_comma_separated_values() {
+        let config = parse_autoeq(
+            "Preamp: -3,7 dB\nFilter 1: ON PK Fc 195 Hz Gain -7,3 dB Q 0,5\n",
+        )
+        .expect("parses");
+        assert_eq!(config.preamp_db, -3.7);
+        assert_eq!(config.bands.len(), 1);
+        let b = &config.bands[0];
+        assert_eq!(b.kind, EqBandKind::Peaking);
+        assert_eq!(b.freq_hz, 195.0);
+        assert_eq!(b.gain_db, -7.3);
+        assert_eq!(b.q, 0.5);
+    }
 
     #[test]
     fn parses_preamp_and_peaking_filter() {
