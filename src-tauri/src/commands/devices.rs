@@ -5,6 +5,7 @@ use tauri::State;
 use crate::audio::identity::{self, Identity};
 use crate::audio::types::{AppStream, OutputDevice, VirtualSink};
 use crate::audio::{icons, steam};
+use crate::mixer::state::MixerState;
 use crate::state::AppState;
 
 /// How often the poll force-saves app history to refresh `last_seen` on disk.
@@ -33,64 +34,7 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
 
-    // Identity: ask the process before the stream (audio::identity). Cached
-    // per serial so /proc is read once per stream, not per tick.
-    {
-        let mut cache = state
-            .identity_cache
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let live: HashSet<u64> = streams.iter().map(|s| s.serial).collect();
-        cache.retain(|serial, _| live.contains(serial));
-        let mut ids: Vec<Identity> = streams
-            .iter()
-            .map(|s| {
-                cache.get(&s.serial).cloned().unwrap_or_else(|| {
-                    identity::resolve(
-                        &s.props,
-                        &identity::Proc,
-                        &icons::Desktops,
-                        &steam::SteamLibrary,
-                    )
-                })
-            })
-            .collect();
-        let props: Vec<&HashMap<String, String>> = streams.iter().map(|s| &s.props).collect();
-        identity::adopt_from_siblings(&mut ids, &props);
-        for (stream, id) in streams.iter_mut().zip(ids) {
-            // An identity read before the client reported its full props
-            // could be the low-confidence name one; keep resolving until
-            // the facts are in.
-            if stream.settled {
-                cache.insert(stream.serial, id.clone());
-            }
-            stream.match_prop = id.prop;
-            stream.match_value = id.value;
-            stream.app_name = id.display;
-            stream.pid = id.pid;
-        }
-    }
-
-    // Icons, plus the desktop entry's name for identities that still come
-    // from the stream or a bare executable.
-    for stream in &mut streams {
-        let binary = (stream.match_prop == "application.process.binary")
-            .then_some(stream.match_value.as_str());
-        let resolved = icons::resolve(
-            &stream.app_name,
-            binary,
-            stream.icon_name.as_deref(),
-            stream.pid,
-        );
-        stream.icon_path = resolved.icon_path;
-        if let Some(name) = resolved.display_name {
-            if !identity::is_process_prop(&stream.match_prop)
-                || stream.match_prop == identity::PROP_EXE
-            {
-                stream.app_name = name;
-            }
-        }
-    }
+    resolve_identities(state, &mut streams);
 
     let now = crate::persistence::unix_now();
 
@@ -113,48 +57,8 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
             );
         }
 
-        // Carry rules, aliases and ignores written under a stream's own
-        // properties over to its process identity, so an upgrade loses
-        // nothing. The legacy rule itself stays: a generic one ("SDL
-        // Application") may be all that routes some other game.
-        let mut rules_changed = false;
-        for stream in &streams {
-            if !identity::is_process_prop(&stream.match_prop) {
-                continue;
-            }
-            for (prop, value) in identity::legacy_matchers(&stream.props) {
-                if mixer
-                    .assignments
-                    .sink_for(&stream.match_prop, &stream.match_value)
-                    .is_none()
-                    && mixer
-                        .assignments
-                        .adopt(&prop, &value, &stream.match_prop, &stream.match_value)
-                        .is_some()
-                {
-                    rules_changed = true;
-                }
-                // An alias names one app, so it moves rather than copies.
-                if let Some(alias) = mixer.aliases.get(&prop, &value).map(str::to_string) {
-                    if mixer.aliases.get(&stream.match_prop, &stream.match_value).is_none() {
-                        mixer
-                            .aliases
-                            .set(&stream.match_prop, &stream.match_value, &alias);
-                    }
-                    mixer.aliases.set(&prop, &value, "");
-                    rules_changed = true;
-                }
-                if let Some(legacy) = mixer.seen.get(&prop, &value).cloned() {
-                    if legacy.ignored {
-                        mixer
-                            .seen
-                            .set_ignored(&stream.match_prop, &stream.match_value, true);
-                    }
-                    mixer.seen.forget(&prop, &value);
-                    structural_change = true;
-                }
-            }
-        }
+        let (rules_changed, merged) = adopt_legacy(&mut mixer, &streams);
+        structural_change |= merged;
         // A pure last_seen bump never reports a structural change, so without
         // this the freshest timestamps only reach disk on a clean tray-quit -
         // and an unclean exit would leave a daily-used app looking stale
@@ -215,6 +119,98 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
     }
 
     Ok(streams)
+}
+
+/// Ask the process before the stream (see `audio::identity`); cached per
+/// serial so `/proc` is read once per stream, not per tick.
+fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
+    let mut cache = state
+        .identity_cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let live: HashSet<u64> = streams.iter().map(|s| s.serial).collect();
+    cache.retain(|serial, _| live.contains(serial));
+    let mut ids: Vec<Identity> = streams
+        .iter()
+        .map(|s| {
+            cache.get(&s.serial).cloned().unwrap_or_else(|| {
+                identity::resolve(
+                    &s.props,
+                    &identity::Proc,
+                    &icons::Desktops,
+                    &steam::SteamLibrary,
+                )
+            })
+        })
+        .collect();
+    let props: Vec<&HashMap<String, String>> = streams.iter().map(|s| &s.props).collect();
+    identity::adopt_from_siblings(&mut ids, &props);
+    for (stream, id) in streams.iter_mut().zip(ids) {
+        // Unsettled facts may still change; don't cache them.
+        if stream.settled {
+            cache.insert(stream.serial, id.clone());
+        }
+        stream.match_prop = id.prop;
+        stream.match_value = id.value;
+        stream.app_name = id.display;
+        stream.pid = id.pid;
+    }
+    drop(cache);
+
+    for stream in streams.iter_mut() {
+        let binary = (stream.match_prop == "application.process.binary")
+            .then_some(stream.match_value.as_str());
+        let resolved = icons::resolve(
+            &stream.app_name,
+            binary,
+            stream.icon_name.as_deref(),
+            stream.pid,
+        );
+        stream.icon_path = resolved.icon_path;
+        // A desktop entry's name beats a bare exe or stream name.
+        if let Some(name) = resolved.display_name {
+            if !identity::is_process_prop(&stream.match_prop)
+                || stream.match_prop == identity::PROP_EXE
+            {
+                stream.app_name = name;
+            }
+        }
+    }
+}
+
+/// Carry legacy stream-keyed rules, aliases and ignores over to the process
+/// identity; the legacy rule stays, a generic one may route another game.
+fn adopt_legacy(mixer: &mut MixerState, streams: &[AppStream]) -> (bool, bool) {
+    let (mut rules, mut history) = (false, false);
+    for stream in streams {
+        if !identity::is_process_prop(&stream.match_prop) {
+            continue;
+        }
+        let (prop, value) = (&stream.match_prop, &stream.match_value);
+        for (lprop, lvalue) in identity::legacy_matchers(&stream.props) {
+            if mixer.assignments.sink_for(prop, value).is_none()
+                && mixer.assignments.adopt(&lprop, &lvalue, prop, value).is_some()
+            {
+                rules = true;
+            }
+            // An alias names one app, so it moves rather than copies.
+            if let Some(alias) = mixer.aliases.get(&lprop, &lvalue).map(str::to_string) {
+                if mixer.aliases.get(prop, value).is_none() {
+                    mixer.aliases.set(prop, value, &alias);
+                }
+                mixer.aliases.set(&lprop, &lvalue, "");
+                rules = true;
+            }
+            if let Some(legacy) = mixer.seen.get(&lprop, &lvalue).cloned() {
+                if legacy.ignored {
+                    mixer.seen.set_ignored(prop, value, true);
+                }
+                mixer.seen.forget(&lprop, &lvalue);
+                history = true;
+            }
+        }
+    }
+    (rules, history)
 }
 
 /// Physical output devices (everything that isn't one of our virtual sinks).

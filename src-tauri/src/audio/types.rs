@@ -258,12 +258,10 @@ pub struct AppStream {
     /// True while the stream is actively producing audio (node running /
     /// not corked) - drives the activity indicator in the app list.
     pub active: bool,
-    /// Raw node plus client properties, for identity resolution in the
-    /// command layer. Backend-internal: never crosses to the UI.
+    /// Node plus client props for identity resolution; never reaches the UI.
     #[serde(skip)]
     pub props: HashMap<String, String>,
-    /// False while the stream's client has not yet reported its full
-    /// property set; an identity resolved before that is not cached.
+    /// False until the client reported its full props; not cached before.
     #[serde(skip)]
     pub settled: bool,
 }
