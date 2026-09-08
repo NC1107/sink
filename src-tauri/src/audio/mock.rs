@@ -87,6 +87,11 @@ pub fn stream(index: u32, serial: u64, value: &str, on: Option<&str>) -> AppStre
         volume_percent: 100,
         muted: false,
         active: true,
+        // The command layer re-resolves identity from these, so a mock
+        // stream must carry the property its identity came from.
+        props: [("application.name".to_string(), value.to_string())]
+            .into_iter()
+            .collect(),
     }
 }
 

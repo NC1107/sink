@@ -182,6 +182,7 @@ mod tests {
             volume_percent: 100,
             muted: false,
             active: true,
+            props: Default::default(),
         }
     }
 

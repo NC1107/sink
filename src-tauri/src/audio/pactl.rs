@@ -239,8 +239,14 @@ impl AudioBackend for PactlBackend {
                     .get(&input.sink)
                     .filter(|name| is_virtual_sink(name))
                     .cloned();
+                let props: HashMap<String, String> = input
+                    .properties
+                    .iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect();
 
                 AppStream {
+                    props,
                     index: input.index,
                     // PulseAudio's sink-input index is itself never reused.
                     serial: u64::from(input.index),

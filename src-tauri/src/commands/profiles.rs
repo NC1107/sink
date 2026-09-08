@@ -2,7 +2,6 @@ use tauri::State;
 
 use crate::persistence::channels::ChannelDef;
 use crate::persistence::profiles::{self, Profile, ProfileInfo};
-use crate::persistence::wireplumber;
 use crate::state::AppState;
 
 /// Persist the current mixer state into the active profile, if any.
@@ -222,7 +221,6 @@ pub fn load_profile(
     outputs.save().map_err(|e| e.to_string())?;
     eq.save().map_err(|e| e.to_string())?;
     target_buses.save().map_err(|e| e.to_string())?;
-    wireplumber::write(&assignments).map_err(|e| e.to_string())?;
     // The loaded profile becomes the live-bound (autosaving) one.
     set_active(&state, Some(name))?;
     crate::refresh_tray(&app);

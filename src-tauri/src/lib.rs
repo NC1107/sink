@@ -133,6 +133,7 @@ pub fn run() {
             if let Some(levels) = levels {
                 spawn_level_emitter(app.handle().clone(), levels);
             }
+            persistence::wireplumber::remove_stale();
             spawn_route_enforcer(app.handle().clone());
             Ok(())
         })

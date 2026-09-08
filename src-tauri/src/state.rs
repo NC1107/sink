@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,9 @@ pub struct AppState {
     /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
     pub refresh_gate: Mutex<()>,
+    /// Resolved identity per stream serial. Dropped with the stream, so a
+    /// recycled pid can never inherit a dead stream's identity.
+    pub identity_cache: Mutex<HashMap<u64, crate::audio::identity::Identity>>,
 }
 
 impl AppState {
@@ -80,6 +84,7 @@ impl AppState {
             mixer: Mutex::new(mixer),
             ui_stream_poll: Mutex::new(None),
             refresh_gate: Mutex::new(()),
+            identity_cache: Mutex::new(HashMap::new()),
         }
     }
 

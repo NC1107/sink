@@ -9,6 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+use crate::audio::identity::DesktopDb;
+
 #[derive(Debug, Clone)]
 struct DesktopEntry {
     /// Desktop-file id: the file stem, lowercased (e.g. "org.kde.dolphin",
@@ -115,8 +117,14 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
         return None;
     }
     let name = name?;
+    // The program is the first token that isn't a launcher prefix
+    // (`env FOO=1 app`, `sh -c app`, `flatpak-spawn --host app`).
     let exec_base = exec.and_then(|e| {
-        let first = e.split_whitespace().next()?;
+        let first = e.split_whitespace().find(|t| {
+            !(t.contains('=')
+                || t.starts_with('-')
+                || matches!(*t, "env" | "sh" | "bash" | "flatpak-spawn"))
+        })?;
         Path::new(first)
             .file_name()
             .map(|f| f.to_string_lossy().to_lowercase())
@@ -138,7 +146,7 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
 /// binaries don't embed icons - the icon belongs to the app's .desktop
 /// entry, so identifying a stream's icon means mapping PID → desktop id
 /// through the fingerprints the system leaves on the process.
-fn desktop_id_candidates(pid: u32) -> Vec<String> {
+pub fn desktop_id_candidates(pid: u32) -> Vec<String> {
     let mut out = Vec::new();
 
     // 1. systemd app units: desktop launchers run apps in cgroups named
@@ -261,6 +269,38 @@ fn icon_name_to_path(name: &str) -> Option<String> {
     None
 }
 
+fn resolver() -> &'static Mutex<Resolver> {
+    RESOLVER.get_or_init(|| {
+        Mutex::new(Resolver {
+            desktops: load_desktops(),
+            cache: HashMap::new(),
+        })
+    })
+}
+
+/// The installed desktop entries, as the identity ladder sees them.
+pub struct Desktops;
+
+impl DesktopDb for Desktops {
+    fn name_by_id(&self, id: &str) -> Option<String> {
+        let resolver = resolver().lock().ok()?;
+        resolver
+            .desktops
+            .iter()
+            .find(|d| d.id == id)
+            .map(|d| d.name.clone())
+    }
+
+    fn entry_for_exec(&self, ids: &[String], exe: &str) -> Option<(String, String)> {
+        let resolver = resolver().lock().ok()?;
+        resolver
+            .desktops
+            .iter()
+            .find(|d| ids.iter().any(|i| i == &d.id) && d.exec_base.as_deref() == Some(exe))
+            .map(|d| (d.id.clone(), d.name.clone()))
+    }
+}
+
 /// Resolve the best icon path + display name for a stream.
 ///
 /// `binary` is the process binary when the identity came from it;
@@ -271,13 +311,7 @@ pub fn resolve(
     icon_hint: Option<&str>,
     pid: Option<u32>,
 ) -> Resolved {
-    let resolver = RESOLVER.get_or_init(|| {
-        Mutex::new(Resolver {
-            desktops: load_desktops(),
-            cache: HashMap::new(),
-        })
-    });
-    let Ok(mut resolver) = resolver.lock() else {
+    let Ok(mut resolver) = resolver().lock() else {
         return Resolved::default();
     };
 
@@ -293,20 +327,27 @@ pub fn resolve(
     let binary_lower = binary.map(str::to_lowercase);
 
     // The PID beats name-matching: the process's cgroup scope, flatpak id,
-    // or launch environment names its desktop entry exactly, and the real
-    // exe path sees through wrapper binaries.
+    // or launch environment names its desktop entry, and the real exe path
+    // sees through wrapper binaries. A scope is inherited from whatever
+    // launched the process (a terminal, Steam), so a candidate only counts
+    // when its Exec runs this very executable.
     let pid_desktop = pid.and_then(|p| {
         let candidates = desktop_id_candidates(p);
+        let exe = exe_basename(p);
         resolver
             .desktops
             .iter()
-            .find(|d| !d.id.is_empty() && candidates.iter().any(|c| c == &d.id))
+            .find(|d| {
+                !d.id.is_empty()
+                    && candidates.iter().any(|c| c == &d.id)
+                    && exe.as_deref().map_or(true, |e| d.exec_base.as_deref() == Some(e))
+            })
             .or_else(|| {
-                let exe = exe_basename(p)?;
+                let exe = exe.as_deref()?;
                 resolver
                     .desktops
                     .iter()
-                    .find(|d| d.exec_base.as_deref() == Some(exe.as_str()))
+                    .find(|d| d.exec_base.as_deref() == Some(exe))
             })
     });
 

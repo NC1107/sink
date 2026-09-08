@@ -1,6 +1,10 @@
+use std::collections::{HashMap, HashSet};
+
 use tauri::State;
 
+use crate::audio::identity::{self, Identity};
 use crate::audio::types::{AppStream, OutputDevice, VirtualSink};
+use crate::audio::{icons, steam};
 use crate::state::AppState;
 
 /// How often the poll force-saves app history to refresh `last_seen` on disk.
@@ -29,12 +33,45 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
 
-    // Desktop-entry resolution: real icon files and polished display names
-    // ("spotify" binary → Spotify with its actual icon). Cached per identity.
+    // Identity: ask the process before the stream (audio::identity). Cached
+    // per serial so /proc is read once per stream, not per tick.
+    {
+        let mut cache = state
+            .identity_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let live: HashSet<u64> = streams.iter().map(|s| s.serial).collect();
+        cache.retain(|serial, _| live.contains(serial));
+        let mut ids: Vec<Identity> = streams
+            .iter()
+            .map(|s| {
+                cache.get(&s.serial).cloned().unwrap_or_else(|| {
+                    identity::resolve(
+                        &s.props,
+                        &identity::Proc,
+                        &icons::Desktops,
+                        &steam::SteamLibrary,
+                    )
+                })
+            })
+            .collect();
+        let props: Vec<&HashMap<String, String>> = streams.iter().map(|s| &s.props).collect();
+        identity::adopt_from_siblings(&mut ids, &props);
+        for (stream, id) in streams.iter_mut().zip(ids) {
+            cache.insert(stream.serial, id.clone());
+            stream.match_prop = id.prop;
+            stream.match_value = id.value;
+            stream.app_name = id.display;
+            stream.pid = id.pid;
+        }
+    }
+
+    // Icons, plus the desktop entry's name for identities that still come
+    // from the stream or a bare executable.
     for stream in &mut streams {
         let binary = (stream.match_prop == "application.process.binary")
             .then_some(stream.match_value.as_str());
-        let resolved = crate::audio::icons::resolve(
+        let resolved = icons::resolve(
             &stream.app_name,
             binary,
             stream.icon_name.as_deref(),
@@ -42,7 +79,11 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         );
         stream.icon_path = resolved.icon_path;
         if let Some(name) = resolved.display_name {
-            stream.app_name = name;
+            if !identity::is_process_prop(&stream.match_prop)
+                || stream.match_prop == identity::PROP_EXE
+            {
+                stream.app_name = name;
+            }
         }
     }
 
@@ -54,7 +95,7 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
     // would stall every other command - including tray-menu building - behind
     // this 2s poll, and slow-loop polls would stack up (TD-004). So we snapshot
     // the decisions here and release the guard before touching disk or PipeWire.
-    let (seen_to_save, planned) = {
+    let (seen_to_save, planned, rules_to_save) = {
         let mut mixer = state.lock_mixer()?;
         let mut structural_change = false;
         for stream in &streams {
@@ -65,6 +106,48 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
                 stream.icon_name.as_deref(),
                 now,
             );
+        }
+
+        // Carry rules, aliases and ignores written under a stream's own
+        // properties over to its process identity, so an upgrade loses
+        // nothing. The legacy rule itself stays: a generic one ("SDL
+        // Application") may be all that routes some other game.
+        let mut rules_changed = false;
+        for stream in &streams {
+            if !identity::is_process_prop(&stream.match_prop) {
+                continue;
+            }
+            for (prop, value) in identity::legacy_matchers(&stream.props) {
+                if mixer
+                    .assignments
+                    .sink_for(&stream.match_prop, &stream.match_value)
+                    .is_none()
+                {
+                    if let Some(sink) = mixer.assignments.sink_for(&prop, &value).map(str::to_string) {
+                        mixer
+                            .assignments
+                            .set(&stream.match_prop, &stream.match_value, &sink);
+                        rules_changed = true;
+                    }
+                }
+                if mixer.aliases.get(&stream.match_prop, &stream.match_value).is_none() {
+                    if let Some(alias) = mixer.aliases.get(&prop, &value).map(str::to_string) {
+                        mixer
+                            .aliases
+                            .set(&stream.match_prop, &stream.match_value, &alias);
+                        rules_changed = true;
+                    }
+                }
+                if let Some(legacy) = mixer.seen.get(&prop, &value).cloned() {
+                    if legacy.ignored {
+                        mixer
+                            .seen
+                            .set_ignored(&stream.match_prop, &stream.match_value, true);
+                    }
+                    mixer.seen.forget(&prop, &value);
+                    structural_change = true;
+                }
+            }
         }
         // A pure last_seen bump never reports a structural change, so without
         // this the freshest timestamps only reach disk on a clean tray-quit -
@@ -91,14 +174,26 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
                 .map(str::to_string);
         }
 
-        // Snapshot the history for an out-of-lock save, only when it changed.
-        (structural_change.then(|| mixer.seen.clone()), planned)
+        // Snapshot for out-of-lock saves, only when something changed.
+        (
+            structural_change.then(|| mixer.seen.clone()),
+            planned,
+            rules_changed.then(|| (mixer.assignments.clone(), mixer.aliases.clone())),
+        )
     };
 
     // Phase 2: the blocking work, with the lock released.
     if let Some(seen) = seen_to_save {
         if let Err(e) = seen.save() {
             eprintln!("sink: saving app history failed: {e}");
+        }
+    }
+    if let Some((assignments, aliases)) = rules_to_save {
+        if let Err(e) = assignments.save() {
+            eprintln!("sink: saving migrated assignments failed: {e}");
+        }
+        if let Err(e) = aliases.save() {
+            eprintln!("sink: saving migrated aliases failed: {e}");
         }
     }
     for (index, target, app_name) in planned {
@@ -405,6 +500,57 @@ mod tests {
             1,
             "a manual re-route must not be fought"
         );
+    }
+
+    #[test]
+    fn refresh_adopts_a_legacy_rule_into_the_process_identity() {
+        let _cfg = TempConfig::new("refresh-migrate");
+        // A sandboxed Spotify: identity comes from the portal app id (no
+        // /proc involved), while the rule on disk is keyed the old way.
+        let mut spotify = stream(7, 100, "Spotify", None);
+        spotify.props.insert(
+            "pipewire.access.portal.app_id".into(),
+            "com.spotify.Client".into(),
+        );
+        spotify.props.insert("pipewire.access".into(), "flatpak".into());
+        spotify.props.insert("application.process.id".into(), "2".into());
+        let backend = Arc::new(MockBackend::with_streams(vec![spotify]));
+        let state = AppState::new(backend.clone(), true);
+        {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            mixer.init_defaults();
+            mixer
+                .assignments
+                .set("application.name", "Spotify", "sink_music");
+            mixer.aliases.set("application.name", "Spotify", "Tunes");
+            mixer
+                .seen
+                .upsert("application.name", "Spotify", "Spotify", None, 1);
+        }
+
+        let streams = refresh_streams(&state).expect("pass");
+
+        assert_eq!(streams[0].match_prop, identity::PROP_FLATPAK);
+        assert_eq!(streams[0].match_value, "com.spotify.Client");
+        assert_eq!(streams[0].pid, None, "a sandbox pid is never trusted");
+        assert_eq!(
+            backend.moves(),
+            vec![(7, "sink_music".to_string())],
+            "the legacy rule routes the new identity"
+        );
+        let mixer = state.lock_mixer().expect("mixer");
+        assert_eq!(
+            mixer.assignments.sink_for(identity::PROP_FLATPAK, "com.spotify.Client"),
+            Some("sink_music")
+        );
+        assert_eq!(
+            mixer.assignments.sink_for("application.name", "Spotify"),
+            Some("sink_music"),
+            "the legacy rule is kept, never deleted"
+        );
+        assert_eq!(mixer.aliases.get(identity::PROP_FLATPAK, "com.spotify.Client"), Some("Tunes"));
+        assert!(mixer.seen.get("application.name", "Spotify").is_none(), "history merged");
+        assert!(mixer.seen.get(identity::PROP_FLATPAK, "com.spotify.Client").is_some());
     }
 
     #[test]
