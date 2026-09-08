@@ -154,7 +154,9 @@ mod tests {
         let old = now - 30 * DAY;
         let mut state = MixerState::default();
         for value in ["plain", "assigned", "aliased"] {
-            state.seen.upsert("application.name", value, value, None, old);
+            state
+                .seen
+                .upsert("application.name", value, value, None, None, old);
         }
         state
             .assignments
