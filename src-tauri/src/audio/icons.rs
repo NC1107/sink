@@ -305,6 +305,29 @@ impl DesktopDb for Desktops {
 ///
 /// `binary` is the process binary when the identity came from it;
 /// `icon_hint` is the stream's application.icon-name property.
+/// An Exec match is only trusted when it is the only entry running that
+/// executable: launcher shortcuts (`steam steam://rungameid/..`,
+/// `wezterm start -- claude`) all share their launcher's exec.
+fn only_by_exec<'a>(desktops: &'a [DesktopEntry], exe: &str) -> Option<&'a DesktopEntry> {
+    let mut hits = desktops
+        .iter()
+        .filter(|d| d.exec_base.as_deref() == Some(exe));
+    let first = hits.next()?;
+    hits.next().is_none().then_some(first)
+}
+
+fn desktop_by_name<'a>(
+    desktops: &'a [DesktopEntry],
+    app_lower: &str,
+    binary_lower: Option<&str>,
+) -> Option<&'a DesktopEntry> {
+    desktops
+        .iter()
+        .find(|d| d.wm_class_lower.as_deref() == Some(app_lower) || d.name_lower == app_lower)
+        .or_else(|| binary_lower.and_then(|b| only_by_exec(desktops, b)))
+        .or_else(|| only_by_exec(desktops, app_lower))
+}
+
 pub fn resolve(
     app_name: &str,
     binary: Option<&str>,
@@ -337,26 +360,21 @@ pub fn resolve(
             .find(|d| {
                 !d.id.is_empty()
                     && candidates.iter().any(|c| c == &d.id)
-                    && exe.as_deref().map_or(true, |e| d.exec_base.as_deref() == Some(e))
+                    && exe
+                        .as_deref()
+                        .map_or(true, |e| d.exec_base.as_deref() == Some(e))
             })
             .or_else(|| {
                 // A runtime's entry (python3, java) would claim every app on it.
-                let exe = exe.as_deref().filter(|e| !crate::audio::identity::is_wrapper_exe(e))?;
-                resolver
-                    .desktops
-                    .iter()
-                    .find(|d| d.exec_base.as_deref() == Some(exe))
+                let exe = exe
+                    .as_deref()
+                    .filter(|e| !crate::audio::identity::is_wrapper_exe(e))?;
+                only_by_exec(&resolver.desktops, exe)
             })
     });
 
-    let desktop = pid_desktop.or_else(|| {
-        resolver.desktops.iter().find(|d| {
-            d.wm_class_lower.as_deref() == Some(app_lower.as_str())
-                || (binary_lower.is_some() && d.exec_base == binary_lower)
-                || d.name_lower == app_lower
-                || d.exec_base.as_deref() == Some(app_lower.as_str())
-        })
-    });
+    let desktop = pid_desktop
+        .or_else(|| desktop_by_name(&resolver.desktops, &app_lower, binary_lower.as_deref()));
 
     // Icon candidates in priority order: explicit stream hint, the desktop
     // entry's icon, the binary name, a slug of the display name.
@@ -411,6 +429,42 @@ mod tests {
         assert_eq!(entry.exec_base.as_deref(), Some("coolapp"));
         assert_eq!(entry.wm_class_lower.as_deref(), Some("coolapp"));
         assert_eq!(entry.icon.as_deref(), Some("coolapp"));
+    }
+
+    fn entry(name: &str, exec: &str) -> DesktopEntry {
+        DesktopEntry {
+            id: name.to_lowercase(),
+            name: name.to_string(),
+            name_lower: name.to_lowercase(),
+            icon: None,
+            exec_base: Some(exec.to_string()),
+            wm_class_lower: None,
+        }
+    }
+
+    #[test]
+    fn launcher_shortcuts_never_stand_in_for_the_launcher() {
+        // Shortcuts listed before the real entries, so only an exact-name
+        // match or a unique exec can pick the right one.
+        let desktops = vec![
+            entry("Slay the Spire 2", "steam"),
+            entry("Claude", "wezterm"),
+            entry("Steam", "steam"),
+            entry("WezTerm", "wezterm"),
+            entry("Firefox", "firefox"),
+        ];
+        let pick = |name: &str, bin: Option<&str>| {
+            desktop_by_name(&desktops, name, bin).map(|d| d.name.as_str())
+        };
+        assert_eq!(pick("steam", None), Some("Steam"));
+        assert_eq!(pick("wezterm", None), Some("WezTerm"));
+        assert_eq!(pick("firefox", None), Some("Firefox"));
+        assert_eq!(pick("nightly", Some("firefox")), Some("Firefox"));
+        assert_eq!(pick("factorio", Some("steam")), None);
+        assert_eq!(
+            only_by_exec(&desktops, "steam").map(|d| d.name.as_str()),
+            None
+        );
     }
 
     #[test]
