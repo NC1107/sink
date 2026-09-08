@@ -58,7 +58,12 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         let props: Vec<&HashMap<String, String>> = streams.iter().map(|s| &s.props).collect();
         identity::adopt_from_siblings(&mut ids, &props);
         for (stream, id) in streams.iter_mut().zip(ids) {
-            cache.insert(stream.serial, id.clone());
+            // An identity read before the client reported its full props
+            // could be the low-confidence name one; keep resolving until
+            // the facts are in.
+            if stream.settled {
+                cache.insert(stream.serial, id.clone());
+            }
             stream.match_prop = id.prop;
             stream.match_value = id.value;
             stream.app_name = id.display;
@@ -122,21 +127,22 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
                     .assignments
                     .sink_for(&stream.match_prop, &stream.match_value)
                     .is_none()
+                    && mixer
+                        .assignments
+                        .adopt(&prop, &value, &stream.match_prop, &stream.match_value)
+                        .is_some()
                 {
-                    if let Some(sink) = mixer.assignments.sink_for(&prop, &value).map(str::to_string) {
-                        mixer
-                            .assignments
-                            .set(&stream.match_prop, &stream.match_value, &sink);
-                        rules_changed = true;
-                    }
+                    rules_changed = true;
                 }
-                if mixer.aliases.get(&stream.match_prop, &stream.match_value).is_none() {
-                    if let Some(alias) = mixer.aliases.get(&prop, &value).map(str::to_string) {
+                // An alias names one app, so it moves rather than copies.
+                if let Some(alias) = mixer.aliases.get(&prop, &value).map(str::to_string) {
+                    if mixer.aliases.get(&stream.match_prop, &stream.match_value).is_none() {
                         mixer
                             .aliases
                             .set(&stream.match_prop, &stream.match_value, &alias);
-                        rules_changed = true;
                     }
+                    mixer.aliases.set(&prop, &value, "");
+                    rules_changed = true;
                 }
                 if let Some(legacy) = mixer.seen.get(&prop, &value).cloned() {
                     if legacy.ignored {
@@ -549,8 +555,28 @@ mod tests {
             "the legacy rule is kept, never deleted"
         );
         assert_eq!(mixer.aliases.get(identity::PROP_FLATPAK, "com.spotify.Client"), Some("Tunes"));
+        assert!(mixer.aliases.get("application.name", "Spotify").is_none(), "alias moved, not copied");
         assert!(mixer.seen.get("application.name", "Spotify").is_none(), "history merged");
         assert!(mixer.seen.get(identity::PROP_FLATPAK, "com.spotify.Client").is_some());
+        drop(mixer);
+
+        // The user unassigns the app. The legacy rule is still on disk and
+        // the app is still playing: the next refresh must not bring it back.
+        state
+            .lock_mixer()
+            .expect("mixer")
+            .assignments
+            .remove(identity::PROP_FLATPAK, "com.spotify.Client");
+        refresh_streams(&state).expect("second pass");
+        let mixer = state.lock_mixer().expect("mixer");
+        assert!(
+            mixer
+                .assignments
+                .sink_for(identity::PROP_FLATPAK, "com.spotify.Client")
+                .is_none(),
+            "an unassigned app must stay unassigned"
+        );
+        assert_eq!(backend.moves().len(), 1, "no second move");
     }
 
     #[test]

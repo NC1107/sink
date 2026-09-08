@@ -92,6 +92,7 @@ pub fn stream(index: u32, serial: u64, value: &str, on: Option<&str>) -> AppStre
         props: [("application.name".to_string(), value.to_string())]
             .into_iter()
             .collect(),
+        settled: true,
     }
 }
 

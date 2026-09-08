@@ -183,6 +183,7 @@ mod tests {
             muted: false,
             active: true,
             props: Default::default(),
+            settled: true,
         }
     }
 

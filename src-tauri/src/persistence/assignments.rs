@@ -15,6 +15,15 @@ pub struct Assignment {
     pub match_value: String,
     /// Target virtual sink, e.g. "sink_music".
     pub sink_name: String,
+    /// Process identities (`prop:value`) this rule has been adopted into.
+    /// Adoption happens once per pair, so a user unassigning the adopted
+    /// rule is not fought by the next refresh.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adopted_by: Vec<String>,
+}
+
+pub fn identity_key(prop: &str, value: &str) -> String {
+    format!("{prop}:{value}")
 }
 
 /// The set of saved app→channel assignments, stored as JSON at
@@ -69,8 +78,33 @@ impl Assignments {
                 match_prop: match_prop.to_string(),
                 match_value: match_value.to_string(),
                 sink_name: sink_name.to_string(),
+                adopted_by: Vec::new(),
             }),
         }
+    }
+
+    /// Adopt the rule on (`match_prop`, `match_value`) into the process
+    /// identity (`into_prop`, `into_value`), once. Returns the sink when
+    /// a new rule was created.
+    pub fn adopt(
+        &mut self,
+        match_prop: &str,
+        match_value: &str,
+        into_prop: &str,
+        into_value: &str,
+    ) -> Option<String> {
+        let key = identity_key(into_prop, into_value);
+        let legacy = self
+            .assignments
+            .iter_mut()
+            .find(|a| a.match_prop == match_prop && a.match_value == match_value)?;
+        if legacy.adopted_by.contains(&key) {
+            return None;
+        }
+        legacy.adopted_by.push(key);
+        let sink = legacy.sink_name.clone();
+        self.set(into_prop, into_value, &sink);
+        Some(sink)
     }
 
     pub fn remove(&mut self, match_prop: &str, match_value: &str) {
@@ -101,6 +135,23 @@ mod tests {
         a.remove("application.name", "spotify");
         assert!(a.sink_for("application.name", "spotify").is_none());
         assert!(a.assignments.is_empty());
+    }
+
+    #[test]
+    fn adoption_happens_once_per_identity() {
+        let mut a = Assignments::default();
+        a.set("application.name", "SDL Application", "sink_game");
+        assert_eq!(
+            a.adopt("application.name", "SDL Application", "steam.app_id", "1"),
+            Some("sink_game".to_string())
+        );
+        // A second game on the same engine adopts too; the legacy rule stays.
+        assert!(a.adopt("application.name", "SDL Application", "steam.app_id", "2").is_some());
+        assert_eq!(a.sink_for("application.name", "SDL Application"), Some("sink_game"));
+        // The user unassigns game 1: it must not come back.
+        a.remove("steam.app_id", "1");
+        assert!(a.adopt("application.name", "SDL Application", "steam.app_id", "1").is_none());
+        assert!(a.sink_for("steam.app_id", "1").is_none());
     }
 
     #[test]

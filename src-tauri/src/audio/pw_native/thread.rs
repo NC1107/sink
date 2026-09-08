@@ -104,6 +104,8 @@ struct NodeEntry {
 /// abbreviated property set; the pid, binary and sandbox facts live here.
 struct ClientEntry {
     props: HashMap<String, String>,
+    /// Set once the info event delivered the full property dict.
+    settled: bool,
     _proxy: pw::client::Client,
     _listener: pw::client::ClientListener,
 }
@@ -573,6 +575,7 @@ fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalO
                 for (k, v) in props.iter() {
                     entry.props.insert(k.to_string(), v.to_string());
                 }
+                entry.settled = true;
             }
         })
         .register();
@@ -580,6 +583,7 @@ fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalO
         global.id,
         ClientEntry {
             props,
+            settled: false,
             _proxy: proxy,
             _listener: listener,
         },
@@ -1366,18 +1370,24 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                         crate::audio::types::resolve_identity(|key| n.props.get(key).cloned());
                     // Node props win; the client fills what the node left out.
                     let mut props = n.props.clone();
-                    if let Some(client) = n
+                    let client = n
                         .props
                         .get("client.id")
                         .and_then(|v| v.parse::<u32>().ok())
-                        .and_then(|cid| s.clients.get(&cid))
-                    {
-                        for (k, v) in &client.props {
-                            props.entry(k.clone()).or_insert_with(|| v.clone());
+                        .map(|cid| s.clients.get(&cid));
+                    let settled = match client {
+                        None => true,
+                        Some(None) => false,
+                        Some(Some(client)) => {
+                            for (k, v) in &client.props {
+                                props.entry(k.clone()).or_insert_with(|| v.clone());
+                            }
+                            client.settled
                         }
-                    }
+                    };
                     AppStream {
                         props,
+                        settled,
                         index: n.id,
                         serial: n.serial.unwrap_or_else(|| u64::from(n.id)),
                         app_name,

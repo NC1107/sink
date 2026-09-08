@@ -121,9 +121,10 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
     // (`env FOO=1 app`, `sh -c app`, `flatpak-spawn --host app`).
     let exec_base = exec.and_then(|e| {
         let first = e.split_whitespace().find(|t| {
+            let base = Path::new(t).file_name().map(|f| f.to_string_lossy().into_owned());
             !(t.contains('=')
                 || t.starts_with('-')
-                || matches!(*t, "env" | "sh" | "bash" | "flatpak-spawn"))
+                || matches!(base.as_deref(), Some("env" | "sh" | "bash" | "flatpak-spawn")))
         })?;
         Path::new(first)
             .file_name()
@@ -343,7 +344,8 @@ pub fn resolve(
                     && exe.as_deref().map_or(true, |e| d.exec_base.as_deref() == Some(e))
             })
             .or_else(|| {
-                let exe = exe.as_deref()?;
+                // A runtime's entry (python3, java) would claim every app on it.
+                let exe = exe.as_deref().filter(|e| !crate::audio::identity::is_wrapper_exe(e))?;
                 resolver
                     .desktops
                     .iter()
