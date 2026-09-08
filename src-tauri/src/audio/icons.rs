@@ -245,17 +245,17 @@ pub fn real_path(path: impl AsRef<Path>) -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
-/// The icon for a Steam game when the stream's own facts gave none.
+/// A Steam game's own art beats whatever its streams hint at (usually a
+/// generic "applications-games").
 pub fn identity_icon(
     match_prop: &str,
     match_value: &str,
     resolved: Option<String>,
 ) -> Option<String> {
-    resolved.or_else(|| {
-        (match_prop == crate::audio::identity::PROP_STEAM)
-            .then(|| crate::audio::steam::icon_path(match_value))
-            .flatten()
-    })
+    (match_prop == crate::audio::identity::PROP_STEAM)
+        .then(|| crate::audio::steam::icon_path(match_value))
+        .flatten()
+        .or(resolved)
 }
 
 pub fn icon_name_to_path(name: &str) -> Option<String> {
