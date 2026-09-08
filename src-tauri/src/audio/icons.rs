@@ -236,7 +236,33 @@ fn load_desktops() -> Vec<DesktopEntry> {
 }
 
 /// Resolve an icon name to a file path across the freedesktop dirs.
+/// The canonical path: the asset protocol resolves a symlink with
+/// `read_link`, so a theme's relative link (`foo.svg -> bar.svg`) is
+/// checked against the working directory and denied.
+pub fn real_path(path: impl AsRef<Path>) -> Option<String> {
+    std::fs::canonicalize(path)
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// The icon for a Steam game when the stream's own facts gave none.
+pub fn identity_icon(
+    match_prop: &str,
+    match_value: &str,
+    resolved: Option<String>,
+) -> Option<String> {
+    resolved.or_else(|| {
+        (match_prop == crate::audio::identity::PROP_STEAM)
+            .then(|| crate::audio::steam::icon_path(match_value))
+            .flatten()
+    })
+}
+
 pub fn icon_name_to_path(name: &str) -> Option<String> {
+    find_icon(name).and_then(real_path)
+}
+
+fn find_icon(name: &str) -> Option<String> {
     if name.starts_with('/') && Path::new(name).exists() {
         return Some(name.to_string());
     }
@@ -376,17 +402,18 @@ pub fn resolve(
     let desktop = pid_desktop
         .or_else(|| desktop_by_name(&resolver.desktops, &app_lower, binary_lower.as_deref()));
 
-    // Icon candidates in priority order: explicit stream hint, the desktop
-    // entry's icon, the binary name, a slug of the display name.
+    // Icon candidates in priority order: the desktop entry's icon, the
+    // stream's hint (Electron apps all say "chromium-browser"), the binary
+    // name, a slug of the display name.
     let slug = app_lower.replace(' ', "-");
     let mut candidates: Vec<&str> = Vec::new();
-    if let Some(hint) = icon_hint {
-        candidates.push(hint);
-    }
     if let Some(d) = desktop {
         if let Some(icon) = d.icon.as_deref() {
             candidates.push(icon);
         }
+    }
+    if let Some(hint) = icon_hint {
+        candidates.push(hint);
     }
     if let Some(b) = binary_lower.as_deref() {
         candidates.push(b);
@@ -465,6 +492,19 @@ mod tests {
             only_by_exec(&desktops, "steam").map(|d| d.name.as_str()),
             None
         );
+    }
+
+    #[test]
+    fn real_path_follows_a_relative_symlink() {
+        let dir = std::env::temp_dir().join("sink-test-icons");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("creates");
+        fs::write(dir.join("bar.svg"), "<svg/>").expect("writes");
+        std::os::unix::fs::symlink("bar.svg", dir.join("foo.svg")).expect("links");
+        let real = real_path(dir.join("foo.svg")).expect("resolves");
+        assert!(real.ends_with("/bar.svg"), "{real}");
+        assert!(!real.contains("foo"));
+        assert_eq!(real_path(dir.join("missing.svg")), None);
     }
 
     #[test]

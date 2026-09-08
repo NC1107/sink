@@ -116,7 +116,7 @@ pub fn icon_path(app_id: &str) -> Option<String> {
         // The icon is the small one; the rest is library art.
         jpgs.sort_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(u64::MAX));
         if let Some(p) = jpgs.first() {
-            return Some(p.to_string_lossy().into_owned());
+            return crate::audio::icons::real_path(p);
         }
     }
     None
