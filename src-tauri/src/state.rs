@@ -15,8 +15,7 @@ pub struct AppState {
     /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
     pub refresh_gate: Mutex<()>,
-    /// Resolved identity per stream serial. Dropped with the stream, so a
-    /// recycled pid can never inherit a dead stream's identity.
+    /// Per stream serial, dropped with the stream, so a recycled pid inherits nothing.
     pub identity_cache: Mutex<HashMap<u64, crate::audio::identity::Identity>>,
 }
 

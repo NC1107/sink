@@ -100,8 +100,7 @@ struct NodeEntry {
     active: bool,
 }
 
-/// A connected client. Stream nodes made through pipewire-pulse carry an
-/// abbreviated property set; the pid, binary and sandbox facts live here.
+/// Nodes through pipewire-pulse carry few props; pid and sandbox facts live here.
 struct ClientEntry {
     props: HashMap<String, String>,
     /// Set once the info event delivered the full property dict.
@@ -563,8 +562,7 @@ fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalO
         .props
         .map(|d| d.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
         .unwrap_or_default();
-    // The registry global is abbreviated; the info event carries the full
-    // dict (pipewire.sec.pid, the portal app id, application.process.*).
+    // The full dict (sec.pid, portal app id) only arrives with the info event.
     let state_i = state.clone();
     let client_id = global.id;
     let listener = proxy
