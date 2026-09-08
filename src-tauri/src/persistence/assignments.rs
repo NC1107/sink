@@ -15,9 +15,8 @@ pub struct Assignment {
     pub match_value: String,
     /// Target virtual sink, e.g. "sink_music".
     pub sink_name: String,
-    /// Process identities (`prop:value`) this rule has been adopted into.
-    /// Adoption happens once per pair, so a user unassigning the adopted
-    /// rule is not fought by the next refresh.
+    /// Identities this rule was adopted into, once each, so unassigning
+    /// the adopted rule isn't undone by the next refresh.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub adopted_by: Vec<String>,
 }
@@ -83,9 +82,8 @@ impl Assignments {
         }
     }
 
-    /// Adopt the rule on (`match_prop`, `match_value`) into the process
-    /// identity (`into_prop`, `into_value`), once. Returns the sink when
-    /// a new rule was created.
+    /// Adopt into a process identity, once per pair; `Some(sink)` when a
+    /// rule was created.
     pub fn adopt(
         &mut self,
         match_prop: &str,

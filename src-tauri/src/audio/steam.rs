@@ -1,7 +1,5 @@
-//! Steam library lookup: app id -> game name, from the `appmanifest_*.acf`
-//! files Steam keeps per installed game. The manifest carries the store
-//! name with no version in it, which is what a game should be called
-//! regardless of what its audio streams say.
+//! App id -> game name from Steam's appmanifest files: the store name,
+//! with no version in it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,9 +8,8 @@ use std::time::{Duration, Instant};
 
 use crate::audio::identity::SteamDb;
 
-/// A missed lookup rescans, but not more often than this: a game installed
-/// after launch should be found, while a stream from a non-Steam app must
-/// not trigger a library walk on every refresh.
+/// A miss rescans, throttled so a non-Steam stream can't walk the library
+/// every refresh.
 const RESCAN_AFTER: Duration = Duration::from_secs(60);
 
 struct Library {
@@ -35,7 +32,10 @@ fn steam_roots() -> Vec<PathBuf> {
 /// The quoted value following a quoted `key` on a VDF line.
 fn vdf_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let line = line.trim();
-    let rest = line.strip_prefix('"')?.strip_prefix(key)?.strip_prefix('"')?;
+    let rest = line
+        .strip_prefix('"')?
+        .strip_prefix(key)?
+        .strip_prefix('"')?;
     let rest = rest.trim_start();
     let rest = rest.strip_prefix('"')?;
     rest.split('"').next()
@@ -109,7 +109,9 @@ impl SteamDb for SteamLibrary {
                 scanned_at: Instant::now(),
             })
         });
-        let mut lib = lib.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut lib = lib
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(name) = lib.names.get(app_id) {
             return Some(name.clone());
         }
@@ -136,7 +138,10 @@ mod tests {
 
     #[test]
     fn vdf_value_ignores_other_keys_and_spacing() {
-        assert_eq!(vdf_value("\t\"path\"\t\t\"/mnt/games/SteamLibrary\"", "path"), Some("/mnt/games/SteamLibrary"));
+        assert_eq!(
+            vdf_value("\t\"path\"\t\t\"/mnt/games/SteamLibrary\"", "path"),
+            Some("/mnt/games/SteamLibrary")
+        );
         assert_eq!(vdf_value("\"name\" \"Factorio\"", "path"), None);
         assert_eq!(vdf_value("not vdf", "path"), None);
     }

@@ -1,23 +1,12 @@
-//! Which program a stream belongs to.
-//!
-//! A stream's own properties describe its *audio stack* as often as its
-//! app: an engine names its streams "FMOD Audio" or "SDL Application", a
-//! game puts its version in `application.name`, an Electron shell says
-//! "Chromium". Keying rules on those splits one program into many and
-//! makes a rule about an engine route every game built on it. So the
-//! process is asked first (sandbox id, Steam app id, executable) and the
-//! stream's claims are the fallback, not the primary.
-//!
-//! Everything here is pure over injected readers so the ladder is
-//! unit-testable without `/proc`.
+//! Which program a stream belongs to. Streams describe their audio stack as
+//! often as their app ("FMOD Audio", a versioned name, "Chromium"), so the
+//! process is asked first and the stream's own claims are the fallback.
 
 use std::collections::HashMap;
 
 use crate::audio::types;
 
-/// A resolved app identity. `prop`/`value` is what rules, history and
-/// aliases key on; `display` is what the UI shows; `pid` is set only when
-/// the process id could be trusted to be in our namespace.
+/// `prop`/`value` is what rules key on; `pid` is set only when trusted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     pub prop: String,
@@ -32,9 +21,7 @@ pub const PROP_APPIMAGE: &str = "appimage.name";
 pub const PROP_DESKTOP: &str = "desktop.id";
 pub const PROP_EXE: &str = "process.exe";
 
-/// Identity props derived from the process rather than the stream. A rule
-/// under one of these can adopt a legacy rule keyed on the stream's own
-/// properties (see `legacy_matchers`).
+/// Props derived from the process; only these adopt legacy stream-keyed rules.
 pub fn is_process_prop(prop: &str) -> bool {
     matches!(
         prop,
@@ -45,8 +32,7 @@ pub fn is_process_prop(prop: &str) -> bool {
 pub trait ProcReader {
     fn exe_basename(&self, pid: u32) -> Option<String>;
     fn env_var(&self, pid: u32, key: &str) -> Option<String>;
-    /// Desktop-entry ids the process's launch left behind (cgroup scope,
-    /// GIO launch stamp), most reliable first.
+    /// Desktop-entry ids from the process's launch (cgroup scope, GIO stamp).
     fn desktop_ids(&self, pid: u32) -> Vec<String>;
 }
 
@@ -88,8 +74,7 @@ impl ProcReader for Proc {
     }
 }
 
-/// Executables that stand for a runtime rather than a program. Matching
-/// them would merge every app on that runtime into one identity.
+/// Runtimes, not programs: matching one merges every app on it.
 pub(crate) fn is_wrapper_exe(exe: &str) -> bool {
     let e = exe.to_ascii_lowercase();
     types::is_wrapper_name(&e)
@@ -112,9 +97,7 @@ fn parse_pid(v: Option<&String>) -> Option<u32> {
     v.and_then(|s| s.trim().parse().ok()).filter(|p| *p > 1)
 }
 
-/// The process id, if it can be trusted to name a process in our own pid
-/// namespace. Sandboxed clients report their in-sandbox pid, which on the
-/// host is somebody else entirely.
+/// Sandboxed clients report their in-sandbox pid, someone else on the host.
 fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option<u32> {
     if props.contains_key("pipewire.access.portal.app_id")
         || props.get("pipewire.access").map(String::as_str) == Some("flatpak")
@@ -126,8 +109,7 @@ fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option
     if parse_pid(props.get("pipewire.sec.pid")) == Some(reported) {
         return Some(reported);
     }
-    // Otherwise the pid must at least agree with the reported binary; with
-    // nothing to check it against, it is not used.
+    // Without a binary to agree with there is nothing to verify.
     let binary = props.get("application.process.binary")?;
     let exe = proc.exe_basename(reported)?;
     (exe.eq_ignore_ascii_case(binary.trim()) || is_wrapper_exe(&exe)).then_some(reported)
@@ -142,8 +124,7 @@ fn identity(prop: &str, value: &str, display: String, pid: Option<u32>) -> Ident
     }
 }
 
-/// Resolve a stream's identity from the union of its node and client
-/// properties. First row that yields a real (non-runtime) value wins.
+/// First row that yields a real (non-runtime) value wins.
 pub fn resolve(
     props: &HashMap<String, String>,
     proc: &dyn ProcReader,
@@ -169,7 +150,9 @@ pub fn resolve(
             .env_var(pid, "SteamAppId")
             .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()))
         {
-            let display = steam.name(&app_id).unwrap_or_else(|| fallback_display.clone());
+            let display = steam
+                .name(&app_id)
+                .unwrap_or_else(|| fallback_display.clone());
             return identity(PROP_STEAM, &app_id, display, Some(pid));
         }
         if let Some(stem) = proc.env_var(pid, "APPIMAGE").and_then(|path| {
@@ -199,18 +182,20 @@ pub fn resolve(
 
 /// The stream's own properties a legacy rule may have been keyed on.
 pub fn legacy_matchers(props: &HashMap<String, String>) -> Vec<(String, String)> {
-    ["application.name", "application.process.binary", "media.name", "node.name"]
-        .into_iter()
-        .filter_map(|k| props.get(k).map(|v| (k.to_string(), v.clone())))
-        .filter(|(_, v)| !v.trim().is_empty())
-        .collect()
+    [
+        "application.name",
+        "application.process.binary",
+        "media.name",
+        "node.name",
+    ]
+    .into_iter()
+    .filter_map(|k| props.get(k).map(|v| (k.to_string(), v.clone())))
+    .filter(|(_, v)| !v.trim().is_empty())
+    .collect()
 }
 
-/// Let a stream that could not be tied to a process borrow the identity of
-/// a sibling in the same snapshot, when the borrowing is unambiguous: the
-/// two report the same `application.name`, that name is a real app name
-/// (a runtime like "Chromium" is shared by unrelated programs), and exactly
-/// one process-backed identity claims it.
+/// A pid-less stream borrows a sibling's identity only when exactly one
+/// process-backed stream claims the same real (non-runtime) app name.
 pub fn adopt_from_siblings(identities: &mut [Identity], props: &[&HashMap<String, String>]) {
     let name_of = |p: &HashMap<String, String>| {
         p.get("application.name")
@@ -222,7 +207,10 @@ pub fn adopt_from_siblings(identities: &mut [Identity], props: &[&HashMap<String
         if id.pid.is_some() && is_process_prop(&id.prop) {
             if let Some(name) = name_of(p) {
                 let bucket = by_name.entry(name).or_default();
-                if !bucket.iter().any(|b| b.prop == id.prop && b.value == id.value) {
+                if !bucket
+                    .iter()
+                    .any(|b| b.prop == id.prop && b.value == id.value)
+                {
                     bucket.push(id.clone());
                 }
             }
@@ -302,11 +290,18 @@ mod tests {
     }
 
     fn props(kv: &[(&str, &str)]) -> HashMap<String, String> {
-        kv.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        kv.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     fn resolve_with(p: &HashMap<String, String>, proc: &FakeProc) -> Identity {
-        resolve(p, proc, &FakeDesktops(vec![("firefox", "Firefox", "firefox")]), &FakeSteam)
+        resolve(
+            p,
+            proc,
+            &FakeDesktops(vec![("firefox", "Firefox", "firefox")]),
+            &FakeSteam,
+        )
     }
 
     #[test]
@@ -321,7 +316,10 @@ mod tests {
         proc.exe.insert(2, "kthreadd");
         let desktops = FakeDesktops(vec![("com.spotify.client", "Spotify", "spotify")]);
         let id = resolve(&p, &proc, &desktops, &FakeSteam);
-        assert_eq!((id.prop.as_str(), id.value.as_str()), (PROP_FLATPAK, "com.spotify.Client"));
+        assert_eq!(
+            (id.prop.as_str(), id.value.as_str()),
+            (PROP_FLATPAK, "com.spotify.Client")
+        );
         assert_eq!(id.display, "Spotify");
         assert_eq!(id.pid, None);
 
@@ -350,7 +348,11 @@ mod tests {
                 ("pipewire.sec.pid", "100"),
             ]);
             let id = resolve_with(&p, &proc);
-            assert_eq!((id.prop.as_str(), id.value.as_str()), (PROP_STEAM, "730"), "{name}");
+            assert_eq!(
+                (id.prop.as_str(), id.value.as_str()),
+                (PROP_STEAM, "730"),
+                "{name}"
+            );
             assert_eq!(id.display, "Counter-Strike 2");
         }
     }
@@ -377,7 +379,10 @@ mod tests {
         proc.exe.insert(31, "somegame");
         proc.env.insert((31, "SteamAppId"), "730");
         // No sec.pid, no binary: could be any sandbox reporting its own pid.
-        let p = props(&[("application.name", "Some Game"), ("application.process.id", "31")]);
+        let p = props(&[
+            ("application.name", "Some Game"),
+            ("application.process.id", "31"),
+        ]);
         let id = resolve_with(&p, &proc);
         assert_eq!(id.pid, None);
         assert_eq!(id.prop, "application.name");
@@ -395,14 +400,22 @@ mod tests {
                 ("pipewire.sec.pid", "7"),
             ]);
             let id = resolve_with(&p, &proc);
-            assert_eq!((id.prop.as_str(), id.value.as_str()), (PROP_EXE, "factorio"));
+            assert_eq!(
+                (id.prop.as_str(), id.value.as_str()),
+                (PROP_EXE, "factorio")
+            );
         }
     }
 
     #[test]
     fn runtime_executables_never_become_the_identity() {
         let mut proc = FakeProc::new();
-        for (pid, exe) in [(21, "python3.12"), (22, "java"), (23, "apprun"), (4, "wine64-preloader")] {
+        for (pid, exe) in [
+            (21, "python3.12"),
+            (22, "java"),
+            (23, "apprun"),
+            (4, "wine64-preloader"),
+        ] {
             proc.exe.insert(pid, exe);
         }
         for (pid, binary) in [(21, "python3.12"), (22, "java"), (23, "apprun")] {
@@ -459,7 +472,10 @@ mod tests {
             ("pipewire.sec.pid", "5"),
         ]);
         let id = resolve(&p, &proc, &desktops, &FakeSteam);
-        assert_eq!((id.prop.as_str(), id.value.as_str()), (PROP_DESKTOP, "firefox"));
+        assert_eq!(
+            (id.prop.as_str(), id.value.as_str()),
+            (PROP_DESKTOP, "firefox")
+        );
         assert_eq!(id.display, "Firefox");
 
         // Only the terminal's scope is visible: its entry runs wezterm, not
@@ -473,7 +489,8 @@ mod tests {
     fn appimage_is_keyed_on_the_image_not_the_mounted_apprun() {
         let mut proc = FakeProc::new();
         proc.exe.insert(11, "apprun");
-        proc.env.insert((11, "APPIMAGE"), "/home/me/Apps/Obsidian-1.6.7.AppImage");
+        proc.env
+            .insert((11, "APPIMAGE"), "/home/me/Apps/Obsidian-1.6.7.AppImage");
         let p = props(&[
             ("application.name", "Chromium"),
             ("application.process.binary", "apprun"),
@@ -481,7 +498,10 @@ mod tests {
             ("pipewire.sec.pid", "11"),
         ]);
         let id = resolve_with(&p, &proc);
-        assert_eq!((id.prop.as_str(), id.value.as_str()), (PROP_APPIMAGE, "Obsidian-1.6.7"));
+        assert_eq!(
+            (id.prop.as_str(), id.value.as_str()),
+            (PROP_APPIMAGE, "Obsidian-1.6.7")
+        );
     }
 
     #[test]
@@ -491,7 +511,10 @@ mod tests {
             ("application.process.binary", "Discord"),
         ]);
         let id = resolve_with(&p, &FakeProc::new());
-        assert_eq!((id.prop.as_str(), id.value.as_str()), ("application.process.binary", "Discord"));
+        assert_eq!(
+            (id.prop.as_str(), id.value.as_str()),
+            ("application.process.binary", "Discord")
+        );
         assert_eq!(id.display, "Discord");
     }
 
@@ -506,9 +529,15 @@ mod tests {
             ("pipewire.sec.pid", "100"),
         ]);
         let without = props(&[("application.name", "cs2"), ("node.name", "cs2")]);
-        let mut ids = vec![resolve_with(&with_pid, &proc), resolve_with(&without, &proc)];
+        let mut ids = vec![
+            resolve_with(&with_pid, &proc),
+            resolve_with(&without, &proc),
+        ];
         adopt_from_siblings(&mut ids, &[&with_pid, &without]);
-        assert_eq!((ids[1].prop.as_str(), ids[1].value.as_str()), (PROP_STEAM, "730"));
+        assert_eq!(
+            (ids[1].prop.as_str(), ids[1].value.as_str()),
+            (PROP_STEAM, "730")
+        );
 
         // "Chromium" is a runtime name shared by unrelated apps: never a donor.
         proc.exe.insert(200, "spotify");
