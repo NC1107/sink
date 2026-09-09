@@ -71,6 +71,15 @@ export function useAudio() {
     };
   }, [onProfileChanged]);
 
+  // A hotkey moved the balance in the backend; the strips need the volumes.
+  const fetchChannels = useMixerStore((s) => s.fetchChannels);
+  useEffect(() => {
+    const unlisten = listen("channels-changed", () => void fetchChannels());
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [fetchChannels]);
+
   // Hardware profile auto-switch: when a device with a bound profile
   // appears, load that profile (Sonar-style).
   const seenDevices = useRef<Set<string> | null>(null);

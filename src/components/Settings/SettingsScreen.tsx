@@ -5,6 +5,7 @@ import { useMixerStore } from "../../store/mixer";
 import { useTheme, THEMES } from "../../store/theme";
 import type { OutputDevice } from "../../types";
 import { Ms } from "../Icons";
+import { HotkeysSection } from "./HotkeysSection";
 import { ConfirmModal } from "../ConfirmModal";
 import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
@@ -196,6 +197,8 @@ export function SettingsScreen() {
             </div>
           </div>
         </div>
+
+        <HotkeysSection onError={setError} />
 
         <div className="section-label">Preferences</div>
         <div className="card" style={{ padding: "var(--sp-2)" }}>

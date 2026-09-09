@@ -2503,3 +2503,30 @@ body,
   border-color: var(--border);
   color: var(--fg-secondary);
 }
+
+/* Segmented picker (balance step). */
+.seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-active);
+  border-radius: var(--r-sm);
+}
+.seg-btn {
+  min-width: 34px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.seg-btn:hover {
+  color: var(--fg-primary);
+}
+.seg-btn.active {
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+}

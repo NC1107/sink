@@ -6,6 +6,7 @@ pub mod buses;
 pub mod channels;
 pub mod eq;
 pub mod eq_presets;
+pub mod hotkeys;
 pub mod mic;
 pub mod outputs;
 pub mod prefs;

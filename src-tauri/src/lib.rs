@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod error;
+mod hotkeys;
 mod mixer;
 mod persistence;
 mod state;
@@ -51,6 +52,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
+        .manage(hotkeys::Hotkeys::default())
         .invoke_handler(tauri::generate_handler![
             commands::devices::get_virtual_devices,
             commands::devices::get_app_streams,
@@ -119,9 +121,14 @@ pub fn run() {
             commands::settings::set_balance_visible,
             commands::settings::set_start_minimized,
             commands::settings::reset_app,
+            commands::hotkeys::get_hotkeys,
+            commands::hotkeys::configure_hotkeys,
+            commands::hotkeys::set_hotkey_binding,
+            commands::hotkeys::set_balance_step,
         ])
         .setup(move |app| {
             build_tray(app)?;
+            hotkeys::start(app.handle().clone());
             // The window starts hidden (config) to avoid a flash; show it
             // now unless launched with --minimized (autostart-to-tray).
             let minimized = std::env::args().any(|a| a == "--minimized");
