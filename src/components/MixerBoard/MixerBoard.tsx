@@ -126,15 +126,12 @@ export function MixerBoard() {
     <div className="content">
       <div className="screen-scroll" style={{ padding: 0 }}>
         <div className="mix-scroll" ref={viewportRef}>
-          <div
-            className="mix-fit"
-            style={fit.width ? { width: fit.width * fit.scale, height: fit.height * fit.scale } : undefined}
-          >
+          <div className="mix-fit">
             <div
               className="mix-board"
               ref={boardRef}
               style={{
-                transform: `scale(${fit.scale})`,
+                zoom: fit.scale,
                 ...(fit.stripHeight ? { "--strip-h": `${fit.stripHeight}px` } : {}),
               }}
             >

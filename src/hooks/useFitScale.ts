@@ -22,6 +22,11 @@ export function useFitScale(
     const el = board.current;
     if (!view || !el) return;
     const measure = () => {
+      // Natural sizes: the board is rendered with CSS zoom, which changes
+      // its layout box, so measure it at 1x. React won't rewrite an
+      // unchanged style prop, so the zoom has to be put back by hand.
+      const zoom = el.style.zoom;
+      el.style.zoom = "1";
       const cs = getComputedStyle(view);
       const availW = view.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
       const availH = view.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
@@ -31,6 +36,7 @@ export function useFitScale(
       const { scale, stripHeight } = fitBoard(availW, availH, el.offsetWidth, chromeH);
       const width = el.offsetWidth;
       const height = chromeH + stripHeight;
+      el.style.zoom = zoom;
       setFit((prev) =>
         prev.scale === scale && prev.stripHeight === stripHeight && prev.width === width && prev.height === height
           ? prev

@@ -6,8 +6,28 @@ export interface BoardFit {
 
 const MIN_STRIP = 460;
 const MAX_STRIP = 640;
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 1.25;
+/** The scales the board renders at. Anything in between blurs 1px lines
+ * and text, so the board picks the nearest step below what fits and the
+ * window snaps to that step when a resize ends. */
+export const SCALE_STEPS = [0.5, 0.625, 0.75, 0.875, 1, 1.125, 1.25] as const;
+const MIN_SCALE = SCALE_STEPS[0];
+const MAX_SCALE = SCALE_STEPS[SCALE_STEPS.length - 1];
+
+/** Largest step that still fits `raw`, never below the smallest. */
+export function snapScale(raw: number): number {
+  let best: number = MIN_SCALE;
+  for (const step of SCALE_STEPS) if (step <= raw + 1e-9) best = step;
+  return best;
+}
+
+/** Window width that shows a `boardW`-wide board at the step nearest to
+ * the current width, `chromeW` being everything around the board. */
+export function snappedWidth(current: number, boardW: number, chromeW: number): number {
+  const raw = (current - chromeW) / boardW;
+  let best: number = MIN_SCALE;
+  for (const step of SCALE_STEPS) if (Math.abs(step - raw) < Math.abs(best - raw)) best = step;
+  return Math.round(boardW * best + chromeW);
+}
 
 /** Fit the board to the window the way a console fills a screen: the
  * scale comes from the width, so the same layout appears at every size
@@ -18,8 +38,7 @@ const MAX_SCALE = 1.25;
  * height minus a strip: group heads and padding. */
 export function fitBoard(availW: number, availH: number, boardW: number, chromeH: number): BoardFit {
   if (boardW <= 0 || availW <= 0 || availH <= 0) return { scale: 1, stripHeight: MIN_STRIP };
-  const raw = Math.min(availW / boardW, availH / (chromeH + MIN_STRIP), MAX_SCALE);
-  const scale = Math.max(MIN_SCALE, Math.floor(raw * 100) / 100);
+  const scale = snapScale(Math.min(availW / boardW, availH / (chromeH + MIN_STRIP), MAX_SCALE));
   // The cap is an on-screen length: a scaled-down board may use taller strips.
   const maxStrip = Math.max(MAX_STRIP, MAX_STRIP / scale);
   const stripHeight = Math.floor(Math.min(maxStrip, Math.max(MIN_STRIP, availH / scale - chromeH)));

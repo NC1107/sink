@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
-import { windowSize } from "../lib/layout";
+import { snappedWidth, windowSize } from "../lib/layout";
 
 const SIZED_KEY = "sink.window.sized";
 
@@ -50,8 +50,26 @@ export function useWindowToBoard(
       // The backend keeps the window hidden until the board is sized.
       await emit("sink-ready");
     });
+    // A drag can stop anywhere; once it does, land on the nearest step so
+    // the board never renders between them (a maximised window stays put).
+    const win = getCurrentWindow();
+    let settle: number | undefined;
+    const unlisten = win.onResized(() => {
+      window.clearTimeout(settle);
+      settle = window.setTimeout(() => {
+        void win.isMaximized().then(async (maximized) => {
+          if (cancelled || maximized) return;
+          const target = snappedWidth(window.innerWidth, boardW, chrome.width);
+          if (Math.abs(target - window.innerWidth) > 1) {
+            await win.setSize(new LogicalSize(target, window.innerHeight));
+          }
+        });
+      }, 200);
+    });
     return () => {
       cancelled = true;
+      window.clearTimeout(settle);
+      void unlisten.then((stop) => stop());
     };
   }, [viewport, board, boardW]);
 }
