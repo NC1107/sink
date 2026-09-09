@@ -115,9 +115,49 @@ impl Handle {
                 trigger: keys
                     .values()
                     .find(|g| g.action == *a)
-                    .map(|g| g.trigger.clone())
+                    .map(|g| label(&g.trigger))
                     .unwrap_or_default(),
             })
             .collect()
+    }
+}
+
+/// Bindings are stored as key codes ("Ctrl+Alt+BracketRight"); show them
+/// the way a keyboard prints them.
+fn label(trigger: &str) -> String {
+    trigger
+        .split('+')
+        .map(|part| match part {
+            "BracketLeft" => "[",
+            "BracketRight" => "]",
+            "Comma" => ",",
+            "Period" => ".",
+            "Slash" => "/",
+            "Backslash" => "\\",
+            "Semicolon" => ";",
+            "Quote" => "'",
+            "Backquote" => "`",
+            "Minus" => "-",
+            "Equal" => "=",
+            key => key
+                .strip_prefix("Key")
+                .or_else(|| key.strip_prefix("Digit"))
+                .unwrap_or(key),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::label;
+
+    #[test]
+    fn labels_read_like_the_keys_themselves() {
+        assert_eq!(label("Ctrl+Alt+BracketRight"), "Ctrl+Alt+]");
+        assert_eq!(label("Ctrl+Alt+Comma"), "Ctrl+Alt+,");
+        assert_eq!(label("Ctrl+Shift+KeyF"), "Ctrl+Shift+F");
+        assert_eq!(label("Super+Digit1"), "Super+1");
+        assert_eq!(label("Alt+F5"), "Alt+F5");
     }
 }
