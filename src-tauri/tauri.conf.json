@@ -16,11 +16,11 @@
         "title": "sink",
         "width": 1200,
         "height": 760,
-        "minWidth": 960,
+        "minWidth": 480,
         "minHeight": 600,
         "decorations": false,
         "transparent": true,
-        "resizable": false,
+        "resizable": true,
         "visible": false
       }
     ],

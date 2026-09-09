@@ -408,18 +408,12 @@ body,
   overflow: auto;
 }
 /* Auto margins centre the board while it fits and fall back to the top-left
-   corner once it overflows, so a scrolled board still starts at its edge.
-   The box is sized to the scaled board so centring and scrolling see the
-   real footprint; the transform itself doesn't change layout. */
-.mix-fit {
-  flex: none;
-  margin: auto;
-}
+   corner once it overflows, so a narrowed window scrolls from the edge. */
 .mix-board {
   display: flex;
   align-items: stretch;
   width: max-content;
-  transform-origin: top left;
+  margin: auto;
 }
 .mix-group {
   display: flex;
@@ -498,9 +492,9 @@ body,
   position: relative;
   width: 132px;
   flex: 0 0 132px;
-  /* The board sets --strip-h to fill the window; the fallback bounds the
+  /* The board sets --strip-h to fill the window; the fallback covers the
      first paint before it has measured. */
-  height: var(--strip-h, clamp(460px, 68vh, 640px));
+  height: var(--strip-h, 620px);
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
