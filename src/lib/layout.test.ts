@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextWidth, stripHeight, windowSize } from "./layout";
-
-describe("stripHeight", () => {
-  it("fills the height within the fader's bounds", () => {
-    expect(stripHeight(680, 60)).toBe(620);
-    expect(stripHeight(1400, 60)).toBe(640);
-    expect(stripHeight(400, 60)).toBe(460);
-  });
-});
+import { nextWidth, windowSize } from "./layout";
 
 describe("windowSize", () => {
   it("wraps the board at 1x and clamps to the work area", () => {

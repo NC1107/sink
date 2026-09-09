@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useMixerStore } from "../../store/mixer";
-import { useBoardLayout } from "../../hooks/useBoardLayout";
+import { useBoardWidth } from "../../hooks/useBoardWidth";
 import { useWindowToBoard } from "../../hooks/useWindowToBoard";
 import { MASTER_BUS } from "../../types";
 import { Ms, ICON_CHOICES } from "../Icons";
@@ -74,8 +74,8 @@ export function MixerBoard() {
   const [draggingChannel, setDraggingChannel] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
-  const layout = useBoardLayout(viewportRef, boardRef, [channels.length, buses.length, micConfig?.enabled]);
-  useWindowToBoard(viewportRef, layout.width);
+  const boardWidth = useBoardWidth(boardRef, [channels.length, buses.length, micConfig?.enabled]);
+  useWindowToBoard(viewportRef, boardWidth);
 
   if (channels.length === 0) {
     return (
@@ -126,11 +126,7 @@ export function MixerBoard() {
     <div className="content">
       <div className="screen-scroll" style={{ padding: 0 }}>
         <div className="mix-scroll" ref={viewportRef}>
-          <div
-            className="mix-board"
-            ref={boardRef}
-            style={layout.stripHeight ? ({ "--strip-h": `${layout.stripHeight}px` } as CSSProperties) : undefined}
-          >
+          <div className="mix-board" ref={boardRef}>
             {micConfig?.enabled && (
               <>
                 <MixGroup
