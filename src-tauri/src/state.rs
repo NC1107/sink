@@ -10,6 +10,8 @@ pub struct AppState {
     /// True when the native PipeWire backend is driving (vs pactl fallback).
     pub backend_native: bool,
     pub mixer: Mutex<MixerState>,
+    /// Held for a whole profile load, which takes the mixer lock piecemeal.
+    pub profile_switch: Mutex<()>,
     /// Lets the pactl-backend ticker yield while an on-screen window is
     /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
@@ -78,6 +80,7 @@ impl AppState {
             backend,
             backend_native,
             mixer: Mutex::new(mixer),
+            profile_switch: Mutex::new(()),
             ui_stream_poll: Mutex::new(None),
             refresh_gate: Mutex::new(()),
         }

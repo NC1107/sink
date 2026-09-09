@@ -172,4 +172,18 @@ export const MAX_MIC_GAIN = 200;
 /** Levels key for the mic chain. */
 export const MIC_LEVEL_KEY = "sink_mic";
 /** Node name of the always-on master mix (carries every channel). */
+export interface HotkeyShortcut {
+  id: string;
+  description: string;
+  /** Human-readable key; empty when nothing is bound yet. */
+  trigger: string;
+}
+
+export interface HotkeyStatus {
+  backend: "portal" | "x11" | "none";
+  shortcuts: HotkeyShortcut[];
+  balance_step: number;
+  steps: number[];
+}
+
 export const MASTER_BUS = "sink_stream";

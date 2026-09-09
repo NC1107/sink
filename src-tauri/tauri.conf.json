@@ -40,7 +40,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm", "appimage"],
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
     "linux": {
       "deb": {
         "depends": [
@@ -48,7 +52,10 @@
           "pulseaudio-utils",
           "pipewire-pulse",
           "wireplumber"
-        ]
+        ],
+        "files": {
+          "/usr/share/applications/us.echo.Sink.desktop": "../packaging/linux/us.echo.Sink.desktop"
+        }
       },
       "rpm": {
         "depends": [
@@ -56,7 +63,10 @@
           "pulseaudio-utils",
           "pipewire-pulseaudio",
           "wireplumber"
-        ]
+        ],
+        "files": {
+          "/usr/share/applications/us.echo.Sink.desktop": "../packaging/linux/us.echo.Sink.desktop"
+        }
       }
     },
     "icon": [
