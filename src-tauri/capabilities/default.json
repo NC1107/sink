@@ -8,7 +8,6 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "core:window:allow-toggle-maximize",
     "core:window:allow-start-resize-dragging",
     "core:window:allow-minimize",
     "core:window:allow-hide",
@@ -17,6 +16,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-current-monitor",
     "core:window:allow-set-size",
+    "core:window:allow-set-max-size",
     "dialog:allow-open",
     "dialog:allow-save"
   ]
