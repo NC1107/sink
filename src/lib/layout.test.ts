@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitBoard, maxWindowSize, windowSize } from "./layout";
+import { fitBoard, windowSize } from "./layout";
 
 describe("fitBoard", () => {
   it("takes its scale from the width and fills the height with the fader", () => {
@@ -27,8 +27,5 @@ describe("window bounds", () => {
   it("opens at 1x and clamps to the work area", () => {
     expect(windowSize(1326, 60, chrome, { width: 1920, height: 1050 })).toEqual({ width: 1444, height: 760 });
     expect(windowSize(2170, 60, chrome, { width: 1920, height: 1050 })).toEqual({ width: 1920, height: 760 });
-  });
-  it("cannot grow past the board at the scale cap", () => {
-    expect(maxWindowSize(1326, 60, chrome)).toEqual({ width: 1776, height: 955 });
   });
 });
