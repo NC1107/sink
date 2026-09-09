@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useMixerStore } from "../../store/mixer";
 import { useFitScale } from "../../hooks/useFitScale";
+import { useWindowToBoard } from "../../hooks/useWindowToBoard";
 import { MASTER_BUS } from "../../types";
 import { Ms, ICON_CHOICES } from "../Icons";
 import { Modal } from "../Modal";
@@ -74,6 +75,7 @@ export function MixerBoard() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const fit = useFitScale(viewportRef, boardRef, [channels.length, buses.length, micConfig?.enabled]);
+  useWindowToBoard(viewportRef, fit.width);
 
   if (channels.length === 0) {
     return (

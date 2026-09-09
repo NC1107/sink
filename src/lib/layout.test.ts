@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { fitBoard } from "./layout";
+import { fitBoard, windowSize } from "./layout";
 
 describe("fitBoard", () => {
-  it("takes its scale from the width and fills the height with the fader", () => {
-    // A 900px board in a 1800x1000 window: 2x, strip 1000/2 - 60 = 440 -> floored to 460.
-    expect(fitBoard(1800, 1000, 900, 60)).toEqual({ scale: 1.92, stripHeight: 460 });
-    // Plenty of height: the strip grows to its cap rather than the scale.
-    expect(fitBoard(1200, 1400, 900, 60)).toEqual({ scale: 1.33, stripHeight: 640 });
+  it("never scales up and fills the height with the fader", () => {
+    expect(fitBoard(1800, 1000, 900, 60)).toEqual({ scale: 1, stripHeight: 640 });
+    expect(fitBoard(1000, 680, 900, 60)).toEqual({ scale: 1, stripHeight: 620 });
   });
   it("shrinks when channels are added and floors before it becomes unreadable", () => {
     expect(fitBoard(960, 600, 1100, 60).scale).toBe(0.87);
@@ -14,12 +12,17 @@ describe("fitBoard", () => {
     expect(fitBoard(960, 600, 2400, 60).scale).toBe(0.5);
   });
   it("is height-limited when the window is short", () => {
-    const fit = fitBoard(1800, 560, 900, 60);
-    expect(fit.scale).toBe(1.07);
-    expect(fit.stripHeight).toBe(463);
+    expect(fitBoard(1800, 480, 900, 60)).toEqual({ scale: 0.92, stripHeight: 461 });
   });
-  it("caps the scale and tolerates an unmeasured board", () => {
-    expect(fitBoard(9000, 9000, 900, 60).scale).toBe(2);
+  it("tolerates an unmeasured board", () => {
     expect(fitBoard(1800, 1000, 0, 60)).toEqual({ scale: 1, stripHeight: 460 });
+  });
+});
+
+describe("windowSize", () => {
+  it("wraps the board at 1x and clamps to the work area", () => {
+    expect(windowSize(1326, 118, { width: 1920, height: 1050 })).toEqual({ width: 1444, height: 760 });
+    expect(windowSize(2170, 118, { width: 1920, height: 1050 })).toEqual({ width: 1920, height: 760 });
+    expect(windowSize(900, 118, { width: 1366, height: 728 })).toEqual({ width: 1018, height: 728 });
   });
 });
