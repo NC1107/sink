@@ -437,26 +437,24 @@ body,
 /* ---------- Grouped mixer (Capture | Channels | Mixes) ---------- */
 .mix-scroll {
   display: flex;
-  align-items: flex-start;
   padding: var(--sp-5) var(--sp-6);
   height: 100%;
   min-height: 0;
   overflow: auto;
 }
-/* Centred while it fits, left-anchored once it overflows so a narrowed
-   window scrolls from the edge; extra height is margin below the board. */
+/* Auto margins centre the board while it fits and fall back to the top-left
+   corner once it overflows, so a scrolled board still starts at its edge.
+   The box is sized to the scaled board so centring and scrolling see the
+   real footprint; the transform itself doesn't change layout. */
+.mix-fit {
+  flex: none;
+  margin: auto;
+}
 .mix-board {
   display: flex;
   align-items: stretch;
   width: max-content;
-  margin: 0 auto;
-}
-.mix-scroll::-webkit-scrollbar {
-  height: 8px;
-}
-.mix-scroll::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: var(--r-pill);
+  transform-origin: top left;
 }
 .mix-group {
   display: flex;
@@ -535,10 +533,9 @@ body,
   position: relative;
   width: 132px;
   flex: 0 0 132px;
-  /* A fader's throw is a fixed length: a taller window gets margin, not a
-     longer drag for the same 2 dB. A short window shortens it to 460px
-     before the board has to scroll. */
-  height: clamp(460px, calc(100vh - 114px), 620px);
+  /* The board sets --strip-h to fill the window; the fallback bounds the
+     first paint before it has measured. */
+  height: var(--strip-h, clamp(460px, 68vh, 640px));
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
