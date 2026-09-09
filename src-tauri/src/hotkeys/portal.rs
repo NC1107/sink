@@ -106,16 +106,11 @@ pub async fn shortcuts(handle: &Handle) -> Result<Vec<ShortcutInfo>, String> {
         .collect())
 }
 
-/// Bind if anything is still unbound, else open the desktop's own dialog
-/// to change keys.
+/// Bind first (the desktop prompts for ids it hasn't seen), then open the
+/// desktop's own shortcut settings for keys it knows but left unbound or
+/// that the user wants to change.
 pub async fn configure(handle: &Handle) -> Result<(), String> {
-    let unbound = shortcuts(handle)
-        .await?
-        .iter()
-        .any(|s| s.trigger.is_empty());
-    if unbound {
-        return bind(handle).await;
-    }
+    bind(handle).await?;
     handle
         .proxy
         .configure_shortcuts(&handle.session, None, ConfigureShortcutsOptions::default())
