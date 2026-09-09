@@ -9,7 +9,7 @@ use ashpd::desktop::global_shortcuts::{
 };
 use ashpd::desktop::Session;
 use futures_util::StreamExt;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::{Action, ShortcutInfo};
 
@@ -84,6 +84,13 @@ pub async fn run(handle: Arc<Handle>, app: &AppHandle) {
             return;
         }
     };
+    let mut deactivated = match handle.proxy.receive_deactivated().await {
+        Ok(stream) => stream,
+        Err(e) => {
+            eprintln!("sink: hotkey release signals unavailable: {e}");
+            return;
+        }
+    };
     let mut closed = match handle.session.receive_closed().await {
         Ok(stream) => stream,
         Err(e) => {
@@ -110,7 +117,15 @@ pub async fn run(handle: Arc<Handle>, app: &AppHandle) {
                     continue;
                 }
                 if let Some(action) = Action::from_id(event.shortcut_id()) {
-                    super::perform(app, action);
+                    if app.state::<super::Hotkeys>().press(action) {
+                        super::perform(app, action);
+                    }
+                }
+            }
+            event = deactivated.next() => {
+                let Some(event) = event else { break };
+                if let Some(action) = Action::from_id(event.shortcut_id()) {
+                    app.state::<super::Hotkeys>().release(action);
                 }
             }
             _ = closed.next() => break,

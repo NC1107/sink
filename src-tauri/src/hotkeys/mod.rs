@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::persistence::hotkeys::HotkeyConfig;
 use crate::state::AppState;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
     ProfileNext,
     ProfilePrev,
@@ -119,12 +119,21 @@ pub struct Hotkeys {
     config: Mutex<HotkeyConfig>,
     /// Held while an action runs, so key repeat can't queue up profile loads.
     running: Mutex<()>,
-    /// Desktops re-send an activation on key auto-repeat; one press is one action.
-    last_press: Mutex<Option<std::time::Instant>>,
+    /// Keys currently held: a desktop re-sends the activation at the key
+    /// repeat rate, and one press must be one action.
+    held: Mutex<std::collections::HashSet<Action>>,
 }
 
-/// Auto-repeat starts after ~250ms on most desktops; anything faster is a repeat.
-const REPEAT_GAP: std::time::Duration = std::time::Duration::from_millis(250);
+impl Hotkeys {
+    /// True once per press: the first activation until the key is released.
+    pub fn press(&self, action: Action) -> bool {
+        lock(&self.held).insert(action)
+    }
+
+    pub fn release(&self, action: Action) {
+        lock(&self.held).remove(&action);
+    }
+}
 
 impl Hotkeys {
     pub fn backend(&self) -> Backend {
@@ -209,14 +218,6 @@ pub fn perform(app: &AppHandle, action: Action) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let hotkeys = app.state::<Hotkeys>();
-        {
-            let now = std::time::Instant::now();
-            let mut last = lock(&hotkeys.last_press);
-            if last.is_some_and(|t| now.duration_since(t) < REPEAT_GAP) {
-                return;
-            }
-            *last = Some(now);
-        }
         let Ok(_running) = hotkeys.running.try_lock() else {
             return;
         };
@@ -370,6 +371,19 @@ mod tests {
             (a, b) = next;
         }
         assert_eq!((a, b), (97, 100));
+    }
+
+    #[test]
+    fn a_held_key_is_one_press_until_released() {
+        let hotkeys = Hotkeys::default();
+        assert!(hotkeys.press(Action::ProfileNext));
+        assert!(!hotkeys.press(Action::ProfileNext), "auto-repeat");
+        assert!(
+            hotkeys.press(Action::BalanceA),
+            "another key is independent"
+        );
+        hotkeys.release(Action::ProfileNext);
+        assert!(hotkeys.press(Action::ProfileNext));
     }
 
     #[test]

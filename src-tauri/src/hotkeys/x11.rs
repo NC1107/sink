@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use super::{lock, Action, ShortcutInfo};
 use crate::persistence::hotkeys::HotkeyConfig;
@@ -48,12 +48,17 @@ pub fn connect(config: &HotkeyConfig, app: AppHandle) -> Result<Handle, String> 
     std::thread::spawn(move || {
         let receiver = GlobalHotKeyEvent::receiver();
         while let Ok(event) = receiver.recv() {
-            if event.state() != HotKeyState::Pressed {
+            let Some(action) = lock(&keys).get(&event.id()).map(|g| g.action) else {
                 continue;
-            }
-            let action = lock(&keys).get(&event.id()).map(|g| g.action);
-            if let Some(action) = action {
-                super::perform(&app, action);
+            };
+            let hotkeys = app.state::<super::Hotkeys>();
+            match event.state() {
+                HotKeyState::Pressed => {
+                    if hotkeys.press(action) {
+                        super::perform(&app, action);
+                    }
+                }
+                HotKeyState::Released => hotkeys.release(action),
             }
         }
     });
