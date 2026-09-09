@@ -10,7 +10,8 @@ describe("fitBoard", () => {
   });
   it("shrinks when channels are added and floors before it becomes unreadable", () => {
     expect(fitBoard(960, 600, 1100, 60).scale).toBe(0.87);
-    expect(fitBoard(960, 600, 2000, 60).scale).toBe(0.8);
+    expect(fitBoard(842, 520, 1300, 60)).toEqual({ scale: 0.64, stripHeight: 752 });
+    expect(fitBoard(960, 600, 2400, 60).scale).toBe(0.5);
   });
   it("is height-limited when the window is short", () => {
     const fit = fitBoard(1800, 560, 900, 60);
