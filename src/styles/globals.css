@@ -442,13 +442,11 @@ body,
   min-height: 0;
   overflow: auto;
 }
-/* Auto margins centre the board while it fits and fall back to the top-left
-   corner once it overflows, so a scrolled board still starts at its edge.
-   The box is sized to the scaled board so centring and scrolling see the
+/* Top-left anchored: a window past the scale cap leaves its spare room on
+   the right. The box is sized to the scaled board so scrolling sees the
    real footprint; the transform itself doesn't change layout. */
 .mix-fit {
   flex: none;
-  margin: auto;
 }
 .mix-board {
   display: flex;

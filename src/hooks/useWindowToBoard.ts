@@ -2,14 +2,13 @@ import { useEffect } from "react";
 import type { RefObject } from "react";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
-import { maxWindowSize, windowSize } from "../lib/layout";
+import { windowSize } from "../lib/layout";
 
 const SIZED_KEY = "sink.window.sized";
 
-/** Bound the window to the board: it opens at 1x and can never grow past
- * the board at the scale cap, so it is always filled. Later launches keep
- * whatever size the user chose. The chrome around the board is measured
- * rather than assumed. */
+/** Open the window at the board's 1x size on first launch; later launches
+ * keep whatever size the user chose. The chrome around the board is
+ * measured rather than assumed. */
 export function useWindowToBoard(
   viewport: RefObject<HTMLElement | null>,
   board: RefObject<HTMLElement | null>,
@@ -32,9 +31,6 @@ export function useWindowToBoard(
       const work = monitor
         ? { width: monitor.workArea.size.width / dpi, height: monitor.workArea.size.height / dpi }
         : { width: Number.MAX_SAFE_INTEGER, height: Number.MAX_SAFE_INTEGER };
-      const win = getCurrentWindow();
-      const max = maxWindowSize(boardW, chromeH, chrome);
-      await win.setMaxSize(new LogicalSize(max.width, max.height));
       let sized = false;
       try {
         sized = localStorage.getItem(SIZED_KEY) === "1";
@@ -43,7 +39,7 @@ export function useWindowToBoard(
       }
       if (!sized) {
         const size = windowSize(boardW, chromeH, chrome, work);
-        await win.setSize(new LogicalSize(size.width, size.height));
+        await getCurrentWindow().setSize(new LogicalSize(size.width, size.height));
         try {
           localStorage.setItem(SIZED_KEY, "1");
         } catch {

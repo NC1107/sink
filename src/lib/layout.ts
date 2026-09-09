@@ -7,15 +7,15 @@ export interface BoardFit {
 const MIN_STRIP = 460;
 const MAX_STRIP = 640;
 const MIN_SCALE = 0.5;
-export const MAX_SCALE = 1.25;
+const MAX_SCALE = 1.25;
 
 /** Fit the board to the window the way a console fills a screen: the
  * scale comes from the width, so the same layout appears at every size
  * and one more channel just makes everything a little smaller; the fader
  * throw then takes up the height. The floor stops a full board in a small
- * window turning into a thumbnail; the cap is also the window's maximum
- * size, so no window is ever big enough to show blank space. `chromeH`
- * is the board's height minus a strip: group heads and padding. */
+ * window turning into a thumbnail; past the cap a big window shows the
+ * board at the cap with room to its right. `chromeH` is the board's
+ * height minus a strip: group heads and padding. */
 export function fitBoard(availW: number, availH: number, boardW: number, chromeH: number): BoardFit {
   if (boardW <= 0 || availW <= 0 || availH <= 0) return { scale: 1, stripHeight: MIN_STRIP };
   const raw = Math.min(availW / boardW, availH / (chromeH + MIN_STRIP), MAX_SCALE);
@@ -26,7 +26,7 @@ export function fitBoard(availW: number, availH: number, boardW: number, chromeH
   return { scale, stripHeight };
 }
 
-export interface Size {
+interface Size {
   width: number;
   height: number;
 }
@@ -41,10 +41,3 @@ export function windowSize(boardW: number, chromeH: number, chrome: Size, work: 
   };
 }
 
-/** The largest window the board still fills: the board at the scale cap. */
-export function maxWindowSize(boardW: number, chromeH: number, chrome: Size): Size {
-  return {
-    width: Math.ceil(boardW * MAX_SCALE + chrome.width),
-    height: Math.ceil((chromeH + MAX_STRIP) * MAX_SCALE + chrome.height),
-  };
-}
