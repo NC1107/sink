@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -20,6 +19,8 @@ pub struct AppState {
     pub refresh_gate: Mutex<()>,
     /// Per stream serial, dropped with the stream, so a recycled pid inherits nothing.
     pub identity_cache: Mutex<HashMap<u64, crate::audio::identity::Identity>>,
+    /// Icon and display name per identity key, evicted with the identities.
+    pub icon_cache: Mutex<HashMap<String, crate::audio::icons::IconFacts>>,
 }
 
 impl AppState {
@@ -88,6 +89,7 @@ impl AppState {
             ui_stream_poll: Mutex::new(None),
             refresh_gate: Mutex::new(()),
             identity_cache: Mutex::new(HashMap::new()),
+            icon_cache: Mutex::new(HashMap::new()),
         }
     }
 

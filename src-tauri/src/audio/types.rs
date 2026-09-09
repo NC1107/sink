@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -15,12 +14,11 @@ pub fn is_virtual_sink(sink_name: &str) -> bool {
 
 /// Property values that are useless as names - media frameworks announcing
 /// themselves, or placeholder stream titles.
-const GENERIC_NAMES: [&str; 17] = [
+const GENERIC_NAMES: [&str; 16] = [
     "WEBRTC VoiceEngine",
     "SDL Application",
     "FMOD Audio",
     "LINK",
-    "Wine",
     "audio-src",
     "Playback Stream",
     "playStream",
@@ -66,6 +64,21 @@ pub(crate) fn is_generic_name(value: &str) -> bool {
 
 pub(crate) fn is_wrapper_name(value: &str) -> bool {
     WRAPPER_NAMES.iter().any(|w| w.eq_ignore_ascii_case(value))
+}
+
+/// Runtimes, not programs: an executable name that would merge every app
+/// running on it. The name list covers exact matches; version-suffixed
+/// interpreters and Wine's loaders need the prefix checks.
+pub(crate) fn is_wrapper_exe(exe: &str) -> bool {
+    let e = exe.to_ascii_lowercase();
+    is_wrapper_name(&e)
+        || e.starts_with("python")
+        || e.starts_with("wine")
+        || e.ends_with("-preloader")
+        || matches!(
+            e.as_str(),
+            "sh" | "bash" | "env" | "bwrap" | "ld-linux-x86-64.so.2"
+        )
 }
 
 fn name_quality(value: &str) -> u8 {

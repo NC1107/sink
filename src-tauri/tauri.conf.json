@@ -38,7 +38,8 @@
           "$HOME/.local/share/flatpak/app/**/export/share/icons/**",
           "$HOME/.local/share/Steam/appcache/librarycache/**",
           "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/appcache/librarycache/**",
-          "$HOME/.steam/steam/appcache/librarycache/**"
+          "$HOME/.steam/steam/appcache/librarycache/**",
+          "$HOME/snap/steam/common/.local/share/Steam/appcache/librarycache/**"
         ]
       }
     }

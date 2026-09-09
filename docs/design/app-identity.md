@@ -48,6 +48,10 @@ elif application.process.id is set and application.process.binary is set
 
 A pid is never cached on its own: process facts are cached per stream serial and evicted on that node's `global_remove`, so a recycled pid cannot inherit a dead stream's identity.
 
+The daemon-owned keys (`pipewire.sec.*`, `pipewire.access*`) are taken from the Client object only; a stream declaring them on its own node cannot forge trust or hide a sandbox. The `exe == binary` fallback compares two values the client chose, so another process of the same user could impersonate a running program's identity; every process of the user is already trusted with the user's audio, so that is inside the threat model, not a hole in it.
+
+Window geometry is persisted by `tauri-plugin-window-state` under `$XDG_CONFIG_HOME/us.echo.Sink/`, separate from Sink's own `$XDG_CONFIG_HOME/sink/`.
+
 ### 2. Wrapper values are never an identity
 
 `WRAPPER_NAMES` (python3, java, node, mono, dotnet, electron, wine, wine64, `*-preloader`, `AppRun`, `sh`, `env`, `bwrap`) moves into the ladder: any row whose value is a wrapper is skipped, at every row, not just for Wine. This is what stops every Python app becoming "python3" and every AppImage becoming "AppRun". Row 5 is also skipped when `application.process.binary` ends in `.exe`, name-agnostic, so it survives whatever Wine calls its loader next.
@@ -61,10 +65,10 @@ Canonical identity is `(kind, value)`; the first row that yields a non-wrapper v
 | 1 | `flatpak` | client `pipewire.access.portal.app_id` | exact, sandbox-safe, no `/proc` |
 | 2 | `steam` | `SteamAppId` from `/proc/<pid>/environ` | one id per game, native and Proton, survives updates |
 | 3 | `appimage` | `APPIMAGE` from `/proc/<pid>/environ`, basename | the runtime sets it; exe is a FUSE mount otherwise |
-| 4 | `desktop` | cgroup app scope (`app-*.scope/.service`, `snap.<pkg>.<app>`) or `GIO_LAUNCHED_DESKTOP_FILE`, **only if the entry's real Exec basename equals the process exe basename**, where "real" skips leading `env VAR=..`, `sh -c`, `flatpak-spawn --host` | the exec guard stops "WezTerm for Firefox"; the prefix skip stops false rejects |
+| 4 | `desktop` | cgroup app scope (`app-*.scope/.service`) or `GIO_LAUNCHED_DESKTOP_FILE`, **only if the entry's real Exec basename equals the process exe basename**, where "real" skips leading `env VAR=..`, `sh -c`, `flatpak-spawn --host` | the exec guard stops "WezTerm for Firefox"; the prefix skip stops false rejects |
 | 5 | `exe` | basename of `/proc/<pid>/exe` | versionless; `factorio` is `factorio` forever |
-| 6 | `binary` | `application.process.binary` | for Wine this is the .exe name, the right answer |
-| 7 | `name` | `application.name` unless generic | today's primary, demoted |
+| 6 | `name` | `application.name` unless generic or a wrapper | a real name is what the user knows the app as |
+| 7 | `binary` | `application.process.binary` unless a wrapper | for Wine this is the .exe name |
 | 8 | `node` | `node.name` | last resort |
 
 `media.name` leaves the ladder; it is a stream title. Generic list grows with `SDL Application`, `FMOD Audio`, `LINK`, `Wine`.
@@ -78,7 +82,7 @@ One resolution feeds both, so they cannot disagree. Retires the "Steam"/"WezTerm
 ### 5. Pid-less streams
 
 - Native: the client lookup (section 0) resolves the cs2 case outright; a pid-less node shares its sibling's client.
-- `pactl` fallback: no client props. A pid-less stream adopts a pid-bearing stream's identity only when **exactly one** candidate in the snapshot agrees on every property the pid-less stream carries, **and** the shared `application.name` is not a wrapper or generic value. So "Chromium" (Spotify and Chrome both claim it) never adopts. Anything else falls to the name ladder, which is today's behaviour.
+- `pactl` fallback: no client props. A pid-less stream adopts a pid-bearing stream's identity only when **exactly one** process-backed stream in the snapshot shares its `application.name` (or resolved to that name), **and** that name is not a wrapper or generic value. So "Chromium" (Spotify and Chrome both claim it) never adopts. Anything else falls to the name ladder, which is today's behaviour.
 
 ### 6. Rules: one shape, additive on disk
 
@@ -101,7 +105,7 @@ Decision: drop it. On first run of the new version, delete `90-sink-routing.conf
 
 On every stream sighting:
 
-1. Resolve canonical identity. If a rule has it, route and stamp `last_matched`.
+1. Resolve canonical identity. If a rule has it, route. (A `last_matched` stamp for stale-rule cleanup belongs to the Rules UI follow-up.)
 2. Else find legacy rules whose `(match_prop, match_value)` equals a raw property of this stream. If found, create the canonical rule with that sink, mark the legacy rule `migrated`.
    This happens for every app that matches, including through a generic rule, so today's routing is preserved exactly on upgrade day.
 3. Legacy rules are **never deleted automatically**. Generic-valued ones stay in force and are badged in the UI as engine-wide ("matches any SDL game") with a one-click remove. Deleting on first adoption was the v1 hazard: game B launching first would take game A's channel and erase the rule A depended on.

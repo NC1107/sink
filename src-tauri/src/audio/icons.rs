@@ -25,6 +25,14 @@ struct DesktopEntry {
     wm_class_lower: Option<String>,
 }
 
+/// What a stream shows once its identity is known; cached per identity by
+/// the command layer so Steam art and desktop entries are looked up once.
+#[derive(Debug, Clone, Default)]
+pub struct IconFacts {
+    pub icon_path: Option<String>,
+    pub display_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Resolved {
     /// Absolute path to an icon file, ready for the asset protocol.
@@ -35,8 +43,14 @@ pub struct Resolved {
 
 struct Resolver {
     desktops: Vec<DesktopEntry>,
+    scanned_at: std::time::Instant,
     cache: HashMap<String, Resolved>,
 }
+
+/// A miss rescans the desktop entries, throttled so an unknown stream can't
+/// walk the applications dirs every poll; an app installed while Sink runs
+/// shows up within a minute.
+const RESCAN_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 static RESOLVER: OnceLock<Mutex<Resolver>> = OnceLock::new();
 
@@ -304,6 +318,7 @@ fn resolver() -> &'static Mutex<Resolver> {
     RESOLVER.get_or_init(|| {
         Mutex::new(Resolver {
             desktops: load_desktops(),
+            scanned_at: std::time::Instant::now(),
             cache: HashMap::new(),
         })
     })
@@ -359,6 +374,38 @@ fn desktop_by_name<'a>(
         .or_else(|| only_by_exec(desktops, app_lower))
 }
 
+/// A scope is inherited from the launcher (a terminal, Steam), so a
+/// candidate from the process only counts when its Exec runs this
+/// executable; the name-based match is the fallback.
+fn pick_desktop<'a>(
+    desktops: &'a [DesktopEntry],
+    pid: Option<u32>,
+    app_lower: &str,
+    binary_lower: Option<&str>,
+) -> Option<&'a DesktopEntry> {
+    let pid_desktop = pid.and_then(|p| {
+        let candidates = desktop_id_candidates(p);
+        let exe = exe_basename(p);
+        desktops
+            .iter()
+            .find(|d| {
+                !d.id.is_empty()
+                    && candidates.iter().any(|c| c == &d.id)
+                    && exe
+                        .as_deref()
+                        .map_or(true, |e| d.exec_base.as_deref() == Some(e))
+            })
+            .or_else(|| {
+                // A runtime's entry (python3, java) would claim every app on it.
+                let exe = exe
+                    .as_deref()
+                    .filter(|e| !crate::audio::types::is_wrapper_exe(e))?;
+                only_by_exec(desktops, exe)
+            })
+    });
+    pid_desktop.or_else(|| desktop_by_name(desktops, app_lower, binary_lower))
+}
+
 pub fn resolve(
     app_name: &str,
     binary: Option<&str>,
@@ -380,42 +427,25 @@ pub fn resolve(
     let app_lower = app_name.to_lowercase();
     let binary_lower = binary.map(str::to_lowercase);
 
-    // A scope is inherited from the launcher (a terminal, Steam), so a
-    // candidate only counts when its Exec runs this executable.
-    let pid_desktop = pid.and_then(|p| {
-        let candidates = desktop_id_candidates(p);
-        let exe = exe_basename(p);
-        resolver
-            .desktops
-            .iter()
-            .find(|d| {
-                !d.id.is_empty()
-                    && candidates.iter().any(|c| c == &d.id)
-                    && exe
-                        .as_deref()
-                        .map_or(true, |e| d.exec_base.as_deref() == Some(e))
-            })
-            .or_else(|| {
-                // A runtime's entry (python3, java) would claim every app on it.
-                let exe = exe
-                    .as_deref()
-                    .filter(|e| !crate::audio::identity::is_wrapper_exe(e))?;
-                only_by_exec(&resolver.desktops, exe)
-            })
-    });
-
-    let desktop = pid_desktop
-        .or_else(|| desktop_by_name(&resolver.desktops, &app_lower, binary_lower.as_deref()));
+    let mut desktop = pick_desktop(&resolver.desktops, pid, &app_lower, binary_lower.as_deref());
+    if desktop.is_none() && resolver.scanned_at.elapsed() >= RESCAN_AFTER {
+        resolver.desktops = load_desktops();
+        resolver.scanned_at = std::time::Instant::now();
+        resolver.cache.clear();
+        desktop = pick_desktop(&resolver.desktops, pid, &app_lower, binary_lower.as_deref());
+    }
 
     // Icon candidates in priority order: the desktop entry's icon, the
     // stream's hint (Electron apps all say "chromium-browser"), the binary
     // name, a slug of the display name.
     let slug = app_lower.replace(' ', "-");
+    let (desktop_icon, desktop_name) = match desktop {
+        Some(d) => (d.icon.clone(), Some(d.name.clone())),
+        None => (None, None),
+    };
     let mut candidates: Vec<&str> = Vec::new();
-    if let Some(d) = desktop {
-        if let Some(icon) = d.icon.as_deref() {
-            candidates.push(icon);
-        }
+    if let Some(icon) = desktop_icon.as_deref() {
+        candidates.push(icon);
     }
     if let Some(hint) = icon_hint {
         candidates.push(hint);
@@ -427,7 +457,7 @@ pub fn resolve(
 
     let resolved = Resolved {
         icon_path: candidates.iter().find_map(|c| icon_name_to_path(c)),
-        display_name: desktop.map(|d| d.name.clone()),
+        display_name: desktop_name,
     };
     resolver.cache.insert(key, resolved.clone());
     resolved

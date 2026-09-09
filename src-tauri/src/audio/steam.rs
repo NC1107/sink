@@ -1,4 +1,3 @@
-
 //! App id -> game name from Steam's appmanifest files: the store name,
 //! with no version in it.
 
