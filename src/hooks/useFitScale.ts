@@ -12,8 +12,8 @@ export interface Fit {
 /** Scale `board` up to fill `viewport` (minus padding); re-measures when
  * the viewport resizes or `deps` change the board's content. */
 export function useFitScale(
-  viewport: RefObject<HTMLElement>,
-  board: RefObject<HTMLElement>,
+  viewport: RefObject<HTMLElement | null>,
+  board: RefObject<HTMLElement | null>,
   deps: readonly unknown[],
 ): Fit {
   const [fit, setFit] = useState<Fit>({ scale: 1, width: 0, height: 0 });

@@ -21,7 +21,7 @@ export function Tooltip() {
   const [text, setText] = useState<string | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const anchor = useRef<{ el: Element; title: string } | null>(null);
-  const timer = useRef<number>();
+  const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const restore = () => {
