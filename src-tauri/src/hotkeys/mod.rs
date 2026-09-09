@@ -192,7 +192,12 @@ pub fn start(app: AppHandle) {
 
 /// Without a portal, X11 can still grab keys; Wayland cannot.
 fn fallback(config: &HotkeyConfig, app: &AppHandle, portal_err: &str) -> Backend {
-    let x11 = std::env::var("XDG_SESSION_TYPE").is_ok_and(|t| t == "x11");
+    let env = |k| std::env::var(k).ok().filter(|v| !v.is_empty());
+    let x11 = session_is_x11(
+        env("XDG_SESSION_TYPE").as_deref(),
+        env("DISPLAY").is_some(),
+        env("WAYLAND_DISPLAY").is_some(),
+    );
     match x11.then(|| x11::connect(config, app.clone())) {
         Some(Ok(handle)) => Backend::X11(Arc::new(handle)),
         Some(Err(e)) => {
@@ -330,6 +335,16 @@ fn set_balance(app: &AppHandle, position: f32) -> Result<(), String> {
     Ok(())
 }
 
+/// Launchers don't always pass the session type on; a bare X display is
+/// still X11, while XWayland leaves both displays set and keys ungrabbable.
+fn session_is_x11(session_type: Option<&str>, display: bool, wayland_display: bool) -> bool {
+    match session_type {
+        Some("x11") => true,
+        Some("wayland") => false,
+        _ => display && !wayland_display,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +386,25 @@ mod tests {
             (a, b) = next;
         }
         assert_eq!((a, b), (97, 100));
+    }
+
+    #[test]
+    fn x11_is_detected_from_the_session_or_a_bare_display() {
+        assert!(session_is_x11(Some("x11"), true, false));
+        assert!(
+            session_is_x11(None, true, false),
+            "launched without a session type"
+        );
+        assert!(
+            session_is_x11(Some("tty"), true, false),
+            "started from a console login"
+        );
+        assert!(!session_is_x11(Some("wayland"), true, false));
+        assert!(
+            !session_is_x11(None, true, true),
+            "xwayland is not a grab target"
+        );
+        assert!(!session_is_x11(None, false, false));
     }
 
     #[test]
