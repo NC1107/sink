@@ -32,6 +32,8 @@ export function acceleratorFrom(e: {
   metaKey: boolean;
 }): string | null {
   if (MODIFIER_CODES.has(e.code) || !e.code) return null;
+  // A bare key would be grabbed from every other app on the desktop.
+  if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) return null;
   const parts: string[] = [];
   if (e.ctrlKey) parts.push("Ctrl");
   if (e.shiftKey) parts.push("Shift");
@@ -109,7 +111,7 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
             <div className="rmain">
               <div className="rtitle">Global hotkeys aren’t available here</div>
               <div className="rsub">
-                They need a desktop with the GlobalShortcuts portal (KDE Plasma, GNOME 48, Hyprland) or an X11 session
+                They need a desktop that implements the GlobalShortcuts portal (KDE Plasma, recent GNOME, Hyprland) or an X11 session
               </div>
             </div>
           </div>
@@ -121,7 +123,11 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
               <div className="rtitle">{s.description}</div>
             </div>
             {status.backend === "x11" ? (
-              <button type="button" className="kbd kbd-btn" onClick={() => setCapturing(capturing === s.id ? null : s.id)}>
+              <button
+                type="button"
+                className={"kbd kbd-btn" + (s.trigger ? "" : " kbd-unbound")}
+                onClick={() => setCapturing(capturing === s.id ? null : s.id)}
+              >
                 {capturing === s.id ? "Press keys…" : s.trigger || "Not bound"}
               </button>
             ) : (

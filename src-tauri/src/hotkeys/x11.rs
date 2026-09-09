@@ -8,12 +8,20 @@ use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use tauri::AppHandle;
 
-use super::{Action, ShortcutInfo};
+use super::{lock, Action, ShortcutInfo};
 use crate::persistence::hotkeys::HotkeyConfig;
 
 pub struct Handle {
     manager: Mutex<GlobalHotKeyManager>,
-    keys: Arc<Mutex<HashMap<u32, (Action, HotKey)>>>,
+    /// Live grabs by hotkey id; a key that failed to register isn't here.
+    keys: Arc<Mutex<HashMap<u32, Grab>>>,
+}
+
+#[derive(Clone)]
+struct Grab {
+    action: Action,
+    hotkey: HotKey,
+    trigger: String,
 }
 
 pub fn connect(config: &HotkeyConfig, app: AppHandle) -> Result<Handle, String> {
@@ -36,17 +44,14 @@ pub fn connect(config: &HotkeyConfig, app: AppHandle) -> Result<Handle, String> 
             );
         }
     }
+    // Process-lifetime by design: the backend is chosen once per run.
     std::thread::spawn(move || {
         let receiver = GlobalHotKeyEvent::receiver();
         while let Ok(event) = receiver.recv() {
             if event.state() != HotKeyState::Pressed {
                 continue;
             }
-            let action = keys
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get(&event.id())
-                .map(|(a, _)| *a);
+            let action = lock(&keys).get(&event.id()).map(|g| g.action);
             if let Some(action) = action {
                 super::perform(&app, action);
             }
@@ -56,43 +61,57 @@ pub fn connect(config: &HotkeyConfig, app: AppHandle) -> Result<Handle, String> 
 }
 
 impl Handle {
-    /// Register `trigger` for `action`, releasing whatever it had.
+    /// Register `trigger` for `action`, releasing whatever it had once the
+    /// new grab holds.
     pub fn bind(&self, action: Action, trigger: &str) -> Result<(), String> {
         let hotkey: HotKey = trigger.parse().map_err(|e| format!("{e}"))?;
-        let manager = self
-            .manager
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut keys = self
-            .keys
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A bare key would be grabbed from every other app on the desktop.
+        if hotkey.mods.is_empty() {
+            return Err("a hotkey needs a modifier".into());
+        }
+        let manager = lock(&self.manager);
+        let mut keys = lock(&self.keys);
+        if let Some(other) = keys.get(&hotkey.id()).filter(|g| g.action != action) {
+            return Err(format!(
+                "{trigger} is already {}",
+                other.action.description()
+            ));
+        }
+        manager.register(hotkey).map_err(|e| e.to_string())?;
         let previous: Vec<u32> = keys
             .iter()
-            .filter(|(_, (a, _))| *a == action)
+            .filter(|(id, g)| g.action == action && **id != hotkey.id())
             .map(|(id, _)| *id)
             .collect();
         for id in previous {
-            if let Some((_, old)) = keys.remove(&id) {
-                let _ = manager.unregister(old);
+            if let Some(old) = keys.remove(&id) {
+                let _ = manager.unregister(old.hotkey);
             }
         }
-        manager.register(hotkey).map_err(|e| e.to_string())?;
-        keys.insert(hotkey.id(), (action, hotkey));
+        keys.insert(
+            hotkey.id(),
+            Grab {
+                action,
+                hotkey,
+                trigger: trigger.to_string(),
+            },
+        );
         Ok(())
     }
 
-    pub fn shortcuts(&self, config: &HotkeyConfig) -> Vec<ShortcutInfo> {
+    /// What is really grabbed: a key the desktop refused shows as unbound.
+    pub fn shortcuts(&self) -> Vec<ShortcutInfo> {
+        let keys = lock(&self.keys);
         Action::ALL
             .iter()
             .map(|a| ShortcutInfo {
                 id: a.id().to_string(),
                 description: a.description().to_string(),
-                trigger: config
-                    .bindings
-                    .get(a.id())
-                    .cloned()
-                    .unwrap_or_else(|| a.x11_trigger().to_string()),
+                trigger: keys
+                    .values()
+                    .find(|g| g.action == *a)
+                    .map(|g| g.trigger.clone())
+                    .unwrap_or_default(),
             })
             .collect()
     }

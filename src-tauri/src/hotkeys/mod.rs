@@ -1,6 +1,5 @@
-//! Global hotkeys for profile switching and the balance slider. Under
-//! Wayland the desktop portal is the only way to see a key while another
-//! app is focused; an X11 session without the portal grabs keys directly.
+//! Global hotkeys for profile switching and the balance slider: the desktop
+//! portal under Wayland, direct key grabs on a portal-less X11 session.
 
 pub mod portal;
 pub mod x11;
@@ -60,9 +59,9 @@ impl Action {
         match self {
             Action::ProfileNext => "CTRL+ALT+bracketright",
             Action::ProfilePrev => "CTRL+ALT+bracketleft",
-            Action::BalanceA => "CTRL+ALT+Left",
-            Action::BalanceB => "CTRL+ALT+Right",
-            Action::BalanceCenter => "CTRL+ALT+Down",
+            Action::BalanceA => "CTRL+ALT+comma",
+            Action::BalanceB => "CTRL+ALT+period",
+            Action::BalanceCenter => "CTRL+ALT+slash",
         }
     }
 
@@ -71,9 +70,9 @@ impl Action {
         match self {
             Action::ProfileNext => "Ctrl+Alt+BracketRight",
             Action::ProfilePrev => "Ctrl+Alt+BracketLeft",
-            Action::BalanceA => "Ctrl+Alt+ArrowLeft",
-            Action::BalanceB => "Ctrl+Alt+ArrowRight",
-            Action::BalanceCenter => "Ctrl+Alt+ArrowDown",
+            Action::BalanceA => "Ctrl+Alt+Comma",
+            Action::BalanceB => "Ctrl+Alt+Period",
+            Action::BalanceCenter => "Ctrl+Alt+Slash",
         }
     }
 }
@@ -113,20 +112,18 @@ impl Backend {
     }
 }
 
-/// Managed by Tauri; the backend is picked once at start.
+/// Managed by Tauri.
 #[derive(Default)]
 pub struct Hotkeys {
-    pub backend: Mutex<Backend>,
-    pub config: Mutex<HotkeyConfig>,
+    backend: Mutex<Backend>,
+    config: Mutex<HotkeyConfig>,
+    /// Held while an action runs, so key repeat can't queue up profile loads.
+    running: Mutex<()>,
 }
 
 impl Hotkeys {
     pub fn backend(&self) -> Backend {
-        match &*self
-            .backend
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-        {
+        match &*lock(&self.backend) {
             Backend::Portal(h) => Backend::Portal(h.clone()),
             Backend::X11(h) => Backend::X11(h.clone()),
             Backend::None => Backend::None,
@@ -134,64 +131,93 @@ impl Hotkeys {
     }
 
     pub fn config(&self) -> HotkeyConfig {
-        self.config
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        lock(&self.config).clone()
+    }
+
+    pub fn update_config(&self, change: impl FnOnce(&mut HotkeyConfig)) -> HotkeyConfig {
+        let mut config = lock(&self.config);
+        change(&mut config);
+        config.clone()
     }
 }
 
-/// Connect the best available backend; never blocks startup.
+/// A poisoned lock still holds usable state; a panic elsewhere shouldn't
+/// take the hotkeys down with it.
+pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Connect the best available backend; never blocks startup. A portal
+/// session that ends (portal restart, relogin) is reconnected.
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        let hotkeys = app.state::<Hotkeys>();
         let config = HotkeyConfig::load();
-        *hotkeys
-            .config
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = config.clone();
-        let backend = match portal::connect().await {
-            Ok(handle) => {
-                let handle = Arc::new(handle);
-                portal::listen(handle.clone(), app.clone());
-                Backend::Portal(handle)
-            }
-            Err(portal_err) => {
-                let x11 = std::env::var("XDG_SESSION_TYPE").is_ok_and(|t| t == "x11");
-                match x11.then(|| x11::connect(&config, app.clone())) {
-                    Some(Ok(handle)) => Backend::X11(Arc::new(handle)),
-                    Some(Err(e)) => {
-                        eprintln!(
-                            "sink: global hotkeys unavailable (portal: {portal_err}; x11: {e})"
-                        );
-                        Backend::None
-                    }
-                    None => {
-                        eprintln!("sink: global hotkeys unavailable ({portal_err})");
-                        Backend::None
-                    }
+        app.state::<Hotkeys>()
+            .update_config(|c| *c = config.clone());
+        let mut first = true;
+        loop {
+            match portal::connect().await {
+                Ok(handle) => {
+                    first = false;
+                    let handle = Arc::new(handle);
+                    set_backend(&app, Backend::Portal(handle.clone()));
+                    portal::run(handle, &app).await;
+                    set_backend(&app, Backend::None);
+                    eprintln!("sink: hotkey portal session ended; reconnecting");
                 }
+                Err(e) if first => {
+                    set_backend(&app, fallback(&config, &app, &e));
+                    return;
+                }
+                Err(e) => eprintln!("sink: hotkey portal reconnect failed: {e}"),
             }
-        };
-        eprintln!("sink: hotkeys via {}", backend.name());
-        *hotkeys
-            .backend
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = backend;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
     });
 }
 
-pub fn perform(app: &AppHandle, action: Action) {
-    let result = match action {
-        Action::ProfileNext => switch_profile(app, 1),
-        Action::ProfilePrev => switch_profile(app, -1),
-        Action::BalanceA => nudge_balance(app, -1),
-        Action::BalanceB => nudge_balance(app, 1),
-        Action::BalanceCenter => set_balance(app, 0.0),
-    };
-    if let Err(e) = result {
-        eprintln!("sink: hotkey {} failed: {e}", action.id());
+/// Without a portal, X11 can still grab keys; Wayland cannot.
+fn fallback(config: &HotkeyConfig, app: &AppHandle, portal_err: &str) -> Backend {
+    let x11 = std::env::var("XDG_SESSION_TYPE").is_ok_and(|t| t == "x11");
+    match x11.then(|| x11::connect(config, app.clone())) {
+        Some(Ok(handle)) => Backend::X11(Arc::new(handle)),
+        Some(Err(e)) => {
+            eprintln!("sink: global hotkeys unavailable (portal: {portal_err}; x11: {e})");
+            Backend::None
+        }
+        None => {
+            eprintln!("sink: global hotkeys unavailable ({portal_err})");
+            Backend::None
+        }
     }
+}
+
+fn set_backend(app: &AppHandle, backend: Backend) {
+    eprintln!("sink: hotkeys via {}", backend.name());
+    *lock(&app.state::<Hotkeys>().backend) = backend;
+    let _ = app.emit("hotkeys-changed", ());
+}
+
+/// Run `action` off the caller's thread; a press that lands while one is
+/// still running is dropped rather than queued.
+pub fn perform(app: &AppHandle, action: Action) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let hotkeys = app.state::<Hotkeys>();
+        let Ok(_running) = hotkeys.running.try_lock() else {
+            return;
+        };
+        let result = match action {
+            Action::ProfileNext => switch_profile(&app, 1),
+            Action::ProfilePrev => switch_profile(&app, -1),
+            Action::BalanceA => nudge_balance(&app, -1),
+            Action::BalanceB => nudge_balance(&app, 1),
+            Action::BalanceCenter => set_balance(&app, 0.0),
+        };
+        if let Err(e) = result {
+            eprintln!("sink: hotkey {} failed: {e}", action.id());
+        }
+    });
 }
 
 fn switch_profile(app: &AppHandle, direction: i32) -> Result<(), String> {
@@ -229,11 +255,9 @@ pub fn balance_position(a: u8, b: u8) -> f32 {
     (f32::from(b) - f32::from(a)) / 100.0
 }
 
-/// Volumes for a position, snapping to centre near the middle like the
-/// slider does.
+/// Volumes for a position. No centre dead zone: a one-point step must move.
 pub fn balance_volumes(position: f32) -> (u8, u8) {
     let p = position.clamp(-1.0, 1.0);
-    let p = if p.abs() < 0.04 { 0.0 } else { p };
     let a = (100.0 * (1.0 - p).min(1.0)).round() as u8;
     let b = (100.0 * (1.0 + p).min(1.0)).round() as u8;
     (a, b)
@@ -311,7 +335,6 @@ mod tests {
         assert_eq!(balance_volumes(0.0), (100, 100));
         assert_eq!(balance_volumes(0.5), (50, 100));
         assert_eq!(balance_volumes(-0.25), (100, 75));
-        assert_eq!(balance_volumes(0.03), (100, 100), "snaps to centre");
         assert_eq!(balance_volumes(2.0), (0, 100), "clamped");
         assert_eq!(balance_position(50, 100), 0.5);
         assert_eq!(balance_position(100, 75), -0.25);
@@ -323,6 +346,17 @@ mod tests {
         assert_eq!((a, b), (90, 100));
         let (a, b) = balance_volumes(balance_position(90, 100) - 0.25);
         assert_eq!((a, b), (100, 85));
+    }
+
+    #[test]
+    fn the_smallest_step_still_moves_and_accumulates() {
+        let (mut a, mut b) = (100u8, 100u8);
+        for _ in 0..3 {
+            let next = balance_volumes(balance_position(a, b) + 0.01);
+            assert_ne!(next, (a, b));
+            (a, b) = next;
+        }
+        assert_eq!((a, b), (97, 100));
     }
 
     #[test]

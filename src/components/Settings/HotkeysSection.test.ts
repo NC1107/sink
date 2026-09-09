@@ -10,6 +10,9 @@ describe("acceleratorFrom", () => {
       "Shift+Super+KeyP",
     );
   });
+  it("refuses a bare key", () => {
+    expect(acceleratorFrom({ code: "KeyA", ctrlKey: false, altKey: false, shiftKey: false, metaKey: false })).toBeNull();
+  });
   it("waits for a real key when only a modifier is down", () => {
     expect(acceleratorFrom({ code: "ControlLeft", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false })).toBeNull();
     expect(acceleratorFrom({ code: "", ctrlKey: true, altKey: false, shiftKey: false, metaKey: false })).toBeNull();

@@ -10,7 +10,7 @@ pub async fn get_hotkeys(app: AppHandle) -> Result<HotkeyStatus, String> {
     let backend = hotkeys.backend();
     let shortcuts: Vec<ShortcutInfo> = match &backend {
         Backend::Portal(handle) => crate::hotkeys::portal::shortcuts(handle).await?,
-        Backend::X11(handle) => handle.shortcuts(&config),
+        Backend::X11(handle) => handle.shortcuts(),
         Backend::None => Vec::new(),
     };
     Ok(HotkeyStatus {
@@ -39,15 +39,12 @@ pub fn set_hotkey_binding(app: AppHandle, id: String, trigger: String) -> Result
         return Err("bindings are edited in the desktop's settings here".into());
     };
     handle.bind(action, &trigger)?;
-    let config = {
-        let mut config = hotkeys
-            .config
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        config.bindings.insert(id, trigger);
-        config.clone()
-    };
-    config.save().map_err(|e| e.to_string())
+    hotkeys
+        .update_config(|c| {
+            c.bindings.insert(id, trigger);
+        })
+        .save()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -55,14 +52,8 @@ pub fn set_balance_step(app: AppHandle, step: u8) -> Result<(), String> {
     if !BALANCE_STEPS.contains(&step) {
         return Err(format!("unsupported balance step: {step}"));
     }
-    let hotkeys = app.state::<Hotkeys>();
-    let config = {
-        let mut config = hotkeys
-            .config
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        config.balance_step = step;
-        config.clone()
-    };
-    config.save().map_err(|e| e.to_string())
+    app.state::<Hotkeys>()
+        .update_config(|c| c.balance_step = step)
+        .save()
+        .map_err(|e| e.to_string())
 }

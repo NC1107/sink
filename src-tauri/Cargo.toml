@@ -30,3 +30,4 @@ pipewire = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-rs", rev = 
 ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts"] }
 global-hotkey = "0.8"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", default-features = false, features = ["macros", "time"] }

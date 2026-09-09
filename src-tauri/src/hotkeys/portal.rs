@@ -16,6 +16,8 @@ use super::{Action, ShortcutInfo};
 pub struct Handle {
     proxy: GlobalShortcuts,
     session: Session<GlobalShortcuts>,
+    /// The session's object path, to tell our activations from other apps'.
+    path: String,
 }
 
 /// Registered explicitly, or the portal names us after whatever launched us.
@@ -31,14 +33,20 @@ pub async fn connect() -> Result<Handle, String> {
         Err(e) => eprintln!("sink: bad portal app id: {e}"),
     }
     let proxy = GlobalShortcuts::new().await.map_err(|e| e.to_string())?;
-    if proxy.version() == 0 {
-        return Err("no GlobalShortcuts portal".into());
-    }
     let session = proxy
         .create_session(Default::default())
         .await
         .map_err(|e| e.to_string())?;
-    let handle = Handle { proxy, session };
+    // ashpd keeps the path private; the session serialises as its path.
+    let path = serde_json::to_value(&session)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .ok_or("session path")?;
+    let handle = Handle {
+        proxy,
+        session,
+        path,
+    };
     // A dismissed dialog must not cost the session: Settings can bind again.
     if let Err(e) = bind(&handle).await {
         eprintln!("sink: hotkeys not bound yet: {e}");
@@ -67,32 +75,48 @@ pub async fn bind(handle: &Handle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-pub fn listen(handle: Arc<Handle>, app: AppHandle) {
-    let activations = handle.clone();
-    let on_activated = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut activated = match activations.proxy.receive_activated().await {
-            Ok(stream) => stream,
-            Err(e) => {
-                eprintln!("sink: hotkey signals unavailable: {e}");
-                return;
-            }
-        };
-        while let Some(event) = activated.next().await {
-            if let Some(action) = Action::from_id(event.shortcut_id()) {
-                super::perform(&on_activated, action);
-            }
+/// Act on activations until the session closes or the signals stop.
+pub async fn run(handle: Arc<Handle>, app: &AppHandle) {
+    let mut activated = match handle.proxy.receive_activated().await {
+        Ok(stream) => stream,
+        Err(e) => {
+            eprintln!("sink: hotkey signals unavailable: {e}");
+            return;
         }
-    });
+    };
+    let mut closed = match handle.session.receive_closed().await {
+        Ok(stream) => stream,
+        Err(e) => {
+            eprintln!("sink: hotkey session watch unavailable: {e}");
+            return;
+        }
+    };
     // Keys edited in the desktop's settings show up in ours without a restart.
-    tauri::async_runtime::spawn(async move {
-        let Ok(mut changed) = handle.proxy.receive_shortcuts_changed().await else {
+    let changes = handle.clone();
+    let notify = app.clone();
+    let watcher = tauri::async_runtime::spawn(async move {
+        let Ok(mut changed) = changes.proxy.receive_shortcuts_changed().await else {
             return;
         };
         while changed.next().await.is_some() {
-            let _ = app.emit("hotkeys-changed", ());
+            let _ = notify.emit("hotkeys-changed", ());
         }
     });
+    loop {
+        tokio::select! {
+            event = activated.next() => {
+                let Some(event) = event else { break };
+                if event.session_handle().as_str() != handle.path {
+                    continue;
+                }
+                if let Some(action) = Action::from_id(event.shortcut_id()) {
+                    super::perform(app, action);
+                }
+            }
+            _ = closed.next() => break,
+        }
+    }
+    watcher.abort();
 }
 
 pub async fn shortcuts(handle: &Handle) -> Result<Vec<ShortcutInfo>, String> {
@@ -117,6 +141,9 @@ pub async fn shortcuts(handle: &Handle) -> Result<Vec<ShortcutInfo>, String> {
 /// Bind (prompts only for new ids), then the desktop's own shortcut settings.
 pub async fn configure(handle: &Handle) -> Result<(), String> {
     bind(handle).await?;
+    if handle.proxy.version() < 2 {
+        return Err("this desktop can't open shortcut settings from an app yet; use its own shortcut settings".into());
+    }
     handle
         .proxy
         .configure_shortcuts(&handle.session, None, ConfigureShortcutsOptions::default())

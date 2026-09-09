@@ -81,6 +81,12 @@ pub fn load_profile(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<(), String> {
+    // A tray click, a hotkey and the UI can all land here at once; the
+    // reconcile below reads and writes the mixer in several steps.
+    let _switching = state
+        .profile_switch
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let profile = profiles::load(&name).map_err(|e| e.to_string())?;
     if profile.channels.is_empty() {
         return Err(format!("profile {name} has no channels"));

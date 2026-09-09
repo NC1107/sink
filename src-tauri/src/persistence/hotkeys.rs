@@ -41,11 +41,15 @@ impl HotkeyConfig {
     }
 
     pub fn load() -> Self {
-        Self::config_path()
+        let mut config: Self = Self::config_path()
             .ok()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if !BALANCE_STEPS.contains(&config.balance_step) {
+            config.balance_step = default_step();
+        }
+        config
     }
 
     pub fn save(&self) -> Result<(), SinkError> {
