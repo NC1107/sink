@@ -437,6 +437,7 @@ body,
 /* ---------- Grouped mixer (Capture | Channels | Mixes) ---------- */
 .mix-scroll {
   display: flex;
+  align-items: flex-start;
   padding: var(--sp-5) var(--sp-6);
   height: 100%;
   min-height: 0;
@@ -534,9 +535,10 @@ body,
   position: relative;
   width: 132px;
   flex: 0 0 132px;
-  /* A fader's throw is a fixed length; a taller window gets margin, not
-     a longer drag for the same 2 dB. */
-  height: 620px;
+  /* A fader's throw is a fixed length: a taller window gets margin, not a
+     longer drag for the same 2 dB. A short window shortens it to 460px
+     before the board has to scroll. */
+  height: clamp(460px, calc(100vh - 114px), 620px);
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
