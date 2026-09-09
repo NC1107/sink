@@ -39,23 +39,23 @@ pub fn get_seen_apps(state: State<'_, AppState>) -> Result<Vec<SeenApp>, String>
                 None,
             );
             SeenApp {
-            match_prop: entry.match_prop.clone(),
-            match_value: entry.match_value.clone(),
-            display_name: resolved
-                .display_name
-                .unwrap_or_else(|| entry.display_name.clone()),
-            icon_name: entry.icon_name.clone(),
-            icon_path: history_icon(entry, resolved.icon_path),
-            last_seen: entry.last_seen,
-            ignored: entry.ignored,
-            assigned_sink: mixer
-                .assignments
-                .sink_for(&entry.match_prop, &entry.match_value)
-                .map(str::to_string),
-            alias: mixer
-                .aliases
-                .get(&entry.match_prop, &entry.match_value)
-                .map(str::to_string),
+                match_prop: entry.match_prop.clone(),
+                match_value: entry.match_value.clone(),
+                display_name: resolved
+                    .display_name
+                    .unwrap_or_else(|| entry.display_name.clone()),
+                icon_name: entry.icon_name.clone(),
+                icon_path: history_icon(entry, resolved.icon_path),
+                last_seen: entry.last_seen,
+                ignored: entry.ignored,
+                assigned_sink: mixer
+                    .assignments
+                    .sink_for(&entry.match_prop, &entry.match_value)
+                    .map(str::to_string),
+                alias: mixer
+                    .aliases
+                    .get(&entry.match_prop, &entry.match_value)
+                    .map(str::to_string),
             }
         })
         .collect())

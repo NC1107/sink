@@ -40,10 +40,10 @@ if client has pipewire.access.portal.app_id, or pipewire.access == "flatpak"
     -> no pid (sandbox namespace); identity comes from the app id
 elif native client (pipewire.sec.pid == application.process.id)
     -> pid = sec.pid (kernel-verified)
-elif application.process.id is set
-    -> pid = that, but only if application.process.binary is absent
-       or basename(/proc/pid/exe) == binary or exe is a known wrapper
-    -> else no pid (some other namespace)
+elif application.process.id is set and application.process.binary is set
+    -> pid = that, but only if basename(/proc/pid/exe) == binary
+       or exe is a known wrapper (a loader running the binary)
+    -> else no pid (nothing to verify it against, or another namespace)
 ```
 
 A pid is never cached on its own: process facts are cached per stream serial and evicted on that node's `global_remove`, so a recycled pid cannot inherit a dead stream's identity.
@@ -80,20 +80,17 @@ One resolution feeds both, so they cannot disagree. Retires the "Steam"/"WezTerm
 - Native: the client lookup (section 0) resolves the cs2 case outright; a pid-less node shares its sibling's client.
 - `pactl` fallback: no client props. A pid-less stream adopts a pid-bearing stream's identity only when **exactly one** candidate in the snapshot agrees on every property the pid-less stream carries, **and** the shared `application.name` is not a wrapper or generic value. So "Chromium" (Spotify and Chrome both claim it) never adopts. Anything else falls to the name ladder, which is today's behaviour.
 
-### 6. Rules: identity plus matchers, additive on disk
+### 6. Rules: one shape, additive on disk
 
 ```
 Assignment {
-  match_prop, match_value,      // unchanged, top-level: the primary matcher
+  match_prop, match_value,   // unchanged: a process prop for new rules, a stream prop for legacy ones
   sink_name,
-  identity: Option<(kind, value)>,
-  matchers: Vec<(prop, value)>, // observed raw props, never generic or wrapper values
-  last_matched: Option<u64>,
-  schema: u32,
+  adopted_by: Vec<String>,   // "prop:value" of each process identity this legacy rule was copied into
 }
 ```
 
-`match_prop`/`match_value` stay at the top level and are always populated, so an **old binary reading a new file keeps every rule** (it just ignores the new fields). New fields carry `serde(default)`. This is the downgrade case the first draft missed: `Assignments::load()` falls back to empty on a parse failure and the next save would have persisted the wipe.
+A canonical rule is an ordinary `Assignment` keyed on a process prop (`steam.app_id`, `flatpak.app_id`, `process.exe`, ...). Migration copies a legacy rule's sink into a canonical rule and records the canonical key in the legacy rule's `adopted_by`, so the copy happens once per pair and an unassigned app stays unassigned. `adopted_by` carries `serde(default)` and is skipped when empty, so an **old binary reading a new file keeps every rule**. This is the downgrade case the first draft missed: `Assignments::load()` falls back to empty on a parse failure and the next save would have persisted the wipe.
 
 ### 7. WirePlumber mirror: removed
 

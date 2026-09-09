@@ -120,10 +120,15 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
     // Skip launcher prefixes (env FOO=1, sh -c, flatpak-spawn --host).
     let exec_base = exec.and_then(|e| {
         let first = e.split_whitespace().find(|t| {
-            let base = Path::new(t).file_name().map(|f| f.to_string_lossy().into_owned());
+            let base = Path::new(t)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned());
             !(t.contains('=')
                 || t.starts_with('-')
-                || matches!(base.as_deref(), Some("env" | "sh" | "bash" | "flatpak-spawn")))
+                || matches!(
+                    base.as_deref(),
+                    Some("env" | "sh" | "bash" | "flatpak-spawn")
+                ))
         })?;
         Path::new(first)
             .file_name()
@@ -235,10 +240,9 @@ fn load_desktops() -> Vec<DesktopEntry> {
     entries
 }
 
-/// Resolve an icon name to a file path across the freedesktop dirs.
-/// The canonical path: the asset protocol resolves a symlink with
-/// `read_link`, so a theme's relative link (`foo.svg -> bar.svg`) is
-/// checked against the working directory and denied.
+/// The asset protocol resolves a symlink with `read_link`, so a theme's
+/// relative link (`foo.svg -> bar.svg`) is checked against the working
+/// directory and denied; hand out canonical paths instead.
 pub fn real_path(path: impl AsRef<Path>) -> Option<String> {
     std::fs::canonicalize(path)
         .ok()
@@ -258,6 +262,7 @@ pub fn identity_icon(
         .or(resolved)
 }
 
+/// Resolve an icon name to a file path across the freedesktop dirs.
 pub fn icon_name_to_path(name: &str) -> Option<String> {
     find_icon(name).and_then(real_path)
 }
