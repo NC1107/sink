@@ -128,7 +128,14 @@ export function MixerBoard() {
             className="mix-fit"
             style={fit.width ? { width: fit.width * fit.scale, height: fit.height * fit.scale } : undefined}
           >
-            <div className="mix-board" ref={boardRef} style={{ transform: `scale(${fit.scale})` }}>
+            <div
+              className="mix-board"
+              ref={boardRef}
+              style={{
+                transform: `scale(${fit.scale})`,
+                ...(fit.stripHeight ? { "--strip-h": `${fit.stripHeight}px` } : {}),
+              }}
+            >
               {micConfig?.enabled && (
                 <>
                   <MixGroup

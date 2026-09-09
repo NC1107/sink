@@ -497,9 +497,9 @@ body,
   position: relative;
   width: 132px;
   flex: 0 0 132px;
-  /* A fader wants a fixed throw, not the window's height: scale within
-     limits so a tall window isn't a wall of 700px faders. */
-  height: clamp(460px, 68vh, 640px);
+  /* The board sets --strip-h to fill the window; the fallback bounds the
+     first paint before it has measured. */
+  height: var(--strip-h, clamp(460px, 68vh, 640px));
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
@@ -509,21 +509,6 @@ body,
   transition: border-color 0.12s;
   animation: stripIn 0.24s ease;
 }
-/* Half a 1080p screen: mic + four channels + a mix fit without a scrollbar. */
-@media (max-width: 1100px) {
-  .mix-scroll {
-    padding: var(--sp-5) var(--sp-3);
-  }
-  .group-div {
-    margin-inline: var(--sp-3);
-  }
-  .strip {
-    width: 124px;
-    flex-basis: 124px;
-    padding-inline: var(--sp-2);
-  }
-}
-
 .strip.muted {
   opacity: 0.62;
 }
