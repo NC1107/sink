@@ -49,11 +49,13 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        // Position only: the main window sizes itself to the board, and
-        // visibility stays with the tray logic.
+        // Main window only; visibility stays with the tray logic.
         .plugin(
             tauri_plugin_window_state::Builder::new()
-                .with_state_flags(tauri_plugin_window_state::StateFlags::POSITION)
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION,
+                )
                 .with_filter(|label| label == "main")
                 .build(),
         )
