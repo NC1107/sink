@@ -560,7 +560,11 @@ fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalO
     };
     let props: HashMap<String, String> = global
         .props
-        .map(|d| d.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
+        .map(|d| {
+            d.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
     // The full dict (sec.pid, portal app id) only arrives with the info event.
     let state_i = state.clone();

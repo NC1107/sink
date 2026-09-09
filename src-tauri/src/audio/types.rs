@@ -1,3 +1,4 @@
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -212,7 +213,10 @@ mod identity_tests {
 
     #[test]
     fn a_stream_title_never_becomes_the_identity() {
-        let (_, prop, value) = resolve(&[("media.name", "Song Title - Artist"), ("node.name", "player")]);
+        let (_, prop, value) = resolve(&[
+            ("media.name", "Song Title - Artist"),
+            ("node.name", "player"),
+        ]);
         assert_eq!(prop, "node.name");
         assert_eq!(value, "player");
     }

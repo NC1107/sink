@@ -21,6 +21,7 @@ pub struct Assignment {
     pub adopted_by: Vec<String>,
 }
 
+/// Unambiguous because prop names never contain ':'.
 pub fn identity_key(prop: &str, value: &str) -> String {
     format!("{prop}:{value}")
 }
@@ -148,11 +149,18 @@ mod tests {
             Some("sink_game".to_string())
         );
         // A second game on the same engine adopts too; the legacy rule stays.
-        assert!(a.adopt("application.name", "SDL Application", "steam.app_id", "2").is_some());
-        assert_eq!(a.sink_for("application.name", "SDL Application"), Some("sink_game"));
+        assert!(a
+            .adopt("application.name", "SDL Application", "steam.app_id", "2")
+            .is_some());
+        assert_eq!(
+            a.sink_for("application.name", "SDL Application"),
+            Some("sink_game")
+        );
         // The user unassigns game 1: it must not come back.
         a.remove("steam.app_id", "1");
-        assert!(a.adopt("application.name", "SDL Application", "steam.app_id", "1").is_none());
+        assert!(a
+            .adopt("application.name", "SDL Application", "steam.app_id", "1")
+            .is_none());
         assert!(a.sink_for("steam.app_id", "1").is_none());
 
         // A second legacy rule the same app matches is marked without

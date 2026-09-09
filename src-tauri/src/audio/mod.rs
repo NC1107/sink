@@ -6,6 +6,6 @@ pub mod identity;
 pub mod mock;
 pub mod pactl;
 pub mod presets;
-pub mod steam;
 pub mod pw_native;
+pub mod steam;
 pub mod types;

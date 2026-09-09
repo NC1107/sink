@@ -1,3 +1,4 @@
+
 use std::collections::{HashMap, HashSet};
 
 use tauri::State;
@@ -518,8 +519,12 @@ mod tests {
             "pipewire.access.portal.app_id".into(),
             "com.spotify.Client".into(),
         );
-        spotify.props.insert("pipewire.access".into(), "flatpak".into());
-        spotify.props.insert("application.process.id".into(), "2".into());
+        spotify
+            .props
+            .insert("pipewire.access".into(), "flatpak".into());
+        spotify
+            .props
+            .insert("application.process.id".into(), "2".into());
         let backend = Arc::new(MockBackend::with_streams(vec![spotify]));
         let state = AppState::new(backend.clone(), true);
         {
@@ -546,7 +551,9 @@ mod tests {
         );
         let mixer = state.lock_mixer().expect("mixer");
         assert_eq!(
-            mixer.assignments.sink_for(identity::PROP_FLATPAK, "com.spotify.Client"),
+            mixer
+                .assignments
+                .sink_for(identity::PROP_FLATPAK, "com.spotify.Client"),
             Some("sink_music")
         );
         assert_eq!(
@@ -554,10 +561,24 @@ mod tests {
             Some("sink_music"),
             "the legacy rule is kept, never deleted"
         );
-        assert_eq!(mixer.aliases.get(identity::PROP_FLATPAK, "com.spotify.Client"), Some("Tunes"));
-        assert!(mixer.aliases.get("application.name", "Spotify").is_none(), "alias moved, not copied");
-        assert!(mixer.seen.get("application.name", "Spotify").is_none(), "history merged");
-        assert!(mixer.seen.get(identity::PROP_FLATPAK, "com.spotify.Client").is_some());
+        assert_eq!(
+            mixer
+                .aliases
+                .get(identity::PROP_FLATPAK, "com.spotify.Client"),
+            Some("Tunes")
+        );
+        assert!(
+            mixer.aliases.get("application.name", "Spotify").is_none(),
+            "alias moved, not copied"
+        );
+        assert!(
+            mixer.seen.get("application.name", "Spotify").is_none(),
+            "history merged"
+        );
+        assert!(mixer
+            .seen
+            .get(identity::PROP_FLATPAK, "com.spotify.Client")
+            .is_some());
         drop(mixer);
 
         // The user unassigns the app. The legacy rule is still on disk and
