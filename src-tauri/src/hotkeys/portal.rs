@@ -9,7 +9,7 @@ use ashpd::desktop::global_shortcuts::{
 };
 use ashpd::desktop::Session;
 use futures_util::StreamExt;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use super::{Action, ShortcutInfo};
 
@@ -18,10 +18,7 @@ pub struct Handle {
     session: Session<GlobalShortcuts>,
 }
 
-/// The id the portal files our shortcuts under. A host app is otherwise
-/// named after whatever launched it (a terminal, say); a reverse-DNS id
-/// is required, and us.echo.Sink.desktop ships hidden so desktops can
-/// turn it into a name.
+/// Registered explicitly, or the portal names us after whatever launched us.
 const APP_ID: &str = "us.echo.Sink";
 
 pub async fn connect() -> Result<Handle, String> {
@@ -71,8 +68,10 @@ pub async fn bind(handle: &Handle) -> Result<(), String> {
 }
 
 pub fn listen(handle: Arc<Handle>, app: AppHandle) {
+    let activations = handle.clone();
+    let on_activated = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut activated = match handle.proxy.receive_activated().await {
+        let mut activated = match activations.proxy.receive_activated().await {
             Ok(stream) => stream,
             Err(e) => {
                 eprintln!("sink: hotkey signals unavailable: {e}");
@@ -81,8 +80,17 @@ pub fn listen(handle: Arc<Handle>, app: AppHandle) {
         };
         while let Some(event) = activated.next().await {
             if let Some(action) = Action::from_id(event.shortcut_id()) {
-                super::perform(&app, action);
+                super::perform(&on_activated, action);
             }
+        }
+    });
+    // Keys edited in the desktop's settings show up in ours without a restart.
+    tauri::async_runtime::spawn(async move {
+        let Ok(mut changed) = handle.proxy.receive_shortcuts_changed().await else {
+            return;
+        };
+        while changed.next().await.is_some() {
+            let _ = app.emit("hotkeys-changed", ());
         }
     });
 }
@@ -106,9 +114,7 @@ pub async fn shortcuts(handle: &Handle) -> Result<Vec<ShortcutInfo>, String> {
         .collect())
 }
 
-/// Bind first (the desktop prompts for ids it hasn't seen), then open the
-/// desktop's own shortcut settings for keys it knows but left unbound or
-/// that the user wants to change.
+/// Bind (prompts only for new ids), then the desktop's own shortcut settings.
 pub async fn configure(handle: &Handle) -> Result<(), String> {
     bind(handle).await?;
     handle

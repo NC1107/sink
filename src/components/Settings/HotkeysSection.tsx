@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { HotkeyStatus } from "../../types";
 import { Ms } from "../Icons";
@@ -53,6 +54,15 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
   }, [onError]);
   useEffect(() => {
     void refresh();
+    // The desktop owns the bindings; pick up edits made there, and re-read
+    // when the window comes back from its settings.
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    const unlisten = listen("hotkeys-changed", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      void unlisten.then((stop) => stop());
+    };
   }, [refresh]);
 
   useEffect(() => {
@@ -105,18 +115,17 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
           </div>
         )}
         {status.shortcuts.map((s) => (
-          <div className="row" key={s.id}>
-            <div className="ricon">
-              <Ms name={ICONS[s.id] ?? "keyboard"} />
-            </div>
+          <div className="row row-compact" key={s.id}>
+            <Ms name={ICONS[s.id] ?? "keyboard"} className="row-compact-icon" />
             <div className="rmain">
               <div className="rtitle">{s.description}</div>
-              <div className="rsub">{capturing === s.id ? "Press the new keys, Esc to cancel" : s.trigger || "Not bound"}</div>
             </div>
-            {status.backend === "x11" && (
-              <button type="button" className="modal-btn" onClick={() => setCapturing(capturing === s.id ? null : s.id)}>
-                {capturing === s.id ? "Cancel" : "Change"}
+            {status.backend === "x11" ? (
+              <button type="button" className="kbd kbd-btn" onClick={() => setCapturing(capturing === s.id ? null : s.id)}>
+                {capturing === s.id ? "Press keys…" : s.trigger || "Not bound"}
               </button>
+            ) : (
+              <span className={"kbd" + (s.trigger ? "" : " kbd-unbound")}>{s.trigger || "Not bound"}</span>
             )}
           </div>
         ))}

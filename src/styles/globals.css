@@ -2530,3 +2530,36 @@ body,
   background: var(--bg-surface);
   color: var(--fg-primary);
 }
+
+/* Compact settings rows: one line, the value on the right as a key cap. */
+.row-compact {
+  padding: var(--sp-2) var(--sp-4);
+}
+.row-compact-icon {
+  font-size: 18px;
+  color: var(--fg-muted);
+  width: 24px;
+  text-align: center;
+}
+.kbd {
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  color: var(--fg-primary);
+  background: var(--bg-active);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.kbd-unbound {
+  color: var(--fg-muted);
+  background: transparent;
+  border-style: dashed;
+}
+.kbd-btn {
+  cursor: pointer;
+}
+.kbd-btn:hover {
+  border-color: var(--accent);
+}

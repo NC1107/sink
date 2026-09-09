@@ -198,8 +198,6 @@ export function SettingsScreen() {
           </div>
         </div>
 
-        <HotkeysSection onError={setError} />
-
         <div className="section-label">Preferences</div>
         <div className="card" style={{ padding: "var(--sp-2)" }}>
           <div className="row">
@@ -284,6 +282,8 @@ export function SettingsScreen() {
             </div>
           )}
         </div>
+
+        <HotkeysSection onError={setError} />
 
         <div className="section-label">About</div>
         <div className="card" style={{ padding: "var(--sp-2)" }}>
