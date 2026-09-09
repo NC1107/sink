@@ -41,17 +41,33 @@ pub async fn connect() -> Result<Handle, String> {
         .create_session(Default::default())
         .await
         .map_err(|e| e.to_string())?;
+    let handle = Handle { proxy, session };
+    // A dismissed dialog must not cost the session: Settings can bind again.
+    if let Err(e) = bind(&handle).await {
+        eprintln!("sink: hotkeys not bound yet: {e}");
+    }
+    Ok(handle)
+}
+
+/// Declare our shortcuts; the desktop asks the user the first time.
+pub async fn bind(handle: &Handle) -> Result<(), String> {
     let shortcuts: Vec<NewShortcut> = Action::ALL
         .iter()
         .map(|a| NewShortcut::new(a.id(), a.description()).preferred_trigger(a.portal_trigger()))
         .collect();
-    proxy
-        .bind_shortcuts(&session, &shortcuts, None, BindShortcutsOptions::default())
+    handle
+        .proxy
+        .bind_shortcuts(
+            &handle.session,
+            &shortcuts,
+            None,
+            BindShortcutsOptions::default(),
+        )
         .await
         .map_err(|e| e.to_string())?
         .response()
-        .map_err(|e| e.to_string())?;
-    Ok(Handle { proxy, session })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 pub fn listen(handle: Arc<Handle>, app: AppHandle) {
@@ -90,8 +106,16 @@ pub async fn shortcuts(handle: &Handle) -> Result<Vec<ShortcutInfo>, String> {
         .collect())
 }
 
-/// Open the desktop's own binding dialog.
+/// Bind if anything is still unbound, else open the desktop's own dialog
+/// to change keys.
 pub async fn configure(handle: &Handle) -> Result<(), String> {
+    let unbound = shortcuts(handle)
+        .await?
+        .iter()
+        .any(|s| s.trigger.is_empty());
+    if unbound {
+        return bind(handle).await;
+    }
     handle
         .proxy
         .configure_shortcuts(&handle.session, None, ConfigureShortcutsOptions::default())
