@@ -3,18 +3,10 @@ export interface Size {
   height: number;
 }
 
-const MIN_STRIP = 460;
-const MAX_STRIP = 640;
-/** Height every board gets; the fader throw fills it. */
+/** First-launch height: the 620px strips plus the chrome around them. */
 export const WINDOW_HEIGHT = 760;
-/** Narrowest useful window: a strip and a half plus the rail. */
-export const MIN_WINDOW_WIDTH = 480;
-
-/** Fader length that fills the available height, within the bounds a
- * fader stays usable at. `chromeH` is the board's height minus a strip. */
-export function stripHeight(availH: number, chromeH: number): number {
-  return Math.floor(Math.min(MAX_STRIP, Math.max(MIN_STRIP, availH - chromeH)));
-}
+/** A half tile on a 1366px laptop is 683px; four strips still work there. */
+export const MIN_WINDOW_WIDTH = 640;
 
 /** The window that shows a `boardW`-wide board at 1x, `chromeW` being the
  * rail, padding and border around it, clamped to the monitor's work area. */

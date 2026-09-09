@@ -143,6 +143,41 @@ body,
   overflow: hidden;
 }
 
+/* Window resize grab zones: edges 6px, corners 14px, above everything. */
+.resize-edge {
+  position: absolute;
+  z-index: 100;
+}
+.resize-north,
+.resize-south {
+  left: 14px;
+  right: 14px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.resize-east,
+.resize-west {
+  top: 14px;
+  bottom: 14px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.resize-north { top: 0; }
+.resize-south { bottom: 0; }
+.resize-east { right: 0; }
+.resize-west { left: 0; }
+.resize-northeast,
+.resize-northwest,
+.resize-southeast,
+.resize-southwest {
+  width: 14px;
+  height: 14px;
+}
+.resize-northeast { top: 0; right: 0; cursor: nesw-resize; }
+.resize-southwest { bottom: 0; left: 0; cursor: nesw-resize; }
+.resize-northwest { top: 0; left: 0; cursor: nwse-resize; }
+.resize-southeast { bottom: 0; right: 0; cursor: nwse-resize; }
+
 /* ---------- Headerbar ---------- */
 .headerbar {
   height: 48px;
@@ -407,13 +442,20 @@ body,
   min-height: 0;
   overflow: auto;
 }
-/* Auto margins centre the board while it fits and fall back to the top-left
-   corner once it overflows, so a narrowed window scrolls from the edge. */
+/* Centred while it fits, left-anchored once it overflows so a narrowed
+   window scrolls from the edge; extra height is margin below the board. */
 .mix-board {
   display: flex;
   align-items: stretch;
   width: max-content;
-  margin: auto;
+  margin: 0 auto;
+}
+.mix-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.mix-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--r-pill);
 }
 .mix-group {
   display: flex;
@@ -492,9 +534,9 @@ body,
   position: relative;
   width: 132px;
   flex: 0 0 132px;
-  /* The board sets --strip-h to fill the window; the fallback covers the
-     first paint before it has measured. */
-  height: var(--strip-h, 620px);
+  /* A fader's throw is a fixed length; a taller window gets margin, not
+     a longer drag for the same 2 dB. */
+  height: 620px;
   display: flex;
   flex-direction: column;
   background: var(--bg-surface);
