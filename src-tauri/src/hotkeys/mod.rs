@@ -119,7 +119,12 @@ pub struct Hotkeys {
     config: Mutex<HotkeyConfig>,
     /// Held while an action runs, so key repeat can't queue up profile loads.
     running: Mutex<()>,
+    /// Desktops re-send an activation on key auto-repeat; one press is one action.
+    last_press: Mutex<Option<std::time::Instant>>,
 }
+
+/// Auto-repeat starts after ~250ms on most desktops; anything faster is a repeat.
+const REPEAT_GAP: std::time::Duration = std::time::Duration::from_millis(250);
 
 impl Hotkeys {
     pub fn backend(&self) -> Backend {
@@ -204,6 +209,14 @@ pub fn perform(app: &AppHandle, action: Action) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let hotkeys = app.state::<Hotkeys>();
+        {
+            let now = std::time::Instant::now();
+            let mut last = lock(&hotkeys.last_press);
+            if last.is_some_and(|t| now.duration_since(t) < REPEAT_GAP) {
+                return;
+            }
+            *last = Some(now);
+        }
         let Ok(_running) = hotkeys.running.try_lock() else {
             return;
         };
