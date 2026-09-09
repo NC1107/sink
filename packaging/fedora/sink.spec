@@ -54,6 +54,8 @@ cp -a usr/. %{buildroot}%{_prefix}/
 %files
 %{_bindir}/sink
 %{_datadir}/applications/sink.desktop
+# Hidden entry the desktop portal files the global shortcuts under.
+%{_datadir}/applications/us.echo.Sink.desktop
 %{_datadir}/icons/hicolor/*/apps/sink.png
 
 %changelog
