@@ -143,41 +143,6 @@ body,
   overflow: hidden;
 }
 
-/* Window resize grab zones: edges 6px, corners 14px, above everything. */
-.resize-edge {
-  position: absolute;
-  z-index: 100;
-}
-.resize-north,
-.resize-south {
-  left: 14px;
-  right: 14px;
-  height: 6px;
-  cursor: ns-resize;
-}
-.resize-east,
-.resize-west {
-  top: 14px;
-  bottom: 14px;
-  width: 6px;
-  cursor: ew-resize;
-}
-.resize-north { top: 0; }
-.resize-south { bottom: 0; }
-.resize-east { right: 0; }
-.resize-west { left: 0; }
-.resize-northeast,
-.resize-northwest,
-.resize-southeast,
-.resize-southwest {
-  width: 14px;
-  height: 14px;
-}
-.resize-northeast { top: 0; right: 0; cursor: nesw-resize; }
-.resize-southwest { bottom: 0; left: 0; cursor: nesw-resize; }
-.resize-northwest { top: 0; left: 0; cursor: nwse-resize; }
-.resize-southeast { bottom: 0; right: 0; cursor: nwse-resize; }
-
 /* ---------- Headerbar ---------- */
 .headerbar {
   height: 48px;

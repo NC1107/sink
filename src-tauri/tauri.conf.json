@@ -14,13 +14,13 @@
       {
         "label": "main",
         "title": "sink",
-        "width": 1280,
-        "height": 800,
+        "width": 1200,
+        "height": 760,
         "minWidth": 960,
         "minHeight": 600,
         "decorations": false,
         "transparent": true,
-        "resizable": true,
+        "resizable": false,
         "visible": false
       }
     ],

@@ -44,14 +44,6 @@ export function TitleBar({ screen }: Readonly<{ screen: string }>) {
         </button>
         <button
           type="button"
-          className="wbtn"
-          aria-label="Maximize"
-          onClick={() => void win.toggleMaximize()}
-        >
-          <Ms name="crop_square" style={{ fontSize: 13 }} />
-        </button>
-        <button
-          type="button"
           className="wbtn close"
           aria-label="Close (hide to tray)"
           title="Hides to tray"
