@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use tauri::menu::{CheckMenuItem, Menu, MenuItem}; // CheckMenuItem: profile rows
 use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Listener, Manager, WindowEvent};
 
 use audio::backend::AudioBackend;
 use audio::pactl::PactlBackend;
@@ -139,13 +139,28 @@ pub fn run() {
         .setup(move |app| {
             build_tray(app)?;
             hotkeys::start(app.handle().clone());
-            // The window starts hidden (config) to avoid a flash; show it
-            // now unless launched with --minimized (autostart-to-tray).
+            // The window starts hidden (config) and is shown once the
+            // frontend has sized it to the board, so a first launch doesn't
+            // pop open at one size and snap to another; a fallback timer
+            // covers a frontend that never reports in. --minimized
+            // (autostart-to-tray) keeps it hidden.
             let minimized = std::env::args().any(|a| a == "--minimized");
             if !minimized {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                }
+                let shown = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let handle = app.handle().clone();
+                let show = move || {
+                    if !shown.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.show();
+                        }
+                    }
+                };
+                let on_ready = show.clone();
+                app.listen("sink-ready", move |_| on_ready());
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    show();
+                });
             }
             if let Some(levels) = levels {
                 spawn_level_emitter(app.handle().clone(), levels);

@@ -143,22 +143,24 @@ body,
   overflow: hidden;
 }
 
-/* Window resize grab zones: edges 6px, corners 14px, above everything. */
+/* Window resize grab zones: edges 6px, corners 10px. Below the modal and
+   popover scrims so a click near the edge still dismisses them, and clear
+   of the window buttons in the top-right corner. */
 .resize-edge {
   position: absolute;
-  z-index: 100;
+  z-index: 40;
 }
 .resize-north,
 .resize-south {
-  left: 14px;
-  right: 14px;
+  left: 10px;
+  right: 10px;
   height: 6px;
   cursor: ns-resize;
 }
 .resize-east,
 .resize-west {
-  top: 14px;
-  bottom: 14px;
+  top: 10px;
+  bottom: 10px;
   width: 6px;
   cursor: ew-resize;
 }
@@ -170,8 +172,8 @@ body,
 .resize-northwest,
 .resize-southeast,
 .resize-southwest {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
 }
 .resize-northeast { top: 0; right: 0; cursor: nesw-resize; }
 .resize-southwest { bottom: 0; left: 0; cursor: nesw-resize; }
@@ -441,6 +443,14 @@ body,
   height: 100%;
   min-height: 0;
   overflow: auto;
+}
+.mix-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.mix-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--r-pill);
 }
 /* Top-left anchored: a window past the scale cap leaves its spare room on
    the right. The box is sized to the scaled board so scrolling sees the

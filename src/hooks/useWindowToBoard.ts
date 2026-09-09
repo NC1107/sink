@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
+import { emit } from "@tauri-apps/api/event";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { windowSize } from "../lib/layout";
 
@@ -46,6 +47,8 @@ export function useWindowToBoard(
           // Per-viewer convenience only.
         }
       }
+      // The backend keeps the window hidden until the board is sized.
+      await emit("sink-ready");
     });
     return () => {
       cancelled = true;
