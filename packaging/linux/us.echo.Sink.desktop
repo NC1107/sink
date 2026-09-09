@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Sink
+Comment=Linux-native audio routing and mixing for PipeWire
+Exec=sink
+Icon=sink
+StartupWMClass=sink
+NoDisplay=true

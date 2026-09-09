@@ -18,7 +18,21 @@ pub struct Handle {
     session: Session<GlobalShortcuts>,
 }
 
+/// The id the portal files our shortcuts under. A host app is otherwise
+/// named after whatever launched it (a terminal, say); a reverse-DNS id
+/// is required, and us.echo.Sink.desktop ships hidden so desktops can
+/// turn it into a name.
+const APP_ID: &str = "us.echo.Sink";
+
 pub async fn connect() -> Result<Handle, String> {
+    match APP_ID.parse() {
+        Ok(id) => {
+            if let Err(e) = ashpd::register_host_app(id).await {
+                eprintln!("sink: portal app registration unavailable: {e}");
+            }
+        }
+        Err(e) => eprintln!("sink: bad portal app id: {e}"),
+    }
     let proxy = GlobalShortcuts::new().await.map_err(|e| e.to_string())?;
     if proxy.version() == 0 {
         return Err("no GlobalShortcuts portal".into());
