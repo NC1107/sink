@@ -1900,22 +1900,33 @@ body,
 .bal-side .ms {
   font-size: 16px;
 }
+/* The hit area is the full title-bar height; the visible line stays 5px,
+   so a drag or a double-click to recentre doesn't need pixel aim. */
 .bal-track {
   position: relative;
   width: 110px;
+  height: 24px;
+  cursor: pointer;
+}
+.bal-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
   height: 5px;
+  transform: translateY(-50%);
   border-radius: var(--r-pill);
   background: var(--bg-main);
   border: 1px solid var(--border);
-  cursor: pointer;
 }
 .bal-center {
   position: absolute;
   left: 50%;
-  top: -4px;
-  bottom: -4px;
+  top: 50%;
+  height: 13px;
   width: 2px;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   background: var(--fg-muted);
   opacity: 0.5;
   border-radius: 1px;
