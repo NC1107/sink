@@ -1,4 +1,3 @@
-
 //! Which program a stream belongs to. Streams describe their audio stack as
 //! often as their app ("FMOD Audio", a versioned name, "Chromium"), so the
 //! process is asked first and the stream's own claims are the fallback.
@@ -75,19 +74,6 @@ impl ProcReader for Proc {
     }
 }
 
-/// Runtimes, not programs: matching one merges every app on it.
-pub(crate) fn is_wrapper_exe(exe: &str) -> bool {
-    let e = exe.to_ascii_lowercase();
-    types::is_wrapper_name(&e)
-        || e.starts_with("python")
-        || e.starts_with("wine")
-        || e.ends_with("-preloader")
-        || matches!(
-            e.as_str(),
-            "apprun" | "sh" | "bash" | "env" | "bwrap" | "electron" | "ld-linux-x86-64.so.2"
-        )
-}
-
 fn windows_binary(props: &HashMap<String, String>) -> bool {
     props
         .get("application.process.binary")
@@ -113,7 +99,7 @@ fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option
     // Without a binary to agree with there is nothing to verify.
     let binary = props.get("application.process.binary")?;
     let exe = proc.exe_basename(reported)?;
-    (exe.eq_ignore_ascii_case(binary.trim()) || is_wrapper_exe(&exe)).then_some(reported)
+    (exe.eq_ignore_ascii_case(binary.trim()) || types::is_wrapper_exe(&exe)).then_some(reported)
 }
 
 fn identity(prop: &str, value: &str, display: String, pid: Option<u32>) -> Identity {
@@ -172,7 +158,7 @@ pub fn resolve(
             }
         }
         if let Some(exe) = exe {
-            if !is_wrapper_exe(&exe) && !windows_binary(props) {
+            if !types::is_wrapper_exe(&exe) && !windows_binary(props) {
                 return identity(PROP_EXE, &exe, types::prettify(&exe), Some(pid));
             }
         }
@@ -378,6 +364,26 @@ mod tests {
     }
 
     #[test]
+    fn a_loader_running_the_claimed_binary_keeps_the_pid_trusted() {
+        // Wine reports the .exe as the binary while /proc shows the loader.
+        let mut proc = FakeProc::new();
+        proc.exe.insert(500, "wine64");
+        let p = props(&[
+            ("application.name", "Game"),
+            ("application.process.binary", "Game.exe"),
+            ("application.process.id", "500"),
+        ]);
+        let id = resolve_with(&p, &proc);
+        assert_eq!(id.pid, Some(500));
+        // The loader never becomes the identity; the real name still wins.
+        assert_ne!(id.prop, PROP_EXE);
+        assert_eq!(
+            (id.prop.as_str(), id.value.as_str()),
+            ("application.name", "Game")
+        );
+    }
+
+    #[test]
     fn a_pid_with_nothing_to_verify_it_against_is_not_trusted() {
         let mut proc = FakeProc::new();
         proc.exe.insert(31, "somegame");
@@ -558,6 +564,29 @@ mod tests {
             (PROP_STEAM, "730")
         );
         assert_eq!(ids[1].display, "Counter-Strike 2");
+
+        // Two real processes both named "Unity": ambiguous, nobody adopts.
+        proc.exe.insert(300, "gameA");
+        proc.exe.insert(301, "gameB");
+        let a = props(&[
+            ("application.name", "Unity"),
+            ("application.process.id", "300"),
+            ("pipewire.sec.pid", "300"),
+        ]);
+        let b = props(&[
+            ("application.name", "Unity"),
+            ("application.process.id", "301"),
+            ("pipewire.sec.pid", "301"),
+        ]);
+        let orphan = props(&[("application.name", "Unity")]);
+        let mut ids = vec![
+            resolve_with(&a, &proc),
+            resolve_with(&b, &proc),
+            resolve_with(&orphan, &proc),
+        ];
+        adopt_from_siblings(&mut ids, &[&a, &b, &orphan]);
+        assert_eq!(ids[2].prop, "application.name");
+        assert_eq!(ids[2].value, "Unity");
 
         // "Chromium" is a runtime name shared by unrelated apps: never a donor.
         proc.exe.insert(200, "spotify");

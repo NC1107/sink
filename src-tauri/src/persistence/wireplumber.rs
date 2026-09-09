@@ -1,4 +1,3 @@
-
 //! Retires the conf fragment earlier versions rendered rules into: it could
 //! only match stream props, and only acted before the enforcer's first pass.
 

@@ -70,8 +70,7 @@ fn history_icon(
     entry
         .icon_path
         .as_deref()
-        .filter(|p| std::path::Path::new(p).is_file())
-        .map(str::to_string)
+        .and_then(crate::audio::icons::real_path)
         .or_else(|| {
             crate::audio::icons::identity_icon(&entry.match_prop, &entry.match_value, resolved)
         })

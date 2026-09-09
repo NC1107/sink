@@ -3,7 +3,7 @@ name = "sink"
 version = "0.1.0"
 description = "Linux-native audio routing and mixing for PipeWire"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.80"
 license = "GPL-3.0-only"
 
 [lib]

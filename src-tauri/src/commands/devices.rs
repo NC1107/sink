@@ -1,4 +1,3 @@
-
 use std::collections::{HashMap, HashSet};
 
 use tauri::State;
@@ -7,6 +6,7 @@ use crate::audio::identity::{self, Identity};
 use crate::audio::types::{AppStream, OutputDevice, VirtualSink};
 use crate::audio::{icons, steam};
 use crate::mixer::state::MixerState;
+use crate::persistence::assignments::identity_key;
 use crate::state::AppState;
 
 /// How often the poll force-saves app history to refresh `last_seen` on disk.
@@ -33,9 +33,7 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         .refresh_gate
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
-
-    resolve_identities(state, &mut streams);
+    let mut streams = live_streams(state)?;
 
     let now = crate::persistence::unix_now();
 
@@ -123,6 +121,16 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
     Ok(streams)
 }
 
+/// The live streams as the UI sees them: identities resolved, icons found.
+pub fn live_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
+    let mut streams = state
+        .backend
+        .list_app_streams()
+        .map_err(|e| e.to_string())?;
+    resolve_identities(state, &mut streams);
+    Ok(streams)
+}
+
 /// Ask the process before the stream (see `audio::identity`); cached per
 /// serial so `/proc` is read once per stream, not per tick.
 fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
@@ -159,25 +167,47 @@ fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
     }
     drop(cache);
 
+    let mut icons_by_identity = state
+        .icon_cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let live: HashSet<String> = streams
+        .iter()
+        .map(|s| identity_key(&s.match_prop, &s.match_value))
+        .collect();
+    icons_by_identity.retain(|key, _| live.contains(key));
     for stream in streams.iter_mut() {
-        let binary = (stream.match_prop == "application.process.binary")
-            .then_some(stream.match_value.as_str());
-        let resolved = icons::resolve(
-            &stream.app_name,
-            binary,
-            stream.icon_name.as_deref(),
-            stream.pid,
-        );
-        stream.icon_path =
-            icons::identity_icon(&stream.match_prop, &stream.match_value, resolved.icon_path);
-        // A desktop entry's name beats a bare exe or stream name.
-        if let Some(name) = resolved.display_name {
-            if !identity::is_process_prop(&stream.match_prop)
-                || stream.match_prop == identity::PROP_EXE
-            {
-                stream.app_name = name;
-            }
+        let key = identity_key(&stream.match_prop, &stream.match_value);
+        let facts = icons_by_identity
+            .entry(key)
+            .or_insert_with(|| icon_facts(stream));
+        stream.icon_path = facts.icon_path.clone();
+        if let Some(name) = &facts.display_name {
+            stream.app_name = name.clone();
         }
+    }
+}
+
+/// Icon and name for a freshly identified stream: the desktop entry's name
+/// beats a bare exe or stream name, never a process identity's own.
+fn icon_facts(stream: &AppStream) -> icons::IconFacts {
+    let binary =
+        (stream.match_prop == "application.process.binary").then_some(stream.match_value.as_str());
+    let resolved = icons::resolve(
+        &stream.app_name,
+        binary,
+        stream.icon_name.as_deref(),
+        stream.pid,
+    );
+    let renames =
+        !identity::is_process_prop(&stream.match_prop) || stream.match_prop == identity::PROP_EXE;
+    icons::IconFacts {
+        icon_path: icons::identity_icon(
+            &stream.match_prop,
+            &stream.match_value,
+            resolved.icon_path,
+        ),
+        display_name: resolved.display_name.filter(|_| renames),
     }
 }
 

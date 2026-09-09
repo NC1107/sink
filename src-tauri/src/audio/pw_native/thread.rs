@@ -1370,23 +1370,12 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 .map(|n| {
                     let (app_name, match_prop, match_value) =
                         crate::audio::types::resolve_identity(|key| n.props.get(key).cloned());
-                    // Node props win; the client fills what the node left out.
-                    let mut props = n.props.clone();
                     let client = n
                         .props
                         .get("client.id")
                         .and_then(|v| v.parse::<u32>().ok())
-                        .map(|cid| s.clients.get(&cid));
-                    let settled = match client {
-                        None => true,
-                        Some(None) => false,
-                        Some(Some(client)) => {
-                            for (k, v) in &client.props {
-                                props.entry(k.clone()).or_insert_with(|| v.clone());
-                            }
-                            client.settled
-                        }
-                    };
+                        .map(|cid| s.clients.get(&cid).map(|c| (&c.props, c.settled)));
+                    let (props, settled) = stream_facts(&n.props, client);
                     AppStream {
                         props,
                         settled,
@@ -1908,6 +1897,36 @@ fn set_props(
     Ok(())
 }
 
+/// Keys only the daemon sets on a client; a stream declaring them on its
+/// node would otherwise forge its own trust (`pipewire.sec.pid`) or hide
+/// its sandbox (`pipewire.access`).
+fn daemon_owned(key: &str) -> bool {
+    key.starts_with("pipewire.sec.") || key.starts_with("pipewire.access")
+}
+
+/// A stream's facts: node props over client props, except daemon-owned keys
+/// which come only from the client. `client` is the tracked client for the
+/// node's `client.id`: absent altogether, known but never bound (nothing
+/// more will arrive, so the stream is settled), or present with its props
+/// and whether its info event has landed.
+fn stream_facts(
+    node_props: &HashMap<String, String>,
+    client: Option<Option<(&HashMap<String, String>, bool)>>,
+) -> (HashMap<String, String>, bool) {
+    let mut props: HashMap<String, String> = node_props
+        .iter()
+        .filter(|(k, _)| !daemon_owned(k))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let Some(Some((client_props, settled))) = client else {
+        return (props, true);
+    };
+    for (k, v) in client_props {
+        props.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    (props, settled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2007,5 +2026,55 @@ mod tests {
         // reaching here - so they're not exercised at this layer.)
         let candidates = [(1u32, "sink_game", 0i64), (2, "sink_chat", 0)];
         assert_eq!(pick_fallback_sink(candidates.into_iter()), None);
+    }
+
+    fn kv(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_stream_cannot_forge_the_daemon_owned_props() {
+        let node = kv(&[
+            ("application.name", "evil"),
+            ("pipewire.sec.pid", "1"),
+            ("pipewire.access", "unrestricted"),
+            ("application.process.id", "1"),
+        ]);
+        let client = kv(&[
+            ("pipewire.sec.pid", "4242"),
+            ("pipewire.access", "flatpak"),
+            ("pipewire.access.portal.app_id", "com.example.App"),
+            ("application.name", "client-name"),
+        ]);
+        let (props, settled) = stream_facts(&node, Some(Some((&client, true))));
+        assert!(settled);
+        assert_eq!(props["pipewire.sec.pid"], "4242");
+        assert_eq!(props["pipewire.access"], "flatpak");
+        assert_eq!(props["pipewire.access.portal.app_id"], "com.example.App");
+        // Everything else: the node still wins over the client.
+        assert_eq!(props["application.name"], "evil");
+        assert_eq!(props["application.process.id"], "1");
+    }
+
+    #[test]
+    fn daemon_owned_props_never_survive_without_a_client() {
+        let node = kv(&[("pipewire.sec.pid", "1"), ("application.name", "x")]);
+        let (props, settled) = stream_facts(&node, None);
+        assert!(settled);
+        assert!(!props.contains_key("pipewire.sec.pid"));
+        let (props, settled) = stream_facts(&node, Some(None));
+        assert!(settled, "a client that never bound will not send more");
+        assert!(!props.contains_key("pipewire.sec.pid"));
+    }
+
+    #[test]
+    fn an_unsettled_client_leaves_the_stream_unsettled() {
+        let node = kv(&[("application.name", "x")]);
+        let client = kv(&[]);
+        let (_, settled) = stream_facts(&node, Some(Some((&client, false))));
+        assert!(!settled);
     }
 }
