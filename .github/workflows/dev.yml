@@ -3,12 +3,16 @@ name: Dev
 on:
   pull_request:
     branches: [main]
+    # `labeled` so adding a ci:<distro> label to an open pr starts the run
+    # that installs it there; without it a label changes nothing until the
+    # next push.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
-      arch:
-        description: "Build and smoke-test the Arch package even without packaging changes"
-        type: boolean
-        default: false
+      distros:
+        description: "Install-test on these distros: all, or a comma list of arch, fedora, opensuse, debian, appimage"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -18,14 +22,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # What changed, so the packaging job only runs when it can find something.
+  # Which distros to install-test. Packaging changes test everywhere;
+  # otherwise a pr opts in with a `ci:<distro>` label (or `ci:distros` for
+  # all), and a manual dispatch can name them.
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      packaging: ${{ steps.filter.outputs.packaging }}
+      distros: ${{ steps.pick.outputs.distros }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:
@@ -35,6 +42,48 @@ jobs:
               - 'src-tauri/tauri.conf.json'
               - 'src-tauri/Cargo.toml'
               - '.github/workflows/dev.yml'
+
+      - name: Pick the distros
+        id: pick
+        env:
+          PACKAGING: ${{ steps.filter.outputs.packaging }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          REQUESTED: ${{ inputs.distros }}
+        run: |
+          set -euo pipefail
+          all="arch fedora opensuse debian appimage"
+          on_pr=",${LABELS},"
+          on_dispatch=",$(echo "$REQUESTED" | tr -d '[:space:]'),"
+          picked=""
+          case "$on_pr$on_dispatch" in
+            *",ci:distros,"* | *",all,"*) picked="$all" ;;
+            *)
+              if [ "$PACKAGING" = "true" ]; then
+                picked="$all"
+              else
+                for d in $all; do
+                  case "$on_pr" in *",ci:$d,"*) picked="$picked $d"; continue ;; esac
+                  case "$on_dispatch" in *",$d,"*) picked="$picked $d" ;; esac
+                done
+              fi
+              ;;
+          esac
+          echo "install-testing: ${picked:-nothing}"
+          jq -nc --arg picked "$picked" '
+            {
+              # The appimage has no image: it runs on the runner itself,
+              # which carries the libraries a real desktop has. A bare
+              # container carries none, so the test would only prove that an
+              # appimage does not bundle all of gtk, which is by design.
+              arch:     "archlinux:latest",
+              fedora:   "fedora:latest",
+              opensuse: "opensuse/tumbleweed:latest",
+              debian:   "debian:trixie",
+              appimage: ""
+            } as $image
+            | [$picked | split(" ") | .[] | select(length > 0)
+               | {distro: ., image: $image[.]}]
+          ' | sed 's/^/distros=/' >> "$GITHUB_OUTPUT"
 
   check:
     runs-on: ubuntu-24.04
@@ -165,21 +214,52 @@ jobs:
           path: |
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
+            target/release/bundle/appimage/*.AppImage
 
-  # Packaging changes only: this repackages the deb the `bundles` job built
-  # and smoke-tests it, and release.yml runs the same gate before publishing.
-  # Force it on a pr with the `ci:arch` label, or dispatch with arch=true.
-  archpkg:
+  # Install what `bundles` built on each distro and launch it, which is what
+  # catches a missing runtime dependency or a packaging mistake. Not required
+  # to merge: release.yml runs the same gate before it publishes anything.
+  distros:
     needs: [bundles, changes]
-    if: >-
-      needs.changes.outputs.packaging == 'true' ||
-      contains(github.event.pull_request.labels.*.name, 'ci:arch') ||
-      inputs.arch
+    if: needs.changes.outputs.distros != '[]'
+    name: ${{ matrix.distro }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    container: archlinux:latest
+    timeout-minutes: 25
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.distros) }}
     steps:
-      - run: pacman -Syu --noconfirm --needed base-devel
+      - name: Install the distro's tooling
+        run: |
+          set -eu
+          case "${{ matrix.distro }}" in
+            arch)
+              pacman -Syu --noconfirm --needed base-devel xorg-server-xvfb mesa
+              ;;
+            fedora)
+              dnf -y install xorg-x11-server-Xvfb mesa-dri-drivers findutils
+              ;;
+            opensuse)
+              # A tumbleweed base image has neither find nor xvfb-run.
+              zypper --non-interactive refresh
+              zypper --non-interactive install \
+                findutils xvfb-run xorg-x11-server-Xvfb Mesa-dri tar gzip
+              ;;
+            debian)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb file
+              ;;
+            appimage)
+              # The runner is headless: give it the graphics stack any
+              # desktop has, since an appimage is not expected to ship the
+              # drivers. Everything else it needs, it must bring itself.
+              sudo apt-get update
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                xvfb libegl1 libgl1 libgles2
+              ;;
+          esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -188,43 +268,48 @@ jobs:
           name: bundles
           path: bundles
 
-      - name: Build and smoke-test sink-bin
+      - name: Install sink
         run: |
-          set -euo pipefail
+          set -eu
           deb=$(find bundles -name 'sink_*_amd64.deb' | head -1)
-          ver=$(basename "$deb" | sed 's/^sink_//; s/_amd64\.deb$//')
-          useradd -m builder
-          install -d -o builder /build
-          cp "$deb" "/build/sink_${ver}_amd64.deb"
-          sum=$(sha256sum "/build/sink_${ver}_amd64.deb" | cut -d' ' -f1)
-          cp packaging/arch/PKGBUILD /build/PKGBUILD
-          sed -i "s/^pkgver=.*/pkgver=${ver}/; s/^sha256sums=.*/sha256sums=('${sum}')/" /build/PKGBUILD
-          chown -R builder:builder /build
-          sudo -u builder bash -lc 'cd /build && makepkg --noconfirm --nodeps'
-          pkg=$(ls /build/sink-bin-*-x86_64.pkg.tar.zst)
-          pacman -U --noconfirm "$pkg" >/dev/null
-          pacman -S --noconfirm --needed xorg-server-xvfb mesa >/dev/null
-          # A healthy tray app runs its event loop until timeout kills it (exit
-          # 124). Any earlier exit is a real failure: a missing shared library
-          # (the loader aborts before main), a tray/webkit init failure, or a
-          # panic. `|| true` + a panic-only grep would let all of those pass.
-          set +e
-          timeout 25 xvfb-run -a /usr/bin/sink >/tmp/launch.log 2>&1
-          code=$?
-          set -e
-          cat /tmp/launch.log || true
-          if grep -qiE 'panicked at|error while loading shared libraries|cannot open shared object|symbol lookup error' /tmp/launch.log; then
-            echo "::error::sink failed to start cleanly - see log above"
-            exit 1
-          fi
-          if [ "$code" -ne 124 ]; then
-            echo "::error::sink exited early (code $code) instead of staying alive for 25s"
-            exit 1
-          fi
-          echo "sink launched and stayed alive under xvfb"
-          cp "$pkg" "$GITHUB_WORKSPACE/"
+          rpm=$(find bundles -name 'sink-*.x86_64.rpm' | head -1)
+          case "${{ matrix.distro }}" in
+            arch)
+              # The AUR package repackages the deb; build it the same way.
+              ver=$(basename "$deb" | sed 's/^sink_//; s/_amd64\.deb$//')
+              useradd -m builder
+              install -d -o builder /build
+              cp "$deb" "/build/sink_${ver}_amd64.deb"
+              sum=$(sha256sum "/build/sink_${ver}_amd64.deb" | cut -d' ' -f1)
+              cp packaging/arch/PKGBUILD /build/PKGBUILD
+              sed -i "s/^pkgver=.*/pkgver=${ver}/; s/^sha256sums=.*/sha256sums=('${sum}')/" /build/PKGBUILD
+              chown -R builder:builder /build
+              sudo -u builder bash -lc 'cd /build && makepkg --noconfirm --nodeps'
+              pacman -U --noconfirm /build/sink-bin-*-x86_64.pkg.tar.zst
+              ;;
+            fedora)
+              dnf -y install "$rpm"
+              ;;
+            opensuse)
+              zypper --non-interactive install --allow-unsigned-rpm "$rpm"
+              ;;
+            debian)
+              DEBIAN_FRONTEND=noninteractive apt-get install -y "./$deb"
+              ;;
+            appimage)
+              # Nothing to install: the point of an AppImage is that it runs
+              # anywhere. Extract rather than mount, since a container has no
+              # /dev/fuse.
+              chmod +x "$(find bundles -name '*.AppImage' | head -1)"
+              ;;
+          esac
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: sink-bin
-          path: sink-bin-*-x86_64.pkg.tar.zst
+      - name: Launch it
+        run: |
+          set -eu
+          if [ "${{ matrix.distro }}" = appimage ]; then
+            app=$(find bundles -name '*.AppImage' | head -1)
+            packaging/smoke-test.sh "$app" --appimage-extract-and-run
+          else
+            packaging/smoke-test.sh
+          fi
