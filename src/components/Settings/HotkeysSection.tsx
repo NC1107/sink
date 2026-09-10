@@ -111,7 +111,8 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
             <div className="rmain">
               <div className="rtitle">Global hotkeys aren’t available here</div>
               <div className="rsub">
-                They need a desktop that implements the GlobalShortcuts portal (KDE Plasma, recent GNOME, Hyprland) or an X11 session
+                They need a desktop that implements the GlobalShortcuts portal (KDE Plasma, recent
+                GNOME, Hyprland) or an X11 session
               </div>
             </div>
           </div>
@@ -131,7 +132,9 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
                 {capturing === s.id ? "Press keys…" : s.trigger || "Not bound"}
               </button>
             ) : (
-              <span className={"kbd" + (s.trigger ? "" : " kbd-unbound")}>{s.trigger || "Not bound"}</span>
+              <span className={"kbd" + (s.trigger ? "" : " kbd-unbound")}>
+                {s.trigger || "Not bound"}
+              </span>
             )}
           </div>
         ))}
@@ -142,7 +145,9 @@ export function HotkeysSection({ onError }: Readonly<{ onError: (e: string) => v
             </div>
             <div className="rmain">
               <div className="rtitle">Key bindings</div>
-              <div className="rsub">Kept by your desktop; also under System Settings › Shortcuts</div>
+              <div className="rsub">
+                Kept by your desktop; also under System Settings › Shortcuts
+              </div>
             </div>
             <button type="button" className="modal-btn primary" onClick={configure}>
               Set up hotkeys

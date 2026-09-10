@@ -101,10 +101,7 @@ export function OutputSelect({
           <div className="menu-sep" />
           {/* Static row: the Toggle is the control, so this must not be a
               button of its own. */}
-          <div
-            className="menu-item static"
-            title="Off: stays silent if this device disappears"
-          >
+          <div className="menu-item static" title="Off: stays silent if this device disappears">
             <Ms name="sync_alt" />
             <span className="menu-item-label">Fail over to another device</span>
             <Toggle on={failover ?? true} onClick={() => onFailoverChange(!(failover ?? true))} />
@@ -147,7 +144,13 @@ export function OutputSelect({
         <span>{label}</span>
         <Ms name="expand_more" className="chev" />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} side="bottom" align="start" style={popoverStyle}>
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        side="bottom"
+        align="start"
+        style={popoverStyle}
+      >
         {items}
       </Popover>
     </div>

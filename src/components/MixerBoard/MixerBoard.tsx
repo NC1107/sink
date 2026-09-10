@@ -172,22 +172,22 @@ export function MixerBoard() {
           {/* Mixes need the native backend; hide them on the pactl
            * fallback instead of showing strips that can't work. */}
           {backendNative !== false && (
-          <MixGroup
-            icon="podcasts"
-            label="Mixes"
-            count={`${buses.length}`}
-            hint="Recordable copies of your channels - add as an audio input in OBS"
-            onAdd={
-              buses.filter((b) => b.name !== MASTER_BUS).length < MAX_BUSES
-                ? () => setAddingMix(true)
-                : undefined
-            }
-            addTitle="Add a mix"
-          >
-            {buses.map((bus) => (
-              <BusStrip key={bus.name} bus={bus} />
-            ))}
-          </MixGroup>
+            <MixGroup
+              icon="podcasts"
+              label="Mixes"
+              count={`${buses.length}`}
+              hint="Recordable copies of your channels - add as an audio input in OBS"
+              onAdd={
+                buses.filter((b) => b.name !== MASTER_BUS).length < MAX_BUSES
+                  ? () => setAddingMix(true)
+                  : undefined
+              }
+              addTitle="Add a mix"
+            >
+              {buses.map((bus) => (
+                <BusStrip key={bus.name} bus={bus} />
+              ))}
+            </MixGroup>
           )}
         </div>
       </div>
@@ -219,7 +219,12 @@ export function MixerBoard() {
           ))}
         </div>
         <div className="modal-btns">
-          <button type="button" className="modal-btn primary" onClick={createChannel} disabled={!channelLabel.trim()}>
+          <button
+            type="button"
+            className="modal-btn primary"
+            onClick={createChannel}
+            disabled={!channelLabel.trim()}
+          >
             Create channel
           </button>
           <button type="button" className="modal-btn" onClick={closeChannelModal}>
@@ -230,8 +235,8 @@ export function MixerBoard() {
 
       <Modal open={addingMix} onClose={() => setAddingMix(false)} title="New mix">
         <p className="modal-text">
-          A mix is a capturable source: pick which channels it carries, then
-          select it by name in OBS or any recorder.
+          A mix is a capturable source: pick which channels it carries, then select it by name in
+          OBS or any recorder.
         </p>
         <input
           className="menu-input"
@@ -245,7 +250,12 @@ export function MixerBoard() {
           }}
         />
         <div className="modal-btns">
-          <button type="button" className="modal-btn primary" onClick={createMix} disabled={!mixLabel.trim()}>
+          <button
+            type="button"
+            className="modal-btn primary"
+            onClick={createMix}
+            disabled={!mixLabel.trim()}
+          >
             Create mix
           </button>
           <button type="button" className="modal-btn" onClick={() => setAddingMix(false)}>
