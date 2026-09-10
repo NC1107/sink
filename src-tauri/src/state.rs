@@ -93,7 +93,13 @@ impl AppState {
         let names: Vec<String> = self
             .mixer
             .lock()
-            .map(|m| m.channel_defs.channels.iter().map(|c| c.name.clone()).collect())
+            .map(|m| {
+                m.channel_defs
+                    .channels
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect()
+            })
             .unwrap_or_default();
         let mut errors = Vec::new();
         for name in names {

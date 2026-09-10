@@ -125,7 +125,11 @@ impl DspChain {
                     self.gate_hold -= 1;
                 }
                 let target = if open || self.gate_hold > 0 { 1.0 } else { 0.0 };
-                let c = if target > self.gate_gain { gate_att } else { gate_rel };
+                let c = if target > self.gate_gain {
+                    gate_att
+                } else {
+                    gate_rel
+                };
                 self.gate_gain = target + c * (self.gate_gain - target);
                 x *= self.gate_gain;
             }
@@ -204,15 +208,19 @@ mod tests {
     fn gate_blocks_noise_floor_but_passes_speech() {
         let mut chain = DspChain::new(48000.0);
         // quiet hiss well below -45 dB (~0.001 ≈ -60 dB)
-        let mut hiss: Vec<f32> = (0..4800).map(|i| 0.001 * ((i % 7) as f32 - 3.0) / 3.0).collect();
+        let mut hiss: Vec<f32> = (0..4800)
+            .map(|i| 0.001 * ((i % 7) as f32 - 3.0) / 3.0)
+            .collect();
         chain.process(&mut hiss, &settings(true, false, false, 1.0));
-        assert!(peak(&hiss) < 0.0005, "noise should be gated, got {}", peak(&hiss));
+        assert!(
+            peak(&hiss) < 0.0005,
+            "noise should be gated, got {}",
+            peak(&hiss)
+        );
 
         // loud signal (~-12 dB) opens the gate
         let mut chain = DspChain::new(48000.0);
-        let mut voice: Vec<f32> = (0..4800)
-            .map(|i| 0.25 * (i as f32 * 0.05).sin())
-            .collect();
+        let mut voice: Vec<f32> = (0..4800).map(|i| 0.25 * (i as f32 * 0.05).sin()).collect();
         chain.process(&mut voice, &settings(true, false, false, 1.0));
         // after the attack settles, the tail should be near full level
         assert!(peak(&voice[2400..]) > 0.2, "speech should pass the gate");
@@ -246,6 +254,11 @@ mod tests {
         let mut buf: Vec<f32> = (0..48000).map(|i| 0.9 * (i as f32 * 0.07).sin()).collect();
         chain.process(&mut buf, &settings(false, false, true, 4.0));
         let ceiling = db_to_linear(-1.0);
-        assert!(peak(&buf) <= ceiling + 1e-4, "peak {} above ceiling {}", peak(&buf), ceiling);
+        assert!(
+            peak(&buf) <= ceiling + 1e-4,
+            "peak {} above ceiling {}",
+            peak(&buf),
+            ceiling
+        );
     }
 }

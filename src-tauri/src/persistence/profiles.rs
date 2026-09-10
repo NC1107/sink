@@ -121,7 +121,8 @@ pub fn load(name: &str) -> Result<Profile, SinkError> {
             e.into()
         }
     })?;
-    serde_json::from_str(&raw).map_err(|e| SinkError::Config(format!("malformed profile {name}: {e}")))
+    serde_json::from_str(&raw)
+        .map_err(|e| SinkError::Config(format!("malformed profile {name}: {e}")))
 }
 
 pub fn delete(name: &str) -> Result<(), SinkError> {
@@ -142,7 +143,10 @@ mod tests {
     #[test]
     fn sanitize_accepts_reasonable_names() {
         assert_eq!(sanitize_name("Gaming").expect("valid"), "Gaming");
-        assert_eq!(sanitize_name("  Work_2 -late ").expect("valid"), "Work_2 -late");
+        assert_eq!(
+            sanitize_name("  Work_2 -late ").expect("valid"),
+            "Work_2 -late"
+        );
     }
 
     #[test]

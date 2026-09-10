@@ -3,10 +3,10 @@
 
 use std::io::Cursor;
 
-use pipewire::spa as libspa;
 use libspa::pod::deserialize::PodDeserializer;
 use libspa::pod::serialize::PodSerializer;
 use libspa::pod::{Object, Pod, Property, PropertyFlags, Value, ValueArray};
+use pipewire::spa as libspa;
 
 use crate::error::SinkError;
 
@@ -77,9 +77,9 @@ pub fn parse_props(pod: &Pod) -> PropsState {
         if property.key == libspa::sys::SPA_PROP_channelVolumes {
             if let Value::ValueArray(ValueArray::Float(volumes)) = property.value {
                 state.channels = Some(volumes.len());
-                state.volume_linear = volumes.into_iter().fold(None, |acc, v| {
-                    Some(acc.map_or(v, |a: f32| a.max(v)))
-                });
+                state.volume_linear = volumes
+                    .into_iter()
+                    .fold(None, |acc, v| Some(acc.map_or(v, |a: f32| a.max(v))));
             }
         } else if property.key == libspa::sys::SPA_PROP_mute {
             if let Value::Bool(muted) = property.value {

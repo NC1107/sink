@@ -97,8 +97,8 @@ impl SeenApps {
     ) -> bool {
         if let Some(entry) = self.entry_mut(match_prop, match_value) {
             entry.last_seen = now;
-            let changed = entry.display_name != display_name
-                || entry.icon_name.as_deref() != icon_name;
+            let changed =
+                entry.display_name != display_name || entry.icon_name.as_deref() != icon_name;
             if changed {
                 entry.display_name = display_name.to_string();
                 entry.icon_name = icon_name.map(str::to_string);
@@ -162,12 +162,35 @@ mod tests {
     #[test]
     fn upsert_reports_structural_changes_only() {
         let mut seen = SeenApps::default();
-        assert!(seen.upsert("application.name", "Firefox", "Firefox", Some("firefox"), 100));
+        assert!(seen.upsert(
+            "application.name",
+            "Firefox",
+            "Firefox",
+            Some("firefox"),
+            100
+        ));
         // Pure last_seen bump - not worth persisting.
-        assert!(!seen.upsert("application.name", "Firefox", "Firefox", Some("firefox"), 200));
-        assert_eq!(seen.get("application.name", "Firefox").expect("entry").last_seen, 200);
+        assert!(!seen.upsert(
+            "application.name",
+            "Firefox",
+            "Firefox",
+            Some("firefox"),
+            200
+        ));
+        assert_eq!(
+            seen.get("application.name", "Firefox")
+                .expect("entry")
+                .last_seen,
+            200
+        );
         // Display change - persist.
-        assert!(seen.upsert("application.name", "Firefox", "Firefox ESR", Some("firefox"), 300));
+        assert!(seen.upsert(
+            "application.name",
+            "Firefox",
+            "Firefox ESR",
+            Some("firefox"),
+            300
+        ));
     }
 
     #[test]

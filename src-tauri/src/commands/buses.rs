@@ -46,7 +46,10 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
             channel_names(&mixer),
         )
     };
-    if let Err(e) = state.backend.create_bus(&def.name, &prefs.decorate(&def.label)) {
+    if let Err(e) = state
+        .backend
+        .create_bus(&def.name, &prefs.decorate(&def.label))
+    {
         let mut mixer = state.lock_mixer()?;
         let _ = mixer.buses.remove(&def.name);
         return Err(e.to_string());
@@ -70,7 +73,10 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
 pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Result<(), String> {
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
-        mixer.buses.rename(&name, &label).map_err(|e| e.to_string())?;
+        mixer
+            .buses
+            .rename(&name, &label)
+            .map_err(|e| e.to_string())?;
         let def = mixer
             .buses
             .get(&name)
@@ -84,7 +90,10 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
         )
     };
 
-    state.backend.destroy_bus(&name).map_err(|e| e.to_string())?;
+    state
+        .backend
+        .destroy_bus(&name)
+        .map_err(|e| e.to_string())?;
     state
         .backend
         .create_bus(&def.name, &prefs.decorate(&def.label))
@@ -96,7 +105,10 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
     // The recreate cleared mic membership in the loop's state.
     if def.mic {
         if let Err(e) = state.backend.set_bus_mic(&def.name, true) {
-            eprintln!("sink: mic membership for renamed mix {} failed: {e}", def.name);
+            eprintln!(
+                "sink: mic membership for renamed mix {} failed: {e}",
+                def.name
+            );
         }
     }
     // The node is fresh; restore its saved level and send gains.
@@ -120,7 +132,10 @@ pub fn remove_bus(state: State<'_, AppState>, name: String) -> Result<(), String
         .buses
         .removable(&name)
         .map_err(|e| e.to_string())?;
-    state.backend.destroy_bus(&name).map_err(|e| e.to_string())?;
+    state
+        .backend
+        .destroy_bus(&name)
+        .map_err(|e| e.to_string())?;
     let defs = {
         let mut mixer = state.lock_mixer()?;
         mixer.buses.remove(&name).map_err(|e| e.to_string())?;
@@ -216,8 +231,8 @@ pub fn set_bus_member_gain(
         if mixer.buses.get(&bus).is_none() {
             return Err(format!("unknown mix: {bus}"));
         }
-        let known_member = member == "sink_mic"
-            || mixer.channel_defs.channels.iter().any(|c| c.name == member);
+        let known_member =
+            member == "sink_mic" || mixer.channel_defs.channels.iter().any(|c| c.name == member);
         if !known_member {
             return Err(format!("unknown mix member: {member}"));
         }
@@ -318,7 +333,10 @@ pub fn set_bus_volume(state: State<'_, AppState>, name: String, volume: u8) -> R
         .map_err(|e| e.to_string())?;
     let defs = {
         let mut mixer = state.lock_mixer()?;
-        mixer.buses.set_volume(&name, volume).map_err(|e| e.to_string())?;
+        mixer
+            .buses
+            .set_volume(&name, volume)
+            .map_err(|e| e.to_string())?;
         crate::commands::profiles::autosave_active(&mixer);
         mixer.buses.clone()
     };
@@ -337,7 +355,10 @@ pub fn set_bus_mute(state: State<'_, AppState>, name: String, muted: bool) -> Re
         .map_err(|e| e.to_string())?;
     let defs = {
         let mut mixer = state.lock_mixer()?;
-        mixer.buses.set_muted(&name, muted).map_err(|e| e.to_string())?;
+        mixer
+            .buses
+            .set_muted(&name, muted)
+            .map_err(|e| e.to_string())?;
         crate::commands::profiles::autosave_active(&mixer);
         mixer.buses.clone()
     };

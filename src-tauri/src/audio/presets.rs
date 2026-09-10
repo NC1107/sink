@@ -40,8 +40,7 @@ include!(concat!(env!("OUT_DIR"), "/eq_presets_generated.rs"));
 
 /// Parse one bundled source, or explain why it's unusable.
 fn parse_bundled(stem: &str, raw: &str) -> Result<EqPreset, String> {
-    let preset: EqPreset =
-        serde_json::from_str(raw).map_err(|e| format!("preset {stem}: {e}"))?;
+    let preset: EqPreset = serde_json::from_str(raw).map_err(|e| format!("preset {stem}: {e}"))?;
     if preset.schema != PRESET_SCHEMA {
         return Err(format!(
             "preset {stem}: unsupported schema {}",

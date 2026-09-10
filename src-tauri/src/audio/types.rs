@@ -194,7 +194,8 @@ mod identity_tests {
 
     #[test]
     fn pure_generic_still_shows_something() {
-        let (display, _, value) = resolve(&[("media.name", "audio-src"), ("node.name", "audio-src")]);
+        let (display, _, value) =
+            resolve(&[("media.name", "audio-src"), ("node.name", "audio-src")]);
         assert_eq!(display, "Audio-src");
         assert_eq!(value, "audio-src");
     }
@@ -322,10 +323,25 @@ impl MicConfig {
             }
         }
         self.gain_percent = self.gain_percent.min(200);
-        self.gate_threshold_db = finite(self.gate_threshold_db, default_gate_threshold(), -100.0, 0.0);
-        self.comp_threshold_db = finite(self.comp_threshold_db, default_comp_threshold(), -100.0, 0.0);
+        self.gate_threshold_db = finite(
+            self.gate_threshold_db,
+            default_gate_threshold(),
+            -100.0,
+            0.0,
+        );
+        self.comp_threshold_db = finite(
+            self.comp_threshold_db,
+            default_comp_threshold(),
+            -100.0,
+            0.0,
+        );
         self.comp_ratio = finite(self.comp_ratio, default_comp_ratio(), 1.0, 20.0);
-        self.limiter_ceiling_db = finite(self.limiter_ceiling_db, default_limiter_ceiling(), -60.0, 0.0);
+        self.limiter_ceiling_db = finite(
+            self.limiter_ceiling_db,
+            default_limiter_ceiling(),
+            -60.0,
+            0.0,
+        );
     }
 }
 

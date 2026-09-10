@@ -214,7 +214,9 @@ fn exe_basename(pid: u32) -> Option<String> {
 fn load_desktops() -> Vec<DesktopEntry> {
     let mut entries = Vec::new();
     for dir in desktop_dirs() {
-        let Ok(read) = fs::read_dir(&dir) else { continue };
+        let Ok(read) = fs::read_dir(&dir) else {
+            continue;
+        };
         for file in read.flatten() {
             let path = file.path();
             if path.extension().is_some_and(|e| e == "desktop") {
