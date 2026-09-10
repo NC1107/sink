@@ -67,11 +67,15 @@ jobs:
           echo "install-testing: ${picked:-nothing}"
           jq -nc --arg picked "$picked" '
             {
+              # The appimage has no image: it runs on the runner itself,
+              # which has a desktop's worth of libraries like a real machine.
+              # A bare container has none, so it would only prove that an
+              # appimage does not bundle all of gtk, which is by design.
               arch:     "archlinux:latest",
               fedora:   "fedora:latest",
               opensuse: "opensuse/tumbleweed:latest",
               debian:   "debian:trixie",
-              appimage: "ubuntu:24.04"
+              appimage: ""
             } as $image
             | [$picked | split(" ") | .[] | select(length > 0)
                | {distro: ., image: $image[.]}]
@@ -239,9 +243,13 @@ jobs:
               zypper --non-interactive install \
                 findutils xvfb-run xorg-x11-server-Xvfb Mesa-dri tar gzip
               ;;
-            debian | appimage)
+            debian)
               apt-get update
-              DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb libfuse2t64 file
+              DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb file
+              ;;
+            appimage)
+              sudo apt-get update
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb
               ;;
           esac
 
