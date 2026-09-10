@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// True if `sink_name` is one of our managed virtual channels. Channels
@@ -12,8 +14,13 @@ pub fn is_virtual_sink(sink_name: &str) -> bool {
 
 /// Property values that are useless as names - media frameworks announcing
 /// themselves, or placeholder stream titles.
-const GENERIC_NAMES: [&str; 13] = [
+const GENERIC_NAMES: [&str; 18] = [
     "WEBRTC VoiceEngine",
+    "OpenAL Soft",
+    "Game.exe",
+    "SDL Application",
+    "FMOD Audio",
+    "LINK",
     "audio-src",
     "Playback Stream",
     "playStream",
@@ -32,8 +39,12 @@ const GENERIC_NAMES: [&str; 13] = [
 /// Chromium shell, so application.name says "Chromium" while the process
 /// binary says "spotify". A wrapper beats a generic, but a real name
 /// (usually the binary) beats both.
-const WRAPPER_NAMES: [&str; 14] = [
+const WRAPPER_NAMES: [&str; 18] = [
     "Chromium",
+    "wine",
+    "wine64",
+    "wine-preloader",
+    "AppRun",
     "Google Chrome",
     "Chrome",
     "Electron",
@@ -49,10 +60,40 @@ const WRAPPER_NAMES: [&str; 14] = [
     "CEF",
 ];
 
+/// Keys only the daemon sets on a client; a stream declaring them itself
+/// would forge its own trust (`pipewire.sec.pid`) or hide its sandbox
+/// (`pipewire.access`).
+pub(crate) fn daemon_owned(key: &str) -> bool {
+    key.starts_with("pipewire.sec.") || key.starts_with("pipewire.access")
+}
+
+pub(crate) fn is_generic_name(value: &str) -> bool {
+    GENERIC_NAMES.iter().any(|g| g.eq_ignore_ascii_case(value))
+}
+
+pub(crate) fn is_wrapper_name(value: &str) -> bool {
+    WRAPPER_NAMES.iter().any(|w| w.eq_ignore_ascii_case(value))
+}
+
+/// Runtimes, not programs: an executable name that would merge every app
+/// running on it. The name list covers exact matches; version-suffixed
+/// interpreters and Wine's loaders need the prefix checks.
+pub(crate) fn is_wrapper_exe(exe: &str) -> bool {
+    let e = exe.to_ascii_lowercase();
+    is_wrapper_name(&e)
+        || e.starts_with("python")
+        || e.starts_with("wine")
+        || e.ends_with("-preloader")
+        || matches!(
+            e.as_str(),
+            "sh" | "bash" | "env" | "bwrap" | "ld-linux-x86-64.so.2"
+        )
+}
+
 fn name_quality(value: &str) -> u8 {
-    if GENERIC_NAMES.iter().any(|g| g.eq_ignore_ascii_case(value)) {
+    if is_generic_name(value) {
         0
-    } else if WRAPPER_NAMES.iter().any(|w| w.eq_ignore_ascii_case(value)) {
+    } else if is_wrapper_name(value) {
         1
     } else {
         2
@@ -62,7 +103,7 @@ fn name_quality(value: &str) -> u8 {
 /// Prettify a value for display: lone all-lowercase binary names get a
 /// capital ("spotify" → "Spotify"). Identity matching always uses the raw
 /// value, so this never affects routing rules.
-fn prettify(value: &str) -> String {
+pub(crate) fn prettify(value: &str) -> String {
     if !value.contains(' ') && value.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
         let mut chars = value.chars();
         match chars.next() {
@@ -78,10 +119,10 @@ fn prettify(value: &str) -> String {
 /// raw match value). The best-quality candidate along the chain wins:
 /// real app names beat runtime wrappers beat generic stream titles.
 pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String, String) {
-    const CHAIN: [&str; 4] = [
+    // media.name is a stream title, not an app, so it never keys a rule.
+    const CHAIN: [&str; 3] = [
         "application.name",
         "application.process.binary",
-        "media.name",
         "node.name",
     ];
     let mut best: Option<(u8, String, String)> = None;
@@ -92,7 +133,7 @@ pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String
                 continue;
             }
             let quality = name_quality(&value);
-            // (map_or keeps MSRV 1.77 - Option::is_none_or is 1.82+.)
+            // (map_or keeps MSRV 1.80 - Option::is_none_or is 1.82+.)
             if best.as_ref().map_or(true, |(q, _, _)| quality > *q) {
                 let stop = quality == 2;
                 best = Some((quality, key.to_string(), value));
@@ -193,6 +234,16 @@ mod identity_tests {
     }
 
     #[test]
+    fn a_stream_title_never_becomes_the_identity() {
+        let (_, prop, value) = resolve(&[
+            ("media.name", "Song Title - Artist"),
+            ("node.name", "player"),
+        ]);
+        assert_eq!(prop, "node.name");
+        assert_eq!(value, "player");
+    }
+
+    #[test]
     fn pure_generic_still_shows_something() {
         let (display, _, value) =
             resolve(&[("media.name", "audio-src"), ("node.name", "audio-src")]);
@@ -234,6 +285,12 @@ pub struct AppStream {
     /// True while the stream is actively producing audio (node running /
     /// not corked) - drives the activity indicator in the app list.
     pub active: bool,
+    /// Node plus client props for identity resolution; never reaches the UI.
+    #[serde(skip)]
+    pub props: HashMap<String, String>,
+    /// False until the client reported its full props; not cached before.
+    #[serde(skip)]
+    pub settled: bool,
 }
 
 fn default_true() -> bool {

@@ -176,9 +176,19 @@ struct NodeEntry {
     active: bool,
 }
 
+/// Nodes through pipewire-pulse carry few props; pid and sandbox facts live here.
+struct ClientEntry {
+    props: HashMap<String, String>,
+    /// Set once the info event delivered the full property dict.
+    settled: bool,
+    _proxy: pw::client::Client,
+    _listener: pw::client::ClientListener,
+}
+
 #[derive(Default)]
 struct State {
     nodes: HashMap<u32, NodeEntry>,
+    clients: HashMap<u32, ClientEntry>,
     /// link global id -> (output node id, input node id)
     links: HashMap<u32, (u32, u32)>,
     metadata: Option<Metadata>,
@@ -364,6 +374,7 @@ fn setup_and_run(
                     let mut s = state.borrow_mut();
                     s.links.remove(&id);
                     s.ports.remove(&id);
+                    s.clients.remove(&id);
                     let Some(node) = s.nodes.remove(&id) else {
                         return;
                     };
@@ -481,6 +492,7 @@ fn on_global(
 ) {
     match global.type_ {
         ObjectType::Node => on_node(state, registry, core, levels, global),
+        ObjectType::Client => on_client(state, registry, global),
         ObjectType::Port => {
             let Some(props) = global.props else { return };
             let Some(node_id) = props.get("node.id").and_then(|v| v.parse().ok()) else {
@@ -608,6 +620,44 @@ fn on_global(
         }
         _ => {}
     }
+}
+
+fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalObject<&DictRef>) {
+    let Ok(proxy) = registry.bind::<pw::client::Client, _>(global) else {
+        return;
+    };
+    let props: HashMap<String, String> = global
+        .props
+        .map(|d| {
+            d.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    // The full dict (sec.pid, portal app id) only arrives with the info event.
+    let state_i = state.clone();
+    let client_id = global.id;
+    let listener = proxy
+        .add_listener_local()
+        .info(move |info| {
+            let mut s = state_i.borrow_mut();
+            if let (Some(entry), Some(props)) = (s.clients.get_mut(&client_id), info.props()) {
+                for (k, v) in props.iter() {
+                    entry.props.insert(k.to_string(), v.to_string());
+                }
+                entry.settled = true;
+            }
+        })
+        .register();
+    state.borrow_mut().clients.insert(
+        global.id,
+        ClientEntry {
+            props,
+            settled: false,
+            _proxy: proxy,
+            _listener: listener,
+        },
+    );
 }
 
 fn on_node(
@@ -1404,7 +1454,15 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 .map(|n| {
                     let (app_name, match_prop, match_value) =
                         crate::audio::types::resolve_identity(|key| n.props.get(key).cloned());
+                    let client = n
+                        .props
+                        .get("client.id")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .map(|cid| s.clients.get(&cid).map(|c| (&c.props, c.settled)));
+                    let (props, settled) = stream_facts(&n.props, client);
                     AppStream {
+                        props,
+                        settled,
                         index: n.id,
                         serial: n.serial.unwrap_or_else(|| u64::from(n.id)),
                         app_name,
@@ -1970,6 +2028,29 @@ fn set_props(
     Ok(())
 }
 
+/// A stream's facts: node props over client props, except daemon-owned keys
+/// which come only from the client. `client` is the tracked client for the
+/// node's `client.id`: absent altogether, known but never bound (nothing
+/// more will arrive, so the stream is settled), or present with its props
+/// and whether its info event has landed.
+fn stream_facts(
+    node_props: &HashMap<String, String>,
+    client: Option<Option<(&HashMap<String, String>, bool)>>,
+) -> (HashMap<String, String>, bool) {
+    let mut props: HashMap<String, String> = node_props
+        .iter()
+        .filter(|(k, _)| !crate::audio::types::daemon_owned(k))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let Some(Some((client_props, settled))) = client else {
+        return (props, true);
+    };
+    for (k, v) in client_props {
+        props.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    (props, settled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2078,5 +2159,55 @@ mod tests {
         // reaching here - so they're not exercised at this layer.)
         let candidates = [(1u32, "sink_game", 0i64), (2, "sink_chat", 0)];
         assert_eq!(pick_fallback_sink(candidates.into_iter()), None);
+    }
+
+    fn kv(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_stream_cannot_forge_the_daemon_owned_props() {
+        let node = kv(&[
+            ("application.name", "evil"),
+            ("pipewire.sec.pid", "1"),
+            ("pipewire.access", "unrestricted"),
+            ("application.process.id", "1"),
+        ]);
+        let client = kv(&[
+            ("pipewire.sec.pid", "4242"),
+            ("pipewire.access", "flatpak"),
+            ("pipewire.access.portal.app_id", "com.example.App"),
+            ("application.name", "client-name"),
+        ]);
+        let (props, settled) = stream_facts(&node, Some(Some((&client, true))));
+        assert!(settled);
+        assert_eq!(props["pipewire.sec.pid"], "4242");
+        assert_eq!(props["pipewire.access"], "flatpak");
+        assert_eq!(props["pipewire.access.portal.app_id"], "com.example.App");
+        // Everything else: the node still wins over the client.
+        assert_eq!(props["application.name"], "evil");
+        assert_eq!(props["application.process.id"], "1");
+    }
+
+    #[test]
+    fn daemon_owned_props_never_survive_without_a_client() {
+        let node = kv(&[("pipewire.sec.pid", "1"), ("application.name", "x")]);
+        let (props, settled) = stream_facts(&node, None);
+        assert!(settled);
+        assert!(!props.contains_key("pipewire.sec.pid"));
+        let (props, settled) = stream_facts(&node, Some(None));
+        assert!(settled, "a client that never bound will not send more");
+        assert!(!props.contains_key("pipewire.sec.pid"));
+    }
+
+    #[test]
+    fn an_unsettled_client_leaves_the_stream_unsettled() {
+        let node = kv(&[("application.name", "x")]);
+        let client = kv(&[]);
+        let (_, settled) = stream_facts(&node, Some(Some((&client, false))));
+        assert!(!settled);
     }
 }

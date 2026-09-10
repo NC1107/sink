@@ -1,7 +1,6 @@
 use tauri::State;
 
 use crate::audio::types::is_virtual_sink;
-use crate::persistence::wireplumber;
 use crate::state::AppState;
 
 pub(crate) const MAX_VOLUME: u8 = 150;
@@ -42,11 +41,9 @@ pub fn route_app(state: &AppState, stream_index: u32, sink_name: &str) -> Result
         return Err(format!("unknown channel: {sink_name}"));
     }
 
-    // Assignments are per app, not per stream: siblings move too.
-    let streams = state
-        .backend
-        .list_app_streams()
-        .map_err(|e| e.to_string())?;
+    // Assignments are per app, not per stream: siblings move too, and the
+    // rule is keyed on the identity the user saw, not the raw stream.
+    let streams = crate::commands::devices::live_streams(state)?;
     let Some(stream) = streams.iter().find(|s| s.index == stream_index) else {
         // Vanished between the click and now; move the raw index anyway in
         // case the listing raced, with nothing to record against it.
@@ -90,7 +87,6 @@ pub fn route_app(state: &AppState, stream_index: u32, sink_name: &str) -> Result
     }
 
     assignments.save().map_err(|e| e.to_string())?;
-    wireplumber::write(&assignments).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -341,6 +337,8 @@ mod tests {
             volume_percent: 100,
             muted: false,
             active: true,
+            props: Default::default(),
+            settled: true,
         }
     }
 
