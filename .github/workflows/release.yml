@@ -235,24 +235,11 @@ jobs:
           chown -R builder:builder /build
           sudo -u builder bash -lc 'cd /build && makepkg --noconfirm --nodeps'
           pkg=$(ls /build/sink-bin-*-x86_64.pkg.tar.zst)
-          # Smoke test: install and launch headlessly. A healthy tray app runs
-          # until timeout kills it (exit 124); an earlier exit means a missing
-          # runtime dep (loader abort), a tray/webkit init failure, or a panic.
+          # Same gate the pull-request install tests use: nothing publishes
+          # unless the packaged binary launches and stays up.
           pacman -U --noconfirm "$pkg" >/dev/null
           pacman -S --noconfirm --needed xorg-server-xvfb mesa >/dev/null
-          set +e
-          timeout 25 xvfb-run -a /usr/bin/sink >/tmp/launch.log 2>&1
-          code=$?
-          set -e
-          cat /tmp/launch.log || true
-          if grep -qiE 'panicked at|error while loading shared libraries|cannot open shared object|symbol lookup error' /tmp/launch.log; then
-            echo "::error::sink failed to start cleanly - not publishing"
-            exit 1
-          fi
-          if [ "$code" -ne 124 ]; then
-            echo "::error::sink exited early (code $code) instead of staying alive - not publishing"
-            exit 1
-          fi
+          packaging/smoke-test.sh
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "$pkg"
           # Append the Arch package checksum to the release SHA256SUMS.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir /tmp 2>/dev/null || true
