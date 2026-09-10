@@ -89,10 +89,19 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
       # actionlint also shellchecks every `run:` block in these workflows.
-      - uses: taiki-e/install-action@c3ec0de9ae7f1019cea21aa96aa0a895b9552063 # v2
-        with:
-          tool: actionlint
-      - run: actionlint -color
+      # Pinned by checksum: it is a Go binary, not a crate, so the install
+      # action cannot fetch it.
+      - name: Lint the workflows
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+          ACTIONLINT_SHA256: "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL --retry 3 -o /tmp/actionlint.tar.gz "$url"
+          echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
+          tar xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -color
 
       # Advisories last, so a new one never hides whether the code passed.
       - run: npm audit --audit-level=high
