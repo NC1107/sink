@@ -173,7 +173,11 @@ impl AudioBackend for PipeWireBackend {
     fn set_bus_members(&self, name: &str, channels: &[String]) -> Result<(), SinkError> {
         let name = name.to_string();
         let channels = channels.to_vec();
-        self.request(|reply| Cmd::SetBusMembers { name, channels, reply })
+        self.request(|reply| Cmd::SetBusMembers {
+            name,
+            channels,
+            reply,
+        })
     }
 
     fn set_bus_mic(&self, name: &str, mic: bool) -> Result<(), SinkError> {
@@ -181,15 +185,29 @@ impl AudioBackend for PipeWireBackend {
         self.request(|reply| Cmd::SetBusMic { name, mic, reply })
     }
 
-    fn set_bus_member_gain(&self, bus_name: &str, member: &str, percent: u8) -> Result<(), SinkError> {
+    fn set_bus_member_gain(
+        &self,
+        bus_name: &str,
+        member: &str,
+        percent: u8,
+    ) -> Result<(), SinkError> {
         let bus_name = bus_name.to_string();
         let member = member.to_string();
-        self.request(|reply| Cmd::SetBusMemberGain { bus_name, member, percent, reply })
+        self.request(|reply| Cmd::SetBusMemberGain {
+            bus_name,
+            member,
+            percent,
+            reply,
+        })
     }
 
     fn set_monitor(&self, name: &str, enabled: bool) -> Result<(), SinkError> {
         let name = name.to_string();
-        self.request(|reply| Cmd::SetMonitor { name, enabled, reply })
+        self.request(|reply| Cmd::SetMonitor {
+            name,
+            enabled,
+            reply,
+        })
     }
 
     fn list_input_devices(&self) -> Result<Vec<crate::audio::types::OutputDevice>, SinkError> {
@@ -208,7 +226,11 @@ impl AudioBackend for PipeWireBackend {
     ) -> Result<(), SinkError> {
         let sink_name = sink_name.to_string();
         let config = config.clone();
-        self.request(|reply| Cmd::SetChannelEq { sink_name, config, reply })
+        self.request(|reply| Cmd::SetChannelEq {
+            sink_name,
+            config,
+            reply,
+        })
     }
 
     fn get_default_devices(&self) -> Result<(Option<String>, Option<String>), SinkError> {
@@ -217,11 +239,19 @@ impl AudioBackend for PipeWireBackend {
 
     fn set_default_output(&self, name: &str) -> Result<(), SinkError> {
         let name = name.to_string();
-        self.request(|reply| Cmd::SetDefault { input: false, name, reply })
+        self.request(|reply| Cmd::SetDefault {
+            input: false,
+            name,
+            reply,
+        })
     }
 
     fn set_default_input(&self, name: &str) -> Result<(), SinkError> {
         let name = name.to_string();
-        self.request(|reply| Cmd::SetDefault { input: true, name, reply })
+        self.request(|reply| Cmd::SetDefault {
+            input: true,
+            name,
+            reply,
+        })
     }
 }

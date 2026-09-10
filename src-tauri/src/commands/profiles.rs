@@ -60,7 +60,11 @@ pub fn set_profile_trigger(
     name: String,
     device: String,
 ) -> Result<(), String> {
-    let trigger = if device.is_empty() { None } else { Some(device) };
+    let trigger = if device.is_empty() {
+        None
+    } else {
+        Some(device)
+    };
     profiles::set_trigger(&name, trigger.clone()).map_err(|e| e.to_string())?;
     // Keep the cache in step so a later autosave doesn't overwrite the trigger
     // we just set on the active profile with a stale value.
@@ -172,7 +176,10 @@ pub fn load_profile(
     }
     for bus in &target_buses.buses {
         if current_buses.get(&bus.name).is_none() {
-            if let Err(e) = state.backend.create_bus(&bus.name, &prefs.decorate(&bus.label)) {
+            if let Err(e) = state
+                .backend
+                .create_bus(&bus.name, &prefs.decorate(&bus.label))
+            {
                 eprintln!("sink: profile mix {} failed: {e}", bus.name);
                 continue;
             }
@@ -184,7 +191,10 @@ pub fn load_profile(
             eprintln!("sink: profile members for mix {} failed: {e}", bus.name);
         }
         if let Err(e) = state.backend.set_bus_mic(&bus.name, bus.mic) {
-            eprintln!("sink: profile mic membership for mix {} failed: {e}", bus.name);
+            eprintln!(
+                "sink: profile mic membership for mix {} failed: {e}",
+                bus.name
+            );
         }
         crate::commands::buses::apply_bus_level(state.backend.as_ref(), bus);
         crate::commands::buses::apply_bus_member_gains(state.backend.as_ref(), bus);

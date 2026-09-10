@@ -41,40 +41,116 @@ type Reply<T> = mpsc::Sender<Result<T, SinkError>>;
 type LinkSet = Vec<(u32, u32, pw::link::Link)>;
 
 pub enum Cmd {
-    CreateSink { name: String, label: String, reply: Reply<()> },
-    DestroySink { name: String, reply: Reply<()> },
-    ListStreams { reply: Reply<Vec<AppStream>> },
-    ListOutputs { reply: Reply<Vec<OutputDevice>> },
-    ResolvedOutputs { reply: Reply<HashMap<String, Option<String>>> },
-    SetNodeVolumeByName { name: String, percent: u8, reply: Reply<()> },
-    SetNodeMuteByName { name: String, muted: bool, reply: Reply<()> },
-    SetNodeVolumeById { id: u32, percent: u8, reply: Reply<()> },
-    MoveStream { id: u32, sink_name: String, reply: Reply<()> },
+    CreateSink {
+        name: String,
+        label: String,
+        reply: Reply<()>,
+    },
+    DestroySink {
+        name: String,
+        reply: Reply<()>,
+    },
+    ListStreams {
+        reply: Reply<Vec<AppStream>>,
+    },
+    ListOutputs {
+        reply: Reply<Vec<OutputDevice>>,
+    },
+    ResolvedOutputs {
+        reply: Reply<HashMap<String, Option<String>>>,
+    },
+    SetNodeVolumeByName {
+        name: String,
+        percent: u8,
+        reply: Reply<()>,
+    },
+    SetNodeMuteByName {
+        name: String,
+        muted: bool,
+        reply: Reply<()>,
+    },
+    SetNodeVolumeById {
+        id: u32,
+        percent: u8,
+        reply: Reply<()>,
+    },
+    MoveStream {
+        id: u32,
+        sink_name: String,
+        reply: Reply<()>,
+    },
     /// Route a channel's monitor to an output device (None = follow default).
-    SetChannelOutput { sink_name: String, output_name: Option<String>, reply: Reply<()> },
-    SetChannelFailover { sink_name: String, enabled: bool, reply: Reply<()> },
+    SetChannelOutput {
+        sink_name: String,
+        output_name: Option<String>,
+        reply: Reply<()>,
+    },
+    SetChannelFailover {
+        sink_name: String,
+        enabled: bool,
+        reply: Reply<()>,
+    },
     /// Create a mix bus (capturable virtual source).
-    CreateBus { name: String, label: String, reply: Reply<()> },
+    CreateBus {
+        name: String,
+        label: String,
+        reply: Reply<()>,
+    },
     /// Destroy a mix bus and its links.
-    DestroyBus { name: String, reply: Reply<()> },
+    DestroyBus {
+        name: String,
+        reply: Reply<()>,
+    },
     /// Replace the channel set feeding a bus.
-    SetBusMembers { name: String, channels: Vec<String>, reply: Reply<()> },
+    SetBusMembers {
+        name: String,
+        channels: Vec<String>,
+        reply: Reply<()>,
+    },
     /// Include (or drop) the virtual mic as a member of a bus.
-    SetBusMic { name: String, mic: bool, reply: Reply<()> },
+    SetBusMic {
+        name: String,
+        mic: bool,
+        reply: Reply<()>,
+    },
     /// Set one member's send level within one specific mix (0-150%).
-    SetBusMemberGain { bus_name: String, member: String, percent: u8, reply: Reply<()> },
+    SetBusMemberGain {
+        bus_name: String,
+        member: String,
+        percent: u8,
+        reply: Reply<()>,
+    },
     /// Listen to a channel/mix/mic on the default output (session scoped).
-    SetMonitor { name: String, enabled: bool, reply: Reply<()> },
+    SetMonitor {
+        name: String,
+        enabled: bool,
+        reply: Reply<()>,
+    },
     /// Apply mic chain configuration (create/destroy/re-tune as needed).
-    SetMicConfig { config: MicConfig, reply: Reply<()> },
+    SetMicConfig {
+        config: MicConfig,
+        reply: Reply<()>,
+    },
     /// Apply a channel's parametric EQ (create/destroy/re-tune the insert).
-    SetChannelEq { sink_name: String, config: EqConfig, reply: Reply<()> },
+    SetChannelEq {
+        sink_name: String,
+        config: EqConfig,
+        reply: Reply<()>,
+    },
     /// Hardware capture devices (microphones).
-    ListInputs { reply: Reply<Vec<OutputDevice>> },
+    ListInputs {
+        reply: Reply<Vec<OutputDevice>>,
+    },
     /// Current system defaults: (output sink name, input source name).
-    GetDefaults { reply: Reply<(Option<String>, Option<String>)> },
+    GetDefaults {
+        reply: Reply<(Option<String>, Option<String>)>,
+    },
     /// Set the configured system default sink (input=false) or source.
-    SetDefault { input: bool, name: String, reply: Reply<()> },
+    SetDefault {
+        input: bool,
+        name: String,
+        reply: Reply<()>,
+    },
 }
 
 struct PortEntry {
@@ -436,9 +512,7 @@ fn on_global(
                     // than the virtual mic, destroy that link - mic audio
                     // must never leak into the speakers.
                     let mic_stray = match (s.mic_playback_node(), s.node_by_name(MIC_NODE)) {
-                        (Some(playback), mic) if out == playback => {
-                            mic.map(|n| n.id) != Some(inp)
-                        }
+                        (Some(playback), mic) if out == playback => mic.map(|n| n.id) != Some(inp),
                         _ => false,
                     };
                     // Same policing for EQ playback streams: only the links
@@ -446,10 +520,7 @@ fn on_global(
                     // EQ node with no plan yet (chain just built, first
                     // reconcile pending) allows nothing - our own links are
                     // always created after the plan is recorded.
-                    let eq_stray = s
-                        .eq_streams
-                        .values()
-                        .any(|h| h.playback_node_id() == out)
+                    let eq_stray = s.eq_streams.values().any(|h| h.playback_node_id() == out)
                         && !s
                             .eq_desired_targets
                             .get(&out)
@@ -464,10 +535,7 @@ fn on_global(
                             .get(&out)
                             .is_some_and(|allowed| allowed.contains(&inp))
                     };
-                    let send_stray = (s
-                        .send_gains
-                        .values()
-                        .any(|h| h.playback_node_id() == out)
+                    let send_stray = (s.send_gains.values().any(|h| h.playback_node_id() == out)
                         || s.send_gains.values().any(|h| h.capture_node_id() == inp))
                         && !allowed(out, inp);
                     mic_stray || eq_stray || send_stray
@@ -719,7 +787,9 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
             .clone()
             .filter(|name| name != MIC_NODE)
     });
-    let Some(levels) = s.levels.clone() else { return };
+    let Some(levels) = s.levels.clone() else {
+        return;
+    };
     match MicStreams::new(&core, &s.mic_config, mic_target.as_deref(), levels) {
         Ok(streams) => {
             s.mic_links.clear();
@@ -898,7 +968,13 @@ fn reconcile_bus_member(
     link: MemberLink,
     eq_targets: &mut HashMap<u32, std::collections::HashSet<u32>>,
 ) {
-    let MemberLink { bus_name, bus_id, member, source_id, included } = link;
+    let MemberLink {
+        bus_name,
+        bus_id,
+        member,
+        source_id,
+        included,
+    } = link;
     let key = (bus_name.to_string(), member.to_string());
     let gain = s.bus_member_gains.get(&key).copied().unwrap_or(100);
 
@@ -1044,7 +1120,8 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     // real sink, so audio fails over instead of dropping to silence.
     let fallback = fallback_sink(&s);
     // Forget resolved targets for channels that no longer exist.
-    s.channel_targets.retain(|name, _| channel_names.contains(name));
+    s.channel_targets
+        .retain(|name, _| channel_names.contains(name));
 
     // The link plan for every live EQ insert, rebuilt from scratch each
     // pass - the link police destroys anything an EQ playback node feeds
@@ -1065,7 +1142,9 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         // ---- output device links ----
         let explicit = s.channel_outputs.get(sink_name).cloned().flatten();
         let pinned = explicit.is_some();
-        let explicit_id = explicit.as_deref().and_then(|name| node_ids.get(name).copied());
+        let explicit_id = explicit
+            .as_deref()
+            .and_then(|name| node_ids.get(name).copied());
         let strict = s.channel_strict.contains(sink_name);
         // A user can make one of our channels the system default; following
         // it would loop every follow-default channel (and the channel's own
@@ -1122,7 +1201,13 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
             reconcile_bus_member(
                 &core,
                 &mut s,
-                MemberLink { bus_name, bus_id: *bus_id, member: sink_name, source_id, included },
+                MemberLink {
+                    bus_name,
+                    bus_id: *bus_id,
+                    member: sink_name,
+                    source_id,
+                    included,
+                },
                 &mut eq_targets,
             );
         }
@@ -1210,13 +1295,12 @@ fn node_needs_monitor_volumes(kind: u8) -> bool {
 
 /// The three virtual node shapes we own (kind 0=channel sink, 1=mix bus,
 /// 2=virtual mic). The heal path mirrors the create handlers with this.
-fn create_node_object(
-    core: &CoreRc,
-    name: &str,
-    label: &str,
-    kind: u8,
-) -> Result<Node, pw::Error> {
-    let class = if kind == 0 { SINK_CLASS } else { VIRTUAL_SOURCE_CLASS };
+fn create_node_object(core: &CoreRc, name: &str, label: &str, kind: u8) -> Result<Node, pw::Error> {
+    let class = if kind == 0 {
+        SINK_CLASS
+    } else {
+        VIRTUAL_SOURCE_CLASS
+    };
     let position = if kind == 2 { "[ MONO ]" } else { "[ FL FR ]" };
     let mut props = pw::properties::properties! {
         "factory.name" => "support.null-audio-sink",
@@ -1388,7 +1472,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 .collect();
             let _ = reply.send(Ok(resolved));
         }
-        Cmd::SetNodeVolumeByName { name, percent, reply } => {
+        Cmd::SetNodeVolumeByName {
+            name,
+            percent,
+            reply,
+        } => {
             let s = state.borrow();
             let _ = reply.send(set_props(s.node_by_name(&name), Some(percent), None));
         }
@@ -1443,7 +1531,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             }
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetBusMembers { name, channels, reply } => {
+        Cmd::SetBusMembers {
+            name,
+            channels,
+            reply,
+        } => {
             state
                 .borrow_mut()
                 .bus_members
@@ -1471,7 +1563,12 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetBusMemberGain { bus_name, member, percent, reply } => {
+        Cmd::SetBusMemberGain {
+            bus_name,
+            member,
+            percent,
+            reply,
+        } => {
             let percent = percent.min(150);
             {
                 let mut s = state.borrow_mut();
@@ -1500,7 +1597,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetMonitor { name, enabled, reply } => {
+        Cmd::SetMonitor {
+            name,
+            enabled,
+            reply,
+        } => {
             {
                 let mut s = state.borrow_mut();
                 if enabled {
@@ -1513,7 +1614,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetChannelEq { sink_name, config, reply } => {
+        Cmd::SetChannelEq {
+            sink_name,
+            config,
+            reply,
+        } => {
             if !is_virtual_sink(&sink_name) {
                 let _ = reply.send(Err(SinkError::UnknownSink(sink_name)));
                 return;
@@ -1532,10 +1637,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             if needs_destroy {
                 state.borrow_mut().eq_streams.remove(&sink_name);
             } else if needs_create {
-                let sink_id = state
-                    .borrow()
-                    .node_by_name(&sink_name)
-                    .map(|n| n.id);
+                let sink_id = state.borrow().node_by_name(&sink_name).map(|n| n.id);
                 if let Some(sink_id) = sink_id {
                     let Some(core) = CORE.with(|c| c.borrow().clone()) else {
                         let _ = reply.send(Err(SinkError::Config(
@@ -1545,7 +1647,10 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     };
                     match EqChainHandle::new(&core, &sink_name, sink_id, &config) {
                         Ok(handle) => {
-                            state.borrow_mut().eq_streams.insert(sink_name.clone(), handle);
+                            state
+                                .borrow_mut()
+                                .eq_streams
+                                .insert(sink_name.clone(), handle);
                         }
                         Err(e) => {
                             let _ = reply.send(Err(e));
@@ -1596,10 +1701,14 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     }
                     s.mic_streams = None;
                     s.mic_links.clear();
-                    s.bus_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
-                    s.send_gains.retain(|(_, member), _| member.as_str() != MIC_NODE);
-                    s.send_gain_in_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
-                    s.send_gain_failed.retain(|(_, member)| member.as_str() != MIC_NODE);
+                    s.bus_links
+                        .retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gains
+                        .retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gain_in_links
+                        .retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gain_failed
+                        .retain(|(_, member)| member.as_str() != MIC_NODE);
                     if let Some(proxy) = s.mic_source.take() {
                         // Our own destroy - the heal path should expect this
                         // removal rather than treat it as external and race a
@@ -1617,7 +1726,13 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     && s.mic_streams.is_some()
                     && prev.input_device != config.input_device;
                 let source_exists = s.node_by_name(MIC_NODE).is_some();
-                (needs_create, needs_destroy, needs_rebuild, source_exists, orphaned)
+                (
+                    needs_create,
+                    needs_destroy,
+                    needs_rebuild,
+                    source_exists,
+                    orphaned,
+                )
             };
 
             if needs_destroy {
@@ -1626,10 +1741,14 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     s.desired.remove(MIC_NODE);
                     s.mic_streams = None;
                     s.mic_links.clear();
-                    s.bus_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
-                    s.send_gains.retain(|(_, member), _| member.as_str() != MIC_NODE);
-                    s.send_gain_in_links.retain(|(_, member), _| member.as_str() != MIC_NODE);
-                    s.send_gain_failed.retain(|(_, member)| member.as_str() != MIC_NODE);
+                    s.bus_links
+                        .retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gains
+                        .retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gain_in_links
+                        .retain(|(_, member), _| member.as_str() != MIC_NODE);
+                    s.send_gain_failed
+                        .retain(|(_, member)| member.as_str() != MIC_NODE);
                     if let Some(proxy) = s.mic_source.take() {
                         if let Some(core) = CORE.with(|c| c.borrow().clone()) {
                             let _ = core.destroy_object(proxy);
@@ -1753,7 +1872,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             metadata.set_property(0, key, Some("Spa:String:JSON"), Some(&value));
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetChannelOutput { sink_name, output_name, reply } => {
+        Cmd::SetChannelOutput {
+            sink_name,
+            output_name,
+            reply,
+        } => {
             if !is_virtual_sink(&sink_name) {
                 let _ = reply.send(Err(SinkError::UnknownSink(sink_name)));
                 return;
@@ -1765,7 +1888,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetChannelFailover { sink_name, enabled, reply } => {
+        Cmd::SetChannelFailover {
+            sink_name,
+            enabled,
+            reply,
+        } => {
             if !is_virtual_sink(&sink_name) {
                 let _ = reply.send(Err(SinkError::UnknownSink(sink_name)));
                 return;
@@ -1781,7 +1908,11 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
-        Cmd::MoveStream { id, sink_name, reply } => {
+        Cmd::MoveStream {
+            id,
+            sink_name,
+            reply,
+        } => {
             let s = state.borrow();
             let Some(metadata) = s.metadata.as_ref() else {
                 let _ = reply.send(Err(SinkError::Config(
@@ -1916,10 +2047,19 @@ mod tests {
     #[test]
     fn resolve_target_covers_the_failover_matrix() {
         // Pinned and present -> that device, failover on or off.
-        assert_eq!(resolve_target(Some(7), true, false, Some(1), Some(2)), Some(7));
-        assert_eq!(resolve_target(Some(7), true, true, Some(1), Some(2)), Some(7));
+        assert_eq!(
+            resolve_target(Some(7), true, false, Some(1), Some(2)),
+            Some(7)
+        );
+        assert_eq!(
+            resolve_target(Some(7), true, true, Some(1), Some(2)),
+            Some(7)
+        );
         // Follow-default, failover on -> default, else the fallback sink.
-        assert_eq!(resolve_target(None, false, false, Some(1), Some(2)), Some(1));
+        assert_eq!(
+            resolve_target(None, false, false, Some(1), Some(2)),
+            Some(1)
+        );
         assert_eq!(resolve_target(None, false, false, None, Some(2)), Some(2));
         // Follow-default, failover off -> default only; silent when it's gone.
         assert_eq!(resolve_target(None, false, true, Some(1), Some(2)), Some(1));
