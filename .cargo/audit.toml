@@ -1,0 +1,24 @@
+# cargo-audit reads this file from .cargo/, not the repo root.
+# Ignores for advisories that cannot be fixed from this repo: each
+# one is transitive through tauri's gtk-rs/webkit2gtk stack with no newer
+# version to move to. Every entry carries a reason and the date it was last
+# looked at; re-run `cargo audit --file Cargo.lock` after a tauri or gtk bump
+# and delete the entries that stop being reported. Anything not listed here
+# still fails the build, which is the point.
+
+[advisories]
+ignore = [
+    # unmaintained, via tauri's gtk-rs bindings. Reviewed 2026-09-10.
+    "RUSTSEC-2024-0370", # proc-macro-error
+
+    # unmaintained unic-* family, via webkit2gtk/gtk-rs. Reviewed 2026-09-10.
+    "RUSTSEC-2025-0075", # unic-char-range
+    "RUSTSEC-2025-0080", # unic-common
+    "RUSTSEC-2025-0081", # unic-char-property
+    "RUSTSEC-2025-0098", # unic-ucd-version
+    "RUSTSEC-2025-0100", # unic-ucd-ident
+
+    # glib 0.18 VariantStrIter unsoundness, fixed in glib 0.19 but tauri pins
+    # 0.18. Sink never iterates GVariant strings. Reviewed 2026-09-10.
+    "RUSTSEC-2024-0429",
+]
