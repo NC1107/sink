@@ -248,8 +248,12 @@ jobs:
               DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb file
               ;;
             appimage)
+              # The runner is headless: give it the graphics stack any
+              # desktop has, since an appimage is not expected to ship the
+              # drivers. Everything else it needs, it must bring itself.
               sudo apt-get update
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                xvfb libegl1 libgl1 libgles2
               ;;
           esac
 
