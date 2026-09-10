@@ -14,8 +14,10 @@ pub fn is_virtual_sink(sink_name: &str) -> bool {
 
 /// Property values that are useless as names - media frameworks announcing
 /// themselves, or placeholder stream titles.
-const GENERIC_NAMES: [&str; 16] = [
+const GENERIC_NAMES: [&str; 18] = [
     "WEBRTC VoiceEngine",
+    "OpenAL Soft",
+    "Game.exe",
     "SDL Application",
     "FMOD Audio",
     "LINK",
@@ -57,6 +59,13 @@ const WRAPPER_NAMES: [&str; 18] = [
     "QtWebEngine",
     "CEF",
 ];
+
+/// Keys only the daemon sets on a client; a stream declaring them itself
+/// would forge its own trust (`pipewire.sec.pid`) or hide its sandbox
+/// (`pipewire.access`).
+pub(crate) fn daemon_owned(key: &str) -> bool {
+    key.starts_with("pipewire.sec.") || key.starts_with("pipewire.access")
+}
 
 pub(crate) fn is_generic_name(value: &str) -> bool {
     GENERIC_NAMES.iter().any(|g| g.eq_ignore_ascii_case(value))
@@ -124,7 +133,7 @@ pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String
                 continue;
             }
             let quality = name_quality(&value);
-            // (map_or keeps MSRV 1.77 - Option::is_none_or is 1.82+.)
+            // (map_or keeps MSRV 1.80 - Option::is_none_or is 1.82+.)
             if best.as_ref().map_or(true, |(q, _, _)| quality > *q) {
                 let stop = quality == 2;
                 best = Some((quality, key.to_string(), value));
@@ -236,7 +245,8 @@ mod identity_tests {
 
     #[test]
     fn pure_generic_still_shows_something() {
-        let (display, _, value) = resolve(&[("media.name", "audio-src"), ("node.name", "audio-src")]);
+        let (display, _, value) =
+            resolve(&[("media.name", "audio-src"), ("node.name", "audio-src")]);
         assert_eq!(display, "Audio-src");
         assert_eq!(value, "audio-src");
     }
@@ -370,10 +380,25 @@ impl MicConfig {
             }
         }
         self.gain_percent = self.gain_percent.min(200);
-        self.gate_threshold_db = finite(self.gate_threshold_db, default_gate_threshold(), -100.0, 0.0);
-        self.comp_threshold_db = finite(self.comp_threshold_db, default_comp_threshold(), -100.0, 0.0);
+        self.gate_threshold_db = finite(
+            self.gate_threshold_db,
+            default_gate_threshold(),
+            -100.0,
+            0.0,
+        );
+        self.comp_threshold_db = finite(
+            self.comp_threshold_db,
+            default_comp_threshold(),
+            -100.0,
+            0.0,
+        );
         self.comp_ratio = finite(self.comp_ratio, default_comp_ratio(), 1.0, 20.0);
-        self.limiter_ceiling_db = finite(self.limiter_ceiling_db, default_limiter_ceiling(), -60.0, 0.0);
+        self.limiter_ceiling_db = finite(
+            self.limiter_ceiling_db,
+            default_limiter_ceiling(),
+            -60.0,
+            0.0,
+        );
     }
 }
 

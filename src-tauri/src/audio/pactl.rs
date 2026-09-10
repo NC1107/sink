@@ -239,9 +239,12 @@ impl AudioBackend for PactlBackend {
                     .get(&input.sink)
                     .filter(|name| is_virtual_sink(name))
                     .cloned();
+                // pactl shows the client's own claims; the daemon-owned
+                // keys are dropped like the native backend does.
                 let props: HashMap<String, String> = input
                     .properties
                     .iter()
+                    .filter(|(k, _)| !crate::audio::types::daemon_owned(k))
                     .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
                     .collect();
 
@@ -282,11 +285,7 @@ impl AudioBackend for PactlBackend {
     }
 
     fn set_sink_volume(&self, sink_name: &str, volume_percent: u8) -> Result<(), SinkError> {
-        Self::run(&[
-            "set-sink-volume",
-            sink_name,
-            &format!("{volume_percent}%"),
-        ])?;
+        Self::run(&["set-sink-volume", sink_name, &format!("{volume_percent}%")])?;
         Ok(())
     }
 
@@ -372,7 +371,12 @@ impl AudioBackend for PactlBackend {
         ))
     }
 
-    fn set_bus_member_gain(&self, _bus_name: &str, _member: &str, _percent: u8) -> Result<(), SinkError> {
+    fn set_bus_member_gain(
+        &self,
+        _bus_name: &str,
+        _member: &str,
+        _percent: u8,
+    ) -> Result<(), SinkError> {
         Err(SinkError::Config(
             "per-mix send levels require the native PipeWire backend".into(),
         ))
@@ -385,8 +389,12 @@ impl AudioBackend for PactlBackend {
     }
 
     fn get_default_devices(&self) -> Result<(Option<String>, Option<String>), SinkError> {
-        let sink = Self::run(&["get-default-sink"]).ok().map(|s| s.trim().to_string());
-        let source = Self::run(&["get-default-source"]).ok().map(|s| s.trim().to_string());
+        let sink = Self::run(&["get-default-sink"])
+            .ok()
+            .map(|s| s.trim().to_string());
+        let source = Self::run(&["get-default-source"])
+            .ok()
+            .map(|s| s.trim().to_string());
         Ok((
             sink.filter(|s| !s.is_empty()),
             source.filter(|s| !s.is_empty()),
@@ -502,6 +510,9 @@ mod tests {
         let inputs: Vec<PactlSinkInput> =
             serde_json::from_str(json).expect("sink-input json should parse");
         assert_eq!(inputs[0].index, 12);
-        assert_eq!(prop(&inputs[0].properties, "application.name"), Some("Firefox"));
+        assert_eq!(
+            prop(&inputs[0].properties, "application.name"),
+            Some("Firefox")
+        );
     }
 }
