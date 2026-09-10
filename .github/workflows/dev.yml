@@ -234,8 +234,10 @@ jobs:
               dnf -y install xorg-x11-server-Xvfb mesa-dri-drivers findutils
               ;;
             opensuse)
+              # A tumbleweed base image has neither find nor xvfb-run.
               zypper --non-interactive refresh
-              zypper --non-interactive install xorg-x11-server-Xvfb Mesa-dri tar gzip
+              zypper --non-interactive install \
+                findutils xvfb-run xorg-x11-server-Xvfb Mesa-dri tar gzip
               ;;
             debian | appimage)
               apt-get update
@@ -282,7 +284,7 @@ jobs:
               # Nothing to install: the point of an AppImage is that it runs
               # anywhere. Extract rather than mount, since a container has no
               # /dev/fuse.
-              chmod +x bundles/*.AppImage
+              chmod +x "$(find bundles -name '*.AppImage' | head -1)"
               ;;
           esac
 
