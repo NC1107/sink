@@ -18,9 +18,7 @@ interface EqModalProps {
 
 /** Per-channel parametric EQ editor: response curve, band list, preamp. */
 export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
-  const config = useMixerStore(
-    (s) => s.eqConfigs[channel.name] ?? null,
-  ) ?? defaultEqConfig();
+  const config = useMixerStore((s) => s.eqConfigs[channel.name] ?? null) ?? defaultEqConfig();
   const setChannelEq = useMixerStore((s) => s.setChannelEq);
   const backendNative = useMixerStore((s) => s.backendNative);
   const [selected, setSelected] = useState(0);
@@ -64,8 +62,7 @@ export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
     >
       {backendNative === false && (
         <p className="modal-text">
-          Parametric EQ requires the native PipeWire engine, which isn't
-          running on this system.
+          Parametric EQ requires the native PipeWire engine, which isn't running on this system.
         </p>
       )}
       <div className="eqm-head">
@@ -102,8 +99,7 @@ export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
         onBandChange={patchBand}
       />
       <p className="eqm-hint">
-        Drag a point to move it · scroll over it to widen or narrow ·
-        double-click to flatten
+        Drag a point to move it · scroll over it to widen or narrow · double-click to flatten
       </p>
 
       <DspSlider

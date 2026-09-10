@@ -127,7 +127,11 @@ body,
 }
 
 .material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
   line-height: 1;
 }
 
@@ -228,7 +232,9 @@ body,
   display: grid;
   place-items: center;
   font-family: inherit;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 .wbtn:hover {
   background: var(--bg-surface-hover);
@@ -275,7 +281,9 @@ body,
   border: none;
   background: none;
   font-family: inherit;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 .nav-item .ms {
   font-size: 21px;
@@ -450,7 +458,10 @@ body,
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
 }
 .gh-add:hover {
   background: var(--accent);
@@ -516,7 +527,10 @@ body,
   cursor: pointer;
   font-family: inherit;
   opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
 }
 .strip:hover .strip-x {
   opacity: 1;
@@ -538,7 +552,10 @@ body,
   cursor: pointer;
   font-family: inherit;
   opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
 }
 .strip:hover .strip-pop {
   opacity: 1;
@@ -572,7 +589,10 @@ body,
   place-items: center;
   cursor: grab;
   opacity: 0;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
 }
 .strip:hover .strip-grip {
   opacity: 1;
@@ -722,7 +742,9 @@ body,
   height: 1.5px;
   background: rgba(0, 0, 0, 0.35);
   border-radius: 2px;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25), 0 -3px 0 rgba(0, 0, 0, 0.25);
+  box-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.25),
+    0 -3px 0 rgba(0, 0, 0, 0.25);
 }
 .fader-cap:active {
   cursor: grabbing;
@@ -795,7 +817,9 @@ body,
   background: var(--bg-active);
   border: 1px solid var(--border);
   flex: 0 0 auto;
-  transition: background 0.1s, box-shadow 0.1s;
+  transition:
+    background 0.1s,
+    box-shadow 0.1s;
 }
 .vu-clip.on {
   background: var(--danger);
@@ -1021,7 +1045,10 @@ body,
   border-radius: var(--r-xs);
   display: grid;
   place-items: center;
-  transition: opacity 0.12s, background 0.12s, color 0.12s;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
 }
 .icon-btn:hover {
   color: var(--fg-primary);
@@ -1152,7 +1179,9 @@ body,
   height: 16px;
   border-radius: 50%;
   background: var(--fg-secondary);
-  transition: transform 0.15s, background 0.15s;
+  transition:
+    transform 0.15s,
+    background 0.15s;
 }
 .toggle.on {
   background: var(--accent);
@@ -1251,7 +1280,6 @@ body,
   background: rgba(245, 158, 11, 0.12);
   color: var(--warning);
 }
-
 
 /* inactive / ignored app history */
 .card-inactive {
@@ -1517,7 +1545,9 @@ body,
   font-weight: 500;
   padding: 8px var(--sp-5);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 .modal-btn:hover {
   background: var(--bg-surface-hover);
@@ -1558,7 +1588,10 @@ body,
   cursor: pointer;
   display: grid;
   place-items: center;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
 }
 .icon-cell .ms {
   font-size: 19px;
@@ -1578,7 +1611,9 @@ body,
   border: none;
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 .strip-icon-btn:hover {
   background: var(--accent-light);
@@ -1814,7 +1849,9 @@ body,
   font-family: inherit;
   color: var(--fg-primary);
   text-align: center;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 .ob-choice:hover {
   border-color: var(--accent);
@@ -1891,7 +1928,9 @@ body,
   color: var(--fg-secondary);
   font-family: inherit;
   cursor: pointer;
-  transition: color 0.12s, background 0.12s;
+  transition:
+    color 0.12s,
+    background 0.12s;
 }
 .bal-side:hover {
   color: var(--fg-primary);
@@ -2429,7 +2468,10 @@ body,
 }
 
 /* Theme picker (Settings › Appearance) */
-.theme-picker { display: flex; gap: var(--sp-2); }
+.theme-picker {
+  display: flex;
+  gap: var(--sp-2);
+}
 .theme-swatch {
   display: flex;
   flex-direction: column;
@@ -2442,19 +2484,35 @@ body,
   cursor: pointer;
   transition: border-color 0.12s;
 }
-.theme-swatch:hover { border-color: var(--accent-hover); }
-.theme-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.theme-swatch-colors { display: flex; }
+.theme-swatch:hover {
+  border-color: var(--accent-hover);
+}
+.theme-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.theme-swatch-colors {
+  display: flex;
+}
 .theme-swatch-colors i {
   width: 16px;
   height: 16px;
   display: block;
   border: 1px solid rgba(0, 0, 0, 0.35);
 }
-.theme-swatch-colors i:first-child { border-radius: var(--r-xs) 0 0 var(--r-xs); }
-.theme-swatch-colors i:last-child { border-radius: 0 var(--r-xs) var(--r-xs) 0; }
-.theme-swatch-label { font-size: var(--fs-caption); color: var(--fg-secondary); }
-.theme-swatch.active .theme-swatch-label { color: var(--fg-primary); }
+.theme-swatch-colors i:first-child {
+  border-radius: var(--r-xs) 0 0 var(--r-xs);
+}
+.theme-swatch-colors i:last-child {
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+}
+.theme-swatch-label {
+  font-size: var(--fs-caption);
+  color: var(--fg-secondary);
+}
+.theme-swatch.active .theme-swatch-label {
+  color: var(--fg-primary);
+}
 
 /* ---------- send levels (mix membership popover) ---------- */
 .send-levels-hint {

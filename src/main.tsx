@@ -15,7 +15,5 @@ const mixFader = new URLSearchParams(window.location.search).get("mixFader");
 
 const root = document.getElementById("root");
 if (root) {
-  ReactDOM.createRoot(root).render(
-    mixFader ? <MixPopout busName={mixFader} /> : <App />,
-  );
+  ReactDOM.createRoot(root).render(mixFader ? <MixPopout busName={mixFader} /> : <App />);
 }

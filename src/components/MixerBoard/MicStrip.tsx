@@ -22,14 +22,13 @@ export function MicStrip() {
   const commitRename = () => {
     setEditing(false);
     const label = draft.trim();
-    if (label && label !== micConfig.output_label)
-      void setMicConfig({ output_label: label });
+    if (label && label !== micConfig.output_label) void setMicConfig({ output_label: label });
   };
 
   const target = micConfig.muted ? 0 : perceptual(level?.[0] ?? 0);
 
   return (
-      <div className={"strip input-strip" + (micConfig.muted ? " muted" : "")}>
+    <div className={"strip input-strip" + (micConfig.muted ? " muted" : "")}>
       <div className="strip-head">
         <div className="strip-icon strip-icon-mic">
           <Ms name="mic" />
@@ -73,8 +72,7 @@ export function MicStrip() {
 
       <div className="strip-readout">
         {micConfig.gain_percent}
-        <span style={{ fontSize: 11 }}>%</span>{" "}
-        <span className="db">gain</span>
+        <span style={{ fontSize: 11 }}>%</span> <span className="db">gain</span>
       </div>
 
       <div className="strip-btns">
@@ -99,6 +97,6 @@ export function MicStrip() {
       </div>
 
       <div className="strip-route" />
-      </div>
+    </div>
   );
 }
