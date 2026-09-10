@@ -60,6 +60,13 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      # Advisories last, so a new one never hides whether the code passed.
+      - run: npm audit --audit-level=high
+      - uses: taiki-e/install-action@c3ec0de9ae7f1019cea21aa96aa0a895b9552063 # v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit --file Cargo.lock
+
   bundles:
     runs-on: ubuntu-24.04
     steps:

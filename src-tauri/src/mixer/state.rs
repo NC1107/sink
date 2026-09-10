@@ -108,15 +108,12 @@ impl MixerState {
         }
         let mut planned = Vec::new();
         for stream in streams {
-            if self.auto_routed.contains(&stream.serial) {
+            if !stream.settled || self.auto_routed.contains(&stream.serial) {
                 continue;
             }
-            if let Some(target) = self
-                .assignments
-                .sink_for(&stream.match_prop, &stream.match_value)
-            {
-                if stream.assigned_sink.as_deref() != Some(target) {
-                    planned.push((stream.index, target.to_string(), stream.app_name.clone()));
+            if let Some(target) = self.rule_for(stream) {
+                if stream.assigned_sink.as_deref() != Some(target.as_str()) {
+                    planned.push((stream.index, target, stream.app_name.clone()));
                 }
             }
             self.auto_routed.insert(stream.serial);
@@ -124,6 +121,25 @@ impl MixerState {
         let live: HashSet<u64> = streams.iter().map(|s| s.serial).collect();
         self.auto_routed.retain(|serial| live.contains(serial));
         planned
+    }
+
+    /// The channel a stream's rules send it to: its identity's rule, or for
+    /// an identity that cannot adopt (no trusted process), a rule keyed on
+    /// the stream's own props. A process identity never falls back: its
+    /// legacy rules were adopted once, and a rule the user then cleared
+    /// must stay cleared.
+    fn rule_for(&self, stream: &AppStream) -> Option<String> {
+        self.assignments
+            .sink_for(&stream.match_prop, &stream.match_value)
+            .or_else(|| {
+                if crate::audio::identity::is_process_prop(&stream.match_prop) {
+                    return None;
+                }
+                crate::audio::identity::legacy_matchers(&stream.props)
+                    .iter()
+                    .find_map(|(prop, value)| self.assignments.sink_for(prop, value))
+            })
+            .map(str::to_string)
     }
 
     pub fn reset(&mut self) {
@@ -159,7 +175,7 @@ mod tests {
         for value in ["plain", "assigned", "aliased"] {
             state
                 .seen
-                .upsert("application.name", value, value, None, old);
+                .upsert("application.name", value, value, None, None, old);
         }
         state
             .assignments
@@ -187,6 +203,8 @@ mod tests {
             volume_percent: 100,
             muted: false,
             active: true,
+            props: Default::default(),
+            settled: true,
         }
     }
 
@@ -254,6 +272,60 @@ mod tests {
         // serials never repeat, so the new stream is still routed.
         let planned = state.plan_auto_routes(&[stream(7, 101, "Firefox", None)]);
         assert_eq!(planned.len(), 1);
+    }
+
+    #[test]
+    fn auto_route_leaves_an_unsettled_stream_for_the_next_tick() {
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("application.name", "Firefox", "sink_game");
+        let mut early = stream(7, 100, "Firefox", None);
+        early.settled = false;
+        assert!(state.plan_auto_routes(&[early]).is_empty());
+        assert!(state.auto_routed.is_empty(), "not ledgered while unsettled");
+        assert_eq!(
+            state
+                .plan_auto_routes(&[stream(7, 100, "Firefox", None)])
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn auto_route_still_honours_a_rule_keyed_on_the_streams_own_props() {
+        // A stream with no trusted process keeps its identity's fallback
+        // name, but the user's rule was keyed on its media.name.
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("media.name", "audio-src", "sink_music");
+        let mut s = stream(3, 30, "Unknown", None);
+        s.props
+            .insert("media.name".to_string(), "audio-src".to_string());
+        assert_eq!(
+            state.plan_auto_routes(&[s]),
+            vec![(3, "sink_music".to_string(), "Unknown".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_cleared_rule_on_a_process_identity_stays_cleared() {
+        // The legacy rule is kept on disk (it may route another app), but
+        // once adopted and then cleared it must not route this app again.
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("application.name", "Discord", "sink_voice");
+        let mut s = stream(3, 30, "Discord", None);
+        s.match_prop = "process.exe".into();
+        s.match_value = "discord".into();
+        s.props
+            .insert("application.name".to_string(), "Discord".to_string());
+        assert!(state.plan_auto_routes(&[s]).is_empty());
     }
 
     #[test]

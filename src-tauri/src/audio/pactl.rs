@@ -239,8 +239,18 @@ impl AudioBackend for PactlBackend {
                     .get(&input.sink)
                     .filter(|name| is_virtual_sink(name))
                     .cloned();
+                // pactl shows the client's own claims; the daemon-owned
+                // keys are dropped like the native backend does.
+                let props: HashMap<String, String> = input
+                    .properties
+                    .iter()
+                    .filter(|(k, _)| !crate::audio::types::daemon_owned(k))
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect();
 
                 AppStream {
+                    props,
+                    settled: true,
                     index: input.index,
                     // PulseAudio's sink-input index is itself never reused.
                     serial: u64::from(input.index),

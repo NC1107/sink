@@ -18,6 +18,10 @@ pub struct SeenEntry {
     /// Display name at last sighting (resolver output, pre-alias).
     pub display_name: String,
     pub icon_name: Option<String>,
+    /// Icon resolved while the app was live, so the row keeps it once the
+    /// process (and the pid-based lookup) is gone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_path: Option<String>,
     /// Unix seconds of the last sighting.
     pub last_seen: u64,
     /// Ignored apps are hidden from the app list and never auto-routed.
@@ -93,15 +97,22 @@ impl SeenApps {
         match_value: &str,
         display_name: &str,
         icon_name: Option<&str>,
+        icon_path: Option<&str>,
         now: u64,
     ) -> bool {
         if let Some(entry) = self.entry_mut(match_prop, match_value) {
             entry.last_seen = now;
-            let changed =
-                entry.display_name != display_name || entry.icon_name.as_deref() != icon_name;
+            // A sighting that resolved no icon keeps the one already stored.
+            let new_path = icon_path.filter(|p| entry.icon_path.as_deref() != Some(p));
+            let changed = entry.display_name != display_name
+                || entry.icon_name.as_deref() != icon_name
+                || new_path.is_some();
             if changed {
                 entry.display_name = display_name.to_string();
                 entry.icon_name = icon_name.map(str::to_string);
+                if let Some(p) = new_path {
+                    entry.icon_path = Some(p.to_string());
+                }
             }
             changed
         } else {
@@ -110,6 +121,7 @@ impl SeenApps {
                 match_value: match_value.to_string(),
                 display_name: display_name.to_string(),
                 icon_name: icon_name.map(str::to_string),
+                icon_path: icon_path.map(str::to_string),
                 last_seen: now,
                 ignored: false,
             });
@@ -167,6 +179,7 @@ mod tests {
             "Firefox",
             "Firefox",
             Some("firefox"),
+            None,
             100
         ));
         // Pure last_seen bump - not worth persisting.
@@ -175,6 +188,7 @@ mod tests {
             "Firefox",
             "Firefox",
             Some("firefox"),
+            None,
             200
         ));
         assert_eq!(
@@ -189,14 +203,39 @@ mod tests {
             "Firefox",
             "Firefox ESR",
             Some("firefox"),
+            None,
             300
         ));
     }
 
     #[test]
+    fn a_stored_icon_survives_sightings_without_one() {
+        let mut seen = SeenApps::default();
+        let key = ("process.exe", "factorio");
+        assert!(seen.upsert(
+            key.0,
+            key.1,
+            "Factorio",
+            None,
+            Some("/icons/factorio.png"),
+            1
+        ));
+        assert!(!seen.upsert(key.0, key.1, "Factorio", None, None, 2));
+        assert_eq!(
+            seen.get(key.0, key.1).and_then(|e| e.icon_path.as_deref()),
+            Some("/icons/factorio.png")
+        );
+        assert!(seen.upsert(key.0, key.1, "Factorio", None, Some("/icons/new.png"), 3));
+        assert_eq!(
+            seen.get(key.0, key.1).and_then(|e| e.icon_path.as_deref()),
+            Some("/icons/new.png")
+        );
+    }
+
+    #[test]
     fn ignore_and_forget() {
         let mut seen = SeenApps::default();
-        seen.upsert("media.name", "audio-src", "Audio-src", None, 1);
+        seen.upsert("media.name", "audio-src", "Audio-src", None, None, 1);
         assert!(seen.set_ignored("media.name", "audio-src", true));
         assert!(seen.is_ignored("media.name", "audio-src"));
         assert!(!seen.set_ignored("media.name", "nope", true));
@@ -209,10 +248,38 @@ mod tests {
         const DAY: u64 = 24 * 60 * 60;
         let now = 100 * DAY;
         let mut seen = SeenApps::default();
-        seen.upsert("application.name", "recent", "Recent", None, now - DAY);
-        seen.upsert("application.name", "stale", "Stale", None, now - 8 * DAY);
-        seen.upsert("application.name", "routed", "Routed", None, now - 60 * DAY);
-        seen.upsert("application.name", "hidden", "Hidden", None, now - 60 * DAY);
+        seen.upsert(
+            "application.name",
+            "recent",
+            "Recent",
+            None,
+            None,
+            now - DAY,
+        );
+        seen.upsert(
+            "application.name",
+            "stale",
+            "Stale",
+            None,
+            None,
+            now - 8 * DAY,
+        );
+        seen.upsert(
+            "application.name",
+            "routed",
+            "Routed",
+            None,
+            None,
+            now - 60 * DAY,
+        );
+        seen.upsert(
+            "application.name",
+            "hidden",
+            "Hidden",
+            None,
+            None,
+            now - 60 * DAY,
+        );
         seen.set_ignored("application.name", "hidden", true);
 
         let routed = |_prop: &str, value: &str| value == "routed";
@@ -232,7 +299,7 @@ mod tests {
     fn prune_tolerates_timestamps_from_the_future() {
         let mut seen = SeenApps::default();
         // A clock jump backwards must not make every entry look ancient.
-        seen.upsert("application.name", "ahead", "Ahead", None, 5_000);
+        seen.upsert("application.name", "ahead", "Ahead", None, None, 5_000);
         assert!(!seen.prune(1_000, MAX_SEEN_AGE_SECS, |_, _| false));
         assert!(seen.get("application.name", "ahead").is_some());
     }

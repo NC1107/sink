@@ -1,7 +1,6 @@
 use tauri::State;
 
 use crate::audio::types::VirtualSink;
-use crate::persistence::wireplumber;
 use crate::state::AppState;
 
 /// Create a new channel from a label and icon (sink name is generated).
@@ -203,6 +202,5 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
     outputs.save().map_err(|e| e.to_string())?;
     eq.save().map_err(|e| e.to_string())?;
     buses.save().map_err(|e| e.to_string())?;
-    wireplumber::write(&assignments).map_err(|e| e.to_string())?;
     Ok(())
 }

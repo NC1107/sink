@@ -3,7 +3,7 @@ name = "sink"
 version = "0.1.0"
 description = "Linux-native audio routing and mixing for PipeWire"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.80"
 license = "GPL-3.0-only"
 
 [lib]
@@ -25,7 +25,7 @@ thiserror = "2"
 dirs = "6"
 # 0.8.0 on crates.io predates PipeWire 1.6 headers (libspa bindgen breaks);
 # git main carries the header fixes. v0_3_49 gates Buffer::requested().
-pipewire = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-rs", rev = "v0.10.0", features = ["v0_3_49"] }
+pipewire = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-rs", rev = "v0.10.1", features = ["v0_3_49"] }
 # Global hotkeys: the XDG portal on Wayland, direct X11 grabs as the fallback.
 ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts"] }
 global-hotkey = "0.8"
