@@ -68,8 +68,8 @@ jobs:
           jq -nc --arg picked "$picked" '
             {
               # The appimage has no image: it runs on the runner itself,
-              # which has a desktop's worth of libraries like a real machine.
-              # A bare container has none, so it would only prove that an
+              # which carries the libraries a real desktop has. A bare
+              # container carries none, so the test would only prove that an
               # appimage does not bundle all of gtk, which is by design.
               arch:     "archlinux:latest",
               fedora:   "fedora:latest",
