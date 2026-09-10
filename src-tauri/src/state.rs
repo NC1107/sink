@@ -21,6 +21,8 @@ pub struct AppState {
     pub identity_cache: Mutex<HashMap<u64, crate::audio::identity::Identity>>,
     /// Icon and display name per identity key, evicted with the identities.
     pub icon_cache: Mutex<HashMap<String, crate::audio::icons::IconFacts>>,
+    /// The same for history rows, which the UI lists every tick.
+    pub history_cache: Mutex<HashMap<String, crate::commands::apps::HistoryFacts>>,
 }
 
 impl AppState {
@@ -90,6 +92,7 @@ impl AppState {
             refresh_gate: Mutex::new(()),
             identity_cache: Mutex::new(HashMap::new()),
             icon_cache: Mutex::new(HashMap::new()),
+            history_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -100,7 +103,13 @@ impl AppState {
         let names: Vec<String> = self
             .mixer
             .lock()
-            .map(|m| m.channel_defs.channels.iter().map(|c| c.name.clone()).collect())
+            .map(|m| {
+                m.channel_defs
+                    .channels
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect()
+            })
             .unwrap_or_default();
         let mut errors = Vec::new();
         for name in names {

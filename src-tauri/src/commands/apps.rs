@@ -1,9 +1,12 @@
+use std::collections::HashSet;
+
 use serde::Serialize;
 use tauri::State;
 
 use crate::audio::types::is_virtual_sink;
+use crate::persistence::assignments::identity_key;
+use crate::persistence::seen::SeenEntry;
 use crate::state::AppState;
-
 
 /// A seen-app entry enriched with its current routing, alias and icon.
 #[derive(Debug, Clone, Serialize)]
@@ -19,43 +22,101 @@ pub struct SeenApp {
     pub alias: Option<String>,
 }
 
+/// What a history row shows, resolved from its stored facts; `stamp` is
+/// those facts, so an edited row is looked up again.
+#[derive(Debug, Clone)]
+pub struct HistoryFacts {
+    stamp: String,
+    display_name: String,
+    icon_path: Option<String>,
+}
+
+fn stamp(entry: &SeenEntry) -> String {
+    format!(
+        "{}\0{:?}\0{:?}",
+        entry.display_name, entry.icon_name, entry.icon_path
+    )
+}
+
+/// Icon and name lookups touch the icon themes and the Steam library, so
+/// they run once per row and never under the mixer lock, which every
+/// volume and routing command needs.
+fn history_facts(entry: &SeenEntry) -> HistoryFacts {
+    let binary =
+        (entry.match_prop == "application.process.binary").then_some(entry.match_value.as_str());
+    // History entries have no live process - name-based lookup only.
+    let resolved = crate::audio::icons::resolve(
+        &entry.display_name,
+        binary,
+        entry.icon_name.as_deref(),
+        None,
+    );
+    HistoryFacts {
+        stamp: stamp(entry),
+        display_name: resolved
+            .display_name
+            .unwrap_or_else(|| entry.display_name.clone()),
+        icon_path: history_icon(entry, resolved.icon_path),
+    }
+}
+
 /// Full app history (live and gone, including ignored entries - the
 /// frontend decides what to show where).
 #[tauri::command]
 pub fn get_seen_apps(state: State<'_, AppState>) -> Result<Vec<SeenApp>, String> {
-    let mixer = state.lock_mixer()?;
-    Ok(mixer
-        .seen
-        .apps
+    let rows: Vec<(SeenEntry, Option<String>, Option<String>)> = {
+        let mixer = state.lock_mixer()?;
+        mixer
+            .seen
+            .apps
+            .iter()
+            .map(|entry| {
+                (
+                    entry.clone(),
+                    mixer
+                        .assignments
+                        .sink_for(&entry.match_prop, &entry.match_value)
+                        .map(str::to_string),
+                    mixer
+                        .aliases
+                        .get(&entry.match_prop, &entry.match_value)
+                        .map(str::to_string),
+                )
+            })
+            .collect()
+    };
+
+    let mut cache = state
+        .history_cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let live: HashSet<String> = rows
         .iter()
-        .map(|entry| {
-            let binary = (entry.match_prop == "application.process.binary")
-                .then_some(entry.match_value.as_str());
-            // History entries have no live process - name-based lookup only.
-            let resolved = crate::audio::icons::resolve(
-                &entry.display_name,
-                binary,
-                entry.icon_name.as_deref(),
-                None,
-            );
+        .map(|(e, _, _)| identity_key(&e.match_prop, &e.match_value))
+        .collect();
+    cache.retain(|key, _| live.contains(key));
+    Ok(rows
+        .into_iter()
+        .map(|(entry, assigned_sink, alias)| {
+            let key = identity_key(&entry.match_prop, &entry.match_value);
+            let facts = match cache.get(&key) {
+                Some(facts) if facts.stamp == stamp(&entry) => facts.clone(),
+                _ => {
+                    let facts = history_facts(&entry);
+                    cache.insert(key, facts.clone());
+                    facts
+                }
+            };
             SeenApp {
-                match_prop: entry.match_prop.clone(),
-                match_value: entry.match_value.clone(),
-                display_name: resolved
-                    .display_name
-                    .unwrap_or_else(|| entry.display_name.clone()),
-                icon_name: entry.icon_name.clone(),
-                icon_path: history_icon(entry, resolved.icon_path),
+                match_prop: entry.match_prop,
+                match_value: entry.match_value,
+                display_name: facts.display_name,
+                icon_name: entry.icon_name,
+                icon_path: facts.icon_path,
                 last_seen: entry.last_seen,
                 ignored: entry.ignored,
-                assigned_sink: mixer
-                    .assignments
-                    .sink_for(&entry.match_prop, &entry.match_value)
-                    .map(str::to_string),
-                alias: mixer
-                    .aliases
-                    .get(&entry.match_prop, &entry.match_value)
-                    .map(str::to_string),
+                assigned_sink,
+                alias,
             }
         })
         .collect())
@@ -63,10 +124,7 @@ pub fn get_seen_apps(state: State<'_, AppState>) -> Result<Vec<SeenApp>, String>
 
 /// The icon stored while the app was live, as long as the file is still
 /// there (a removed theme falls back to a fresh lookup).
-fn history_icon(
-    entry: &crate::persistence::seen::SeenEntry,
-    resolved: Option<String>,
-) -> Option<String> {
+fn history_icon(entry: &SeenEntry, resolved: Option<String>) -> Option<String> {
     entry
         .icon_path
         .as_deref()
