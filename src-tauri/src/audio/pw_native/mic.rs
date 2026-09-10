@@ -59,7 +59,8 @@ impl MicParams {
         self.gain_bits.store(gain.to_bits(), Ordering::Relaxed);
         self.gate.store(config.gate_enabled, Ordering::Relaxed);
         self.comp.store(config.comp_enabled, Ordering::Relaxed);
-        self.limiter.store(config.limiter_enabled, Ordering::Relaxed);
+        self.limiter
+            .store(config.limiter_enabled, Ordering::Relaxed);
         self.muted.store(config.muted, Ordering::Relaxed);
         self.gate_threshold_bits
             .store(config.gate_threshold_db.to_bits(), Ordering::Relaxed);
@@ -200,7 +201,9 @@ impl MicStreams {
                     return;
                 };
                 let datas = buffer.datas_mut();
-                let Some(data) = datas.first_mut() else { return };
+                let Some(data) = datas.first_mut() else {
+                    return;
+                };
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
@@ -270,7 +273,9 @@ impl MicStreams {
                 // quantum) starves the ring and chops the audio.
                 let requested = buffer.requested() as usize;
                 let datas = buffer.datas_mut();
-                let Some(data) = datas.first_mut() else { return };
+                let Some(data) = datas.first_mut() else {
+                    return;
+                };
                 let max_bytes = data.data().map(|d| d.len()).unwrap_or(0);
                 let max_frames = max_bytes / 4;
                 let n = if requested > 0 {

@@ -163,7 +163,11 @@ pub fn set_monitor(
     {
         let mixer = state.lock_mixer()?;
         let known = sink_name == "sink_mic"
-            || mixer.channel_defs.channels.iter().any(|c| c.name == sink_name)
+            || mixer
+                .channel_defs
+                .channels
+                .iter()
+                .any(|c| c.name == sink_name)
             || mixer.buses.buses.iter().any(|b| b.name == sink_name);
         if !known {
             return Err(format!("unknown monitor target: {sink_name}"));

@@ -44,8 +44,7 @@ export function biquadCoeffs(
     case "low_shelf":
     case "high_shelf": {
       const s = safeQ;
-      const alpha =
-        (sinW0 / 2) * Math.sqrt(Math.max((a + 1 / a) * (1 / s - 1) + 2, 0));
+      const alpha = (sinW0 / 2) * Math.sqrt(Math.max((a + 1 / a) * (1 / s - 1) + 2, 0));
       const twoSqrtAAlpha = 2 * Math.sqrt(a) * alpha;
       const ap1 = a + 1;
       const am1 = a - 1;
@@ -99,9 +98,7 @@ function biquadMagnitudeDb(c: Biquad, freqHz: number, sampleRate: number): numbe
   const numIm = -(c.b1 * Math.sin(w) + c.b2 * Math.sin(2 * w));
   const denRe = 1 + c.a1 * Math.cos(w) + c.a2 * Math.cos(2 * w);
   const denIm = -(c.a1 * Math.sin(w) + c.a2 * Math.sin(2 * w));
-  const mag = Math.sqrt(
-    (numRe * numRe + numIm * numIm) / (denRe * denRe + denIm * denIm),
-  );
+  const mag = Math.sqrt((numRe * numRe + numIm * numIm) / (denRe * denRe + denIm * denIm));
   return 20 * Math.log10(mag);
 }
 

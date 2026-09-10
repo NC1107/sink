@@ -189,10 +189,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         </button>
       </div>
 
-      <div
-        className="strip-route"
-        title={`Capture "${bus.label}" in OBS`}
-      />
+      <div className="strip-route" title={`Capture "${bus.label}" in OBS`} />
 
       <ConfirmModal
         open={confirmingDelete}

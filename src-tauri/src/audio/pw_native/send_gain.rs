@@ -117,7 +117,9 @@ impl SendGainHandle {
                     return;
                 };
                 let datas = buffer.datas_mut();
-                let Some(data) = datas.first_mut() else { return };
+                let Some(data) = datas.first_mut() else {
+                    return;
+                };
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
@@ -172,7 +174,9 @@ impl SendGainHandle {
                 };
                 let requested = buffer.requested() as usize;
                 let datas = buffer.datas_mut();
-                let Some(data) = datas.first_mut() else { return };
+                let Some(data) = datas.first_mut() else {
+                    return;
+                };
                 let max_bytes = data.data().map(|d| d.len()).unwrap_or(0);
                 let max_frames = max_bytes / 8;
                 let frames = if requested > 0 {

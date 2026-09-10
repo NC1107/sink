@@ -205,8 +205,7 @@ export function ChannelStrip({
         confirmLabel="Delete channel"
         onConfirm={() => void removeChannel(channel.name)}
       >
-        Apps routed to this channel return to the default output. Its saved
-        routing is removed.
+        Apps routed to this channel return to the default output. Its saved routing is removed.
       </ConfirmModal>
     </div>
   );

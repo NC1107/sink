@@ -71,9 +71,7 @@ export function ProfileMenu() {
                     {trigger && (
                       <span className="profile-row-trigger">
                         <Ms name="bolt" style={{ fontSize: 12 }} />
-                        <span className="profile-row-trigger-name">
-                          auto-loads with {trigger}
-                        </span>
+                        <span className="profile-row-trigger-name">auto-loads with {trigger}</span>
                       </span>
                     )}
                   </span>

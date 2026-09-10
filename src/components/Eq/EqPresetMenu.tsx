@@ -280,7 +280,9 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
           <div className="eqm-import">
             <textarea
               className="eqm-import-text"
-              placeholder={"Paste preset JSON or an AutoEq block:\nPreamp: -6.0 dB\nFilter 1: ON PK Fc 105 Hz Gain -2.4 dB Q 0.70"}
+              placeholder={
+                "Paste preset JSON or an AutoEq block:\nPreamp: -6.0 dB\nFilter 1: ON PK Fc 105 Hz Gain -2.4 dB Q 0.70"
+              }
               value={importText}
               autoFocus
               onChange={(e) => setImportText(e.target.value)}

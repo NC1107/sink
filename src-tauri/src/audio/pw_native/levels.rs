@@ -35,13 +35,10 @@ impl LevelStore {
         if let Some(slot) = registry.by_name.get(name) {
             return Some(*slot);
         }
-        let slot = registry
-            .free
-            .pop()
-            .or_else(|| {
-                let next = registry.by_name.len() + registry.free.len();
-                (next < MAX_METERS).then_some(next)
-            })?;
+        let slot = registry.free.pop().or_else(|| {
+            let next = registry.by_name.len() + registry.free.len();
+            (next < MAX_METERS).then_some(next)
+        })?;
         registry.by_name.insert(name.to_string(), slot);
         Some(slot)
     }

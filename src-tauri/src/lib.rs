@@ -187,7 +187,11 @@ fn spawn_route_enforcer(handle: tauri::AppHandle) {
         let mut last_error: Option<String> = None;
         let mut failures: u32 = 0;
         loop {
-            let pause = if failures >= 3 { interval * 10 } else { interval };
+            let pause = if failures >= 3 {
+                interval * 10
+            } else {
+                interval
+            };
             std::thread::sleep(pause);
             let state = handle.state::<AppState>();
             if !native && state.ui_polled_within(UI_POLL_GRACE) {
@@ -252,9 +256,7 @@ fn spawn_level_emitter(handle: tauri::AppHandle, levels: Arc<LevelStore>) {
 
 /// Build the tray menu, including the live Profiles submenu (check on the
 /// active profile). Rebuilt via `refresh_tray` whenever profiles change.
-fn build_tray_menu(
-    app: &tauri::AppHandle,
-) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+fn build_tray_menu(app: &tauri::AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     use tauri::menu::{IsMenuItem, Submenu};
 
     let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
@@ -319,11 +321,7 @@ fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             let id = event.id.as_ref();
             if let Some(name) = id.strip_prefix("profile:") {
                 // Switch profiles straight from the tray; tell the UI.
-                match commands::profiles::load_profile(
-                    app.clone(),
-                    app.state(),
-                    name.to_string(),
-                ) {
+                match commands::profiles::load_profile(app.clone(), app.state(), name.to_string()) {
                     Ok(()) => {
                         let _ = app.emit("profile-changed", name);
                     }

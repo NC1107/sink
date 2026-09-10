@@ -70,12 +70,7 @@ export const MIC_DSP_DEFAULTS = {
 } as const;
 
 /** Parametric EQ band shapes (mirrors Rust EqBandKind). */
-export type EqBandKind =
-  | "peaking"
-  | "low_shelf"
-  | "high_shelf"
-  | "low_pass"
-  | "high_pass";
+export type EqBandKind = "peaking" | "low_shelf" | "high_shelf" | "low_pass" | "high_pass";
 
 /** One parametric EQ band (mirrors Rust EqBand). */
 export interface EqBand {
@@ -153,9 +148,7 @@ export interface BusDef {
 
 /** The channels a mix actually carries, given the full channel set. */
 export function busMembers(bus: BusDef, allChannels: string[]): string[] {
-  return bus.exclude
-    ? allChannels.filter((c) => !bus.channels.includes(c))
-    : bus.channels;
+  return bus.exclude ? allChannels.filter((c) => !bus.channels.includes(c)) : bus.channels;
 }
 
 /** Profile listing entry (Phase 5: trigger_device auto-loads the profile). */

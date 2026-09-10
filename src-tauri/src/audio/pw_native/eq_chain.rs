@@ -127,7 +127,9 @@ impl EqChainHandle {
                     return;
                 };
                 let datas = buffer.datas_mut();
-                let Some(data) = datas.first_mut() else { return };
+                let Some(data) = datas.first_mut() else {
+                    return;
+                };
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
@@ -139,7 +141,8 @@ impl EqChainHandle {
                         .map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]])),
                 );
 
-                ctx.engine.process_interleaved(&mut ctx.scratch, &ctx.params);
+                ctx.engine
+                    .process_interleaved(&mut ctx.scratch, &ctx.params);
                 ctx.ring.push(&ctx.scratch);
             })
             .register()
@@ -188,7 +191,9 @@ impl EqChainHandle {
                 // interleaved stereo = 2 samples, 8 bytes per frame.
                 let requested = buffer.requested() as usize;
                 let datas = buffer.datas_mut();
-                let Some(data) = datas.first_mut() else { return };
+                let Some(data) = datas.first_mut() else {
+                    return;
+                };
                 let max_bytes = data.data().map(|d| d.len()).unwrap_or(0);
                 let max_frames = max_bytes / 8;
                 let frames = if requested > 0 {

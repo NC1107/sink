@@ -48,8 +48,7 @@ export function VuMeter({ target }: Readonly<VuMeterProps>) {
       }
       if (peakRef.current) peakRef.current.style.bottom = (peak * 100).toFixed(1) + "%";
       if (clipRef.current) {
-        clipRef.current.className =
-          "vu-clip" + (performance.now() < clipUntil ? " on" : "");
+        clipRef.current.className = "vu-clip" + (performance.now() < clipUntil ? " on" : "");
       }
       if (dbRef.current) {
         // Held peak in dBFS (height is sqrt(amplitude), so dB = 40·log10).

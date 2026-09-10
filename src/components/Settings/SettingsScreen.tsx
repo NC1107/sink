@@ -106,7 +106,9 @@ export function SettingsScreen() {
   useEffect(() => {
     void invoke<boolean>("get_autostart").then(setAutostart);
     void invoke<{ native: boolean }>("get_backend_info").then((i) => setBackendNative(i.native));
-    void invoke<DefaultDevices>("get_default_devices").then(setDefaults).catch(() => {});
+    void invoke<DefaultDevices>("get_default_devices")
+      .then(setDefaults)
+      .catch(() => {});
     void invoke<{ device_label_style: LabelStyle; start_minimized: boolean }>("get_prefs")
       .then((p) => {
         setLabelStyle(p.device_label_style);
@@ -165,7 +167,11 @@ export function SettingsScreen() {
         <h1>Settings</h1>
       </div>
       <div className="screen-scroll">
-        {error && <div className="error-banner" style={{ borderRadius: 8 }}>{error}</div>}
+        {error && (
+          <div className="error-banner" style={{ borderRadius: 8 }}>
+            {error}
+          </div>
+        )}
 
         <div className="section-label">Appearance</div>
         <div className="card" style={{ padding: "var(--sp-2)" }}>
@@ -213,7 +219,12 @@ export function SettingsScreen() {
                 <span>{LABEL_STYLES.find((s) => s.value === labelStyle)?.label}</span>
                 <Ms name="expand_more" />
               </button>
-              <Popover open={labelStyleOpen} onClose={() => setLabelStyleOpen(false)} side="bottom" align="end">
+              <Popover
+                open={labelStyleOpen}
+                onClose={() => setLabelStyleOpen(false)}
+                side="bottom"
+                align="end"
+              >
                 {LABEL_STYLES.map((s) => (
                   <MenuItem
                     key={s.value}
@@ -275,10 +286,7 @@ export function SettingsScreen() {
                 <div className="rtitle">Start minimized</div>
                 <div className="rsub">Boot to the tray instead of opening the window</div>
               </div>
-              <Toggle
-                on={startMinimized}
-                onClick={() => void toggleStartMinimized()}
-              />
+              <Toggle on={startMinimized} onClick={() => void toggleStartMinimized()} />
             </div>
           )}
         </div>
@@ -293,9 +301,7 @@ export function SettingsScreen() {
             </div>
             <div className="rmain">
               <div className="rtitle">Audio engine</div>
-              <div className="rsub">
-                {engineDesc(backendNative)}
-              </div>
+              <div className="rsub">{engineDesc(backendNative)}</div>
             </div>
             {backendNative !== null && (
               <span className={"tag" + (backendNative ? " live" : "")}>
@@ -348,9 +354,8 @@ export function SettingsScreen() {
         confirmLabel="Reset everything"
         onConfirm={() => void invoke("reset_app").catch((e) => setError(String(e)))}
       >
-        Everything you've set up - channels, mixes, profiles, app assignments,
-        history and preferences - is permanently deleted, and Sink relaunches
-        as if freshly installed.
+        Everything you've set up - channels, mixes, profiles, app assignments, history and
+        preferences - is permanently deleted, and Sink relaunches as if freshly installed.
       </ConfirmModal>
     </div>
   );
