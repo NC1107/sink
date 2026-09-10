@@ -10,8 +10,8 @@ pub mod hotkeys;
 pub mod mic;
 pub mod outputs;
 pub mod prefs;
-pub mod seen;
 pub mod profiles;
+pub mod seen;
 pub mod wireplumber;
 
 /// Seconds since the Unix epoch, or 0 if the clock predates it.
@@ -152,11 +152,17 @@ mod tests {
 
         // A shorter follow-up must fully replace, not overlay, the old bytes.
         write_atomic(&path, b"second, longer contents").expect("overwrite");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "second, longer contents");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "second, longer contents"
+        );
 
         let mut tmp = path.as_os_str().to_owned();
         tmp.push(".tmp");
-        assert!(!std::path::Path::new(&tmp).exists(), "temp file must not linger");
+        assert!(
+            !std::path::Path::new(&tmp).exists(),
+            "temp file must not linger"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

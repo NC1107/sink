@@ -67,8 +67,7 @@ impl BiquadCoeffs {
                 // Shelf slope form: alpha from S, the cookbook's
                 // "shelf slope" parameterization.
                 let s = q;
-                let alpha =
-                    sin_w0 / 2.0 * ((a + 1.0 / a) * (1.0 / s - 1.0) + 2.0).max(0.0).sqrt();
+                let alpha = sin_w0 / 2.0 * ((a + 1.0 / a) * (1.0 / s - 1.0) + 2.0).max(0.0).sqrt();
                 let two_sqrt_a_alpha = 2.0 * a.sqrt() * alpha;
                 let (ap1, am1) = (a + 1.0, a - 1.0);
                 if kind == EqBandKind::LowShelf {
@@ -303,8 +302,13 @@ impl EqEngine {
         self.count = params.band_count.load(Ordering::Relaxed).min(MAX_EQ_BANDS);
         for i in 0..self.count {
             let band = params.bands[i].load();
-            self.coeffs[i] =
-                BiquadCoeffs::design(band.kind, band.freq_hz, band.gain_db, band.q, self.sample_rate);
+            self.coeffs[i] = BiquadCoeffs::design(
+                band.kind,
+                band.freq_hz,
+                band.gain_db,
+                band.q,
+                self.sample_rate,
+            );
         }
     }
 
@@ -343,8 +347,8 @@ mod tests {
         let num_im = -(b1 * w.sin() + b2 * (2.0 * w).sin());
         let den_re = 1.0 + a1 * w.cos() + a2 * (2.0 * w).cos();
         let den_im = -(a1 * w.sin() + a2 * (2.0 * w).sin());
-        let mag = ((num_re * num_re + num_im * num_im) / (den_re * den_re + den_im * den_im))
-            .sqrt();
+        let mag =
+            ((num_re * num_re + num_im * num_im) / (den_re * den_re + den_im * den_im)).sqrt();
         (20.0 * mag.log10()) as f32
     }
 
@@ -395,7 +399,10 @@ mod tests {
         let c = BiquadCoeffs::design(EqBandKind::LowShelf, 200.0, 6.0, 0.71, SR);
         let low = measured_gain_db(&c, 40.0, SR);
         let high = measured_gain_db(&c, 4000.0, SR);
-        assert!((low - 6.0).abs() < 0.5, "low end should be ~+6 dB, got {low}");
+        assert!(
+            (low - 6.0).abs() < 0.5,
+            "low end should be ~+6 dB, got {low}"
+        );
         assert!(high.abs() < 0.5, "high end should be flat, got {high}");
     }
 
@@ -405,7 +412,10 @@ mod tests {
         let low = measured_gain_db(&c, 200.0, SR);
         let high = measured_gain_db(&c, 15000.0, SR);
         assert!(low.abs() < 0.5, "low end should be flat, got {low}");
-        assert!((high + 6.0).abs() < 0.6, "high end should be ~-6 dB, got {high}");
+        assert!(
+            (high + 6.0).abs() < 0.6,
+            "high end should be ~-6 dB, got {high}"
+        );
     }
 
     #[test]
@@ -414,7 +424,10 @@ mod tests {
         let pass = measured_gain_db(&c, 100.0, SR);
         let stop = measured_gain_db(&c, 8000.0, SR);
         assert!(pass.abs() < 0.5, "passband should be flat, got {pass}");
-        assert!(stop < -30.0, "stopband should be strongly attenuated, got {stop}");
+        assert!(
+            stop < -30.0,
+            "stopband should be strongly attenuated, got {stop}"
+        );
     }
 
     #[test]
@@ -422,7 +435,10 @@ mod tests {
         let c = BiquadCoeffs::design(EqBandKind::HighPass, 1000.0, 0.0, 0.71, SR);
         let stop = measured_gain_db(&c, 100.0, SR);
         let pass = measured_gain_db(&c, 8000.0, SR);
-        assert!(stop < -30.0, "stopband should be strongly attenuated, got {stop}");
+        assert!(
+            stop < -30.0,
+            "stopband should be strongly attenuated, got {stop}"
+        );
         assert!(pass.abs() < 0.5, "passband should be flat, got {pass}");
     }
 
@@ -441,7 +457,10 @@ mod tests {
         assert_eq!(engine.coeffs[0], expected);
 
         // A second apply with different bands is picked up on next refresh.
-        params.apply(&config(vec![band(EqBandKind::HighPass, 80.0, 0.0, 0.71)], 0.0));
+        params.apply(&config(
+            vec![band(EqBandKind::HighPass, 80.0, 0.0, 0.71)],
+            0.0,
+        ));
         engine.refresh(&params);
         assert_eq!(engine.count, 1);
         let expected = BiquadCoeffs::design(EqBandKind::HighPass, 80.0, 0.0, 0.71, SR);
@@ -492,7 +511,14 @@ mod tests {
     #[test]
     fn cascade_of_ten_flat_bands_is_still_flat() {
         let bands: Vec<EqBand> = (0..MAX_EQ_BANDS)
-            .map(|i| band(EqBandKind::Peaking, 100.0 * (i as f32 + 1.0) * 2.0, 0.0, 1.0))
+            .map(|i| {
+                band(
+                    EqBandKind::Peaking,
+                    100.0 * (i as f32 + 1.0) * 2.0,
+                    0.0,
+                    1.0,
+                )
+            })
             .collect();
         let params = EqParams::from_config(&config(bands, 0.0));
         let mut engine = EqEngine::new(SR);
@@ -524,7 +550,13 @@ mod tests {
         engine.process_interleaved(&mut buf, &params);
         let right_energy: f32 = buf.iter().skip(1).step_by(2).map(|s| s.abs()).sum();
         assert_eq!(right_energy, 0.0, "silent right channel picked up energy");
-        let left_tail = buf[3000..].iter().step_by(2).fold(0.0f32, |m, s| m.max(s.abs()));
-        assert!(left_tail < 0.01, "DC should be blocked on the left, got {left_tail}");
+        let left_tail = buf[3000..]
+            .iter()
+            .step_by(2)
+            .fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!(
+            left_tail < 0.01,
+            "DC should be blocked on the left, got {left_tail}"
+        );
     }
 }

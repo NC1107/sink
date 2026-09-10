@@ -86,9 +86,7 @@ export function ChannelApps({
 
   return (
     <Popover open={open} onClose={onClose} side="bottom" align="center" style={{ minWidth: 250 }}>
-      {entries.length === 0 && (
-        <div className="menu-item static muted">No apps discovered yet</div>
-      )}
+      {entries.length === 0 && <div className="menu-item static muted">No apps discovered yet</div>}
       {entries.map((entry) => (
         <MenuCheckItem key={entry.key} checked={entry.checked} onClick={() => toggle(entry)}>
           <span className="channel-apps-icon">

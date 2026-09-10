@@ -27,7 +27,10 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         .refresh_gate
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let mut streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
+    let mut streams = state
+        .backend
+        .list_app_streams()
+        .map_err(|e| e.to_string())?;
 
     // Desktop-entry resolution: real icon files and polished display names
     // ("spotify" binary → Spotify with its actual icon). Cached per identity.
@@ -199,7 +202,10 @@ pub fn init_virtual_devices(
     // Bring up the user's mixes and their memberships.
     let names: Vec<String> = defs.channels.iter().map(|c| c.name.clone()).collect();
     for bus in &buses.buses {
-        if let Err(e) = state.backend.create_bus(&bus.name, &prefs.decorate(&bus.label)) {
+        if let Err(e) = state
+            .backend
+            .create_bus(&bus.name, &prefs.decorate(&bus.label))
+        {
             eprintln!("sink: creating mix {} failed: {e}", bus.name);
             continue;
         }

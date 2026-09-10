@@ -79,7 +79,12 @@ pub trait AudioBackend: Send + Sync {
     /// no override, same as the direct path). Independent of the member's
     /// own volume/EQ and of what you hear locally - only that mix's
     /// recorders/listeners hear the difference. Native-only.
-    fn set_bus_member_gain(&self, bus_name: &str, member: &str, percent: u8) -> Result<(), SinkError>;
+    fn set_bus_member_gain(
+        &self,
+        bus_name: &str,
+        member: &str,
+        percent: u8,
+    ) -> Result<(), SinkError>;
 
     /// Monitor a channel/mix/mic on the system default output (session
     /// scoped, an extra passive link set). Native-only.

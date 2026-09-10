@@ -16,8 +16,7 @@ const BOTTOM = H - FOOT - 4;
 
 const dbToY = (db: number) =>
   TOP + ((EQ_GAIN_RANGE_DB - db) / (2 * EQ_GAIN_RANGE_DB)) * (BOTTOM - TOP);
-const yToDb = (y: number) =>
-  EQ_GAIN_RANGE_DB - ((y - TOP) / (BOTTOM - TOP)) * 2 * EQ_GAIN_RANGE_DB;
+const yToDb = (y: number) => EQ_GAIN_RANGE_DB - ((y - TOP) / (BOTTOM - TOP)) * 2 * EQ_GAIN_RANGE_DB;
 const fxToX = (fx: number) => LEFT + fx * (W - LEFT - RIGHT);
 const xToFx = (x: number) => (x - LEFT) / (W - LEFT - RIGHT);
 
@@ -149,19 +148,20 @@ export function EqCurve({ config, selected, onSelect, onBandChange }: Readonly<E
       aria-label="EQ frequency response"
     >
       {/* the plot area itself; everything textual sits outside it */}
-      <rect
-        className="eqm-plot"
-        x={LEFT}
-        y={TOP}
-        width={W - LEFT - RIGHT}
-        height={BOTTOM - TOP}
-      />
+      <rect className="eqm-plot" x={LEFT} y={TOP} width={W - LEFT - RIGHT} height={BOTTOM - TOP} />
 
       {/* frequency-region strip (above the plot). The gapped pills already
           delineate regions, so no full-height dividers clutter the plot. */}
       {regions.map(({ label, x0, x1 }) => (
         <g key={label}>
-          <rect className="eqm-region" x={x0 + 1} y={2} width={x1 - x0 - 2} height={HEAD - 4} rx={3} />
+          <rect
+            className="eqm-region"
+            x={x0 + 1}
+            y={2}
+            width={x1 - x0 - 2}
+            height={HEAD - 4}
+            rx={3}
+          />
           <text className="eqm-region-label" x={(x0 + x1) / 2} y={2 + (HEAD - 4) / 2 + 1}>
             {label}
           </text>
@@ -178,12 +178,7 @@ export function EqCurve({ config, selected, onSelect, onBandChange }: Readonly<E
         return (
           <g key={f}>
             <line className="eqm-grid" x1={x} x2={x} y1={TOP} y2={BOTTOM} />
-            <text
-              className="eqm-axis-label freq"
-              x={labelX}
-              y={H - 5}
-              style={{ textAnchor: edge }}
-            >
+            <text className="eqm-axis-label freq" x={labelX} y={H - 5} style={{ textAnchor: edge }}>
               {fmtFreq(f)}
             </text>
           </g>

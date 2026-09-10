@@ -43,7 +43,10 @@ pub fn route_app(state: &AppState, stream_index: u32, sink_name: &str) -> Result
     }
 
     // Assignments are per app, not per stream: siblings move too.
-    let streams = state.backend.list_app_streams().map_err(|e| e.to_string())?;
+    let streams = state
+        .backend
+        .list_app_streams()
+        .map_err(|e| e.to_string())?;
     let Some(stream) = streams.iter().find(|s| s.index == stream_index) else {
         // Vanished between the click and now; move the raw index anyway in
         // case the listing raced, with nothing to record against it.
@@ -164,7 +167,11 @@ pub fn set_monitor(
     {
         let mixer = state.lock_mixer()?;
         let known = sink_name == "sink_mic"
-            || mixer.channel_defs.channels.iter().any(|c| c.name == sink_name)
+            || mixer
+                .channel_defs
+                .channels
+                .iter()
+                .any(|c| c.name == sink_name)
             || mixer.buses.buses.iter().any(|b| b.name == sink_name);
         if !known {
             return Err(format!("unknown monitor target: {sink_name}"));

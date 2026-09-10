@@ -38,7 +38,10 @@ export function useFitScale(
       const height = chromeH + stripHeight;
       el.style.zoom = zoom;
       setFit((prev) =>
-        prev.scale === scale && prev.stripHeight === stripHeight && prev.width === width && prev.height === height
+        prev.scale === scale &&
+        prev.stripHeight === stripHeight &&
+        prev.width === width &&
+        prev.height === height
           ? prev
           : { scale, stripHeight, width, height },
       );

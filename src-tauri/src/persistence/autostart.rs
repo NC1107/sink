@@ -25,7 +25,10 @@ fn render_unit() -> Result<String, SinkError> {
     // however unlikely) don't split into command + arguments.
     let exe = format!(
         "\"{}\"",
-        exe.display().to_string().replace('\\', "\\\\").replace('"', "\\\"")
+        exe.display()
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
     );
     // Boot to tray on login when the user asked for it. Only the autostart
     // launch carries this flag, so manual launches still show the window.

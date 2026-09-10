@@ -103,10 +103,9 @@ mod tests {
 
     #[test]
     fn parses_comma_separated_values() {
-        let config = parse_autoeq(
-            "Preamp: -3,7 dB\nFilter 1: ON PK Fc 195 Hz Gain -7,3 dB Q 0,5\n",
-        )
-        .expect("parses");
+        let config =
+            parse_autoeq("Preamp: -3,7 dB\nFilter 1: ON PK Fc 195 Hz Gain -7,3 dB Q 0,5\n")
+                .expect("parses");
         assert_eq!(config.preamp_db, -3.7);
         assert_eq!(config.bands.len(), 1);
         let b = &config.bands[0];
@@ -118,10 +117,9 @@ mod tests {
 
     #[test]
     fn parses_preamp_and_peaking_filter() {
-        let config = parse_autoeq(
-            "Preamp: -6.0 dB\nFilter 1: ON PK Fc 105 Hz Gain -2.4 dB Q 0.70\n",
-        )
-        .expect("parses");
+        let config =
+            parse_autoeq("Preamp: -6.0 dB\nFilter 1: ON PK Fc 105 Hz Gain -2.4 dB Q 0.70\n")
+                .expect("parses");
         assert_eq!(config.preamp_db, -6.0);
         assert_eq!(config.bands.len(), 1);
         let b = &config.bands[0];
@@ -152,7 +150,10 @@ mod tests {
         )
         .expect("parses");
         assert_eq!(config.bands[0].kind, EqBandKind::LowShelf);
-        assert_eq!(config.bands[0].q, 0.71, "shelf without Q gets the slope default");
+        assert_eq!(
+            config.bands[0].q, 0.71,
+            "shelf without Q gets the slope default"
+        );
         assert_eq!(config.bands[1].kind, EqBandKind::HighShelf);
         assert_eq!(config.bands[2].kind, EqBandKind::HighPass);
     }
@@ -190,10 +191,9 @@ mod tests {
 
     #[test]
     fn out_of_range_values_are_clamped() {
-        let config = parse_autoeq(
-            "Preamp: -80.0 dB\nFilter 1: ON PK Fc 99999 Hz Gain 80 dB Q 900\n",
-        )
-        .expect("parses");
+        let config =
+            parse_autoeq("Preamp: -80.0 dB\nFilter 1: ON PK Fc 99999 Hz Gain 80 dB Q 900\n")
+                .expect("parses");
         assert_eq!(config.preamp_db, -24.0);
         assert_eq!(config.bands[0].freq_hz, 20000.0);
         assert_eq!(config.bands[0].gain_db, 24.0);

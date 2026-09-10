@@ -39,7 +39,12 @@ export function MixPopout({ busName }: Readonly<{ busName: string }>) {
     return () => clearInterval(id);
   }, [fetchBuses, fetchChannels]);
 
-  const carried = bus ? busMembers(bus, channels.map((c) => c.name)) : [];
+  const carried = bus
+    ? busMembers(
+        bus,
+        channels.map((c) => c.name),
+      )
+    : [];
 
   return (
     <div className="popout">
@@ -57,7 +62,12 @@ export function MixPopout({ busName }: Readonly<{ busName: string }>) {
         </div>
         <div data-tauri-drag-region className="hb-spacer" />
         <div className="wctl">
-          <button type="button" className="wbtn" aria-label="Minimize" onClick={() => void win.minimize()}>
+          <button
+            type="button"
+            className="wbtn"
+            aria-label="Minimize"
+            onClick={() => void win.minimize()}
+          >
             <Ms name="remove" />
           </button>
           <button

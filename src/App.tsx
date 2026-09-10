@@ -32,9 +32,7 @@ export default function App() {
   }, []);
 
   const current =
-    nav === "settings"
-      ? { label: "Settings" }
-      : (NAV.find((n) => n.id === nav) ?? NAV[0]);
+    nav === "settings" ? { label: "Settings" } : (NAV.find((n) => n.id === nav) ?? NAV[0]);
 
   let screen;
   if (nav === "mixer") screen = <MixerBoard />;

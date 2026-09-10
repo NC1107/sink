@@ -15,7 +15,12 @@ import type {
 // drag doesn't spawn a pactl subprocess per pixel. UI state updates
 // optimistically and immediately.
 const pendingInvokes = new Map<string, number>();
-function debouncedInvoke(key: string, cmd: string, args: Record<string, unknown>, onError: (e: unknown) => void) {
+function debouncedInvoke(
+  key: string,
+  cmd: string,
+  args: Record<string, unknown>,
+  onError: (e: unknown) => void,
+) {
   const existing = pendingInvokes.get(key);
   if (existing !== undefined) clearTimeout(existing);
   pendingInvokes.set(
@@ -76,7 +81,10 @@ interface MixerStore {
   /** App history (live + gone + ignored). */
   seenApps: SeenApp[];
   fetchSeenApps: () => Promise<void>;
-  setAppIgnored: (app: { match_prop: string; match_value: string }, ignored: boolean) => Promise<void>;
+  setAppIgnored: (
+    app: { match_prop: string; match_value: string },
+    ignored: boolean,
+  ) => Promise<void>;
   forgetApp: (app: { match_prop: string; match_value: string }) => Promise<void>;
   /** Pre-route an app that isn't currently running (null clears). */
   setAppAssignment: (
@@ -157,8 +165,7 @@ interface MixerStore {
 
 /** Structural equality via JSON, to skip no-op store writes on each poll and
  *  avoid re-rendering the whole board when nothing changed (TD-029). */
-const jsonEqual = (a: unknown, b: unknown): boolean =>
-  JSON.stringify(a) === JSON.stringify(b);
+const jsonEqual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 export const useMixerStore = create<MixerStore>((set, get) => ({
   channels: [],
@@ -310,26 +317,17 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
 
   setChannelVolume: async (sinkName, volume) => {
     set((s) => ({
-      channels: s.channels.map((c) =>
-        c.name === sinkName ? { ...c, volume_percent: volume } : c,
-      ),
+      channels: s.channels.map((c) => (c.name === sinkName ? { ...c, volume_percent: volume } : c)),
     }));
-    debouncedInvoke(
-      `chvol:${sinkName}`,
-      "set_channel_volume",
-      { sinkName, volume },
-      (e) => {
-        set({ error: String(e) });
-        void get().fetchChannels();
-      },
-    );
+    debouncedInvoke(`chvol:${sinkName}`, "set_channel_volume", { sinkName, volume }, (e) => {
+      set({ error: String(e) });
+      void get().fetchChannels();
+    });
   },
 
   toggleMute: async (sinkName, muted) => {
     set((s) => ({
-      channels: s.channels.map((c) =>
-        c.name === sinkName ? { ...c, muted } : c,
-      ),
+      channels: s.channels.map((c) => (c.name === sinkName ? { ...c, muted } : c)),
     }));
     try {
       await invoke("toggle_channel_mute", { sinkName, muted });
@@ -367,11 +365,8 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
         a.index === streamIndex ? { ...a, volume_percent: volume } : a,
       ),
     }));
-    debouncedInvoke(
-      `appvol:${streamIndex}`,
-      "set_app_volume",
-      { streamIndex, volume },
-      (e) => set({ error: String(e) }),
+    debouncedInvoke(`appvol:${streamIndex}`, "set_app_volume", { streamIndex, volume }, (e) =>
+      set({ error: String(e) }),
     );
   },
 
@@ -667,9 +662,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       buses: s.buses.map((b) => {
         if (b.name !== name || b.exclude === exclude) return b;
         // Preserve the carried set; only the stored representation flips.
-        const carried = b.exclude
-          ? all.filter((c) => !b.channels.includes(c))
-          : b.channels;
+        const carried = b.exclude ? all.filter((c) => !b.channels.includes(c)) : b.channels;
         return {
           ...b,
           exclude,
@@ -710,15 +703,18 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   setBusMemberGain: async (bus, member, percent) => {
     set((s) => ({
       buses: s.buses.map((b) =>
-        b.name === bus
-          ? { ...b, member_gains: { ...b.member_gains, [member]: percent } }
-          : b,
+        b.name === bus ? { ...b, member_gains: { ...b.member_gains, [member]: percent } } : b,
       ),
     }));
-    debouncedInvoke(`busgain:${bus}:${member}`, "set_bus_member_gain", { bus, member, percent }, (e) => {
-      set({ error: String(e) });
-      void get().fetchBuses();
-    });
+    debouncedInvoke(
+      `busgain:${bus}:${member}`,
+      "set_bus_member_gain",
+      { bus, member, percent },
+      (e) => {
+        set({ error: String(e) });
+        void get().fetchBuses();
+      },
+    );
   },
 
   openMixFaderWindow: async (bus) => {

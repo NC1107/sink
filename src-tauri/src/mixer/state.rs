@@ -144,7 +144,10 @@ mod tests {
         assert!(state.initialized);
         assert_eq!(state.channels[0].name, "sink_game");
         assert_eq!(state.channels[0].label, "Game");
-        assert!(state.channels.iter().all(|c| c.volume_percent == 100 && !c.muted));
+        assert!(state
+            .channels
+            .iter()
+            .all(|c| c.volume_percent == 100 && !c.muted));
     }
 
     #[test]
@@ -154,7 +157,9 @@ mod tests {
         let old = now - 30 * DAY;
         let mut state = MixerState::default();
         for value in ["plain", "assigned", "aliased"] {
-            state.seen.upsert("application.name", value, value, None, old);
+            state
+                .seen
+                .upsert("application.name", value, value, None, old);
         }
         state
             .assignments
@@ -239,7 +244,9 @@ mod tests {
             .assignments
             .set("application.name", "Firefox", "sink_game");
         assert_eq!(
-            state.plan_auto_routes(&[stream(7, 100, "Firefox", None)]).len(),
+            state
+                .plan_auto_routes(&[stream(7, 100, "Firefox", None)])
+                .len(),
             1
         );
 

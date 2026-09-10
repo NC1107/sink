@@ -39,7 +39,12 @@ export function TitleBar({ screen }: Readonly<{ screen: string }>) {
         {status}
       </div>
       <div className="wctl">
-        <button type="button" className="wbtn" aria-label="Minimize" onClick={() => void win.minimize()}>
+        <button
+          type="button"
+          className="wbtn"
+          aria-label="Minimize"
+          onClick={() => void win.minimize()}
+        >
           <Ms name="remove" />
         </button>
         <button

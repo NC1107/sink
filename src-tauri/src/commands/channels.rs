@@ -4,7 +4,6 @@ use crate::audio::types::VirtualSink;
 use crate::persistence::wireplumber;
 use crate::state::AppState;
 
-
 /// Create a new channel from a label and icon (sink name is generated).
 /// The new channel starts at 100%, unmuted, following the default output.
 #[tauri::command]
@@ -79,9 +78,12 @@ pub fn reorder_channels(state: State<'_, AppState>, order: Vec<String>) -> Resul
             .reorder(&order)
             .map_err(|e| e.to_string())?;
         // Keep the live strip list in the same order.
-        mixer
-            .channels
-            .sort_by_key(|c| order.iter().position(|n| n == &c.name).unwrap_or(usize::MAX));
+        mixer.channels.sort_by_key(|c| {
+            order
+                .iter()
+                .position(|n| n == &c.name)
+                .unwrap_or(usize::MAX)
+        });
         crate::commands::profiles::autosave_active(&mixer);
         mixer.channel_defs.clone()
     };

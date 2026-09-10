@@ -36,7 +36,12 @@ export function snappedWidth(current: number, boardW: number, chromeW: number): 
  * window turning into a thumbnail; past the cap a big window shows the
  * board at the cap with room to its right. `chromeH` is the board's
  * height minus a strip: group heads and padding. */
-export function fitBoard(availW: number, availH: number, boardW: number, chromeH: number): BoardFit {
+export function fitBoard(
+  availW: number,
+  availH: number,
+  boardW: number,
+  chromeH: number,
+): BoardFit {
   if (boardW <= 0 || availW <= 0 || availH <= 0) return { scale: 1, stripHeight: MIN_STRIP };
   const scale = snapScale(Math.min(availW / boardW, availH / (chromeH + MIN_STRIP), MAX_SCALE));
   // The cap is an on-screen length: a scaled-down board may use taller strips.
@@ -59,4 +64,3 @@ export function windowSize(boardW: number, chromeH: number, chrome: Size, work: 
     height: Math.min(Math.ceil(chromeH + 620 + chrome.height), Math.floor(work.height)),
   };
 }
-
