@@ -31,3 +31,4 @@ ashpd = { version = "0.13", default-features = false, features = ["tokio", "glob
 global-hotkey = "0.8"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", default-features = false, features = ["macros", "time"] }
+tauri-plugin-window-state = "2"
