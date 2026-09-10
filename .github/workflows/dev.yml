@@ -216,6 +216,24 @@ jobs:
             target/release/bundle/rpm/*.rpm
             target/release/bundle/appimage/*.AppImage
 
+      - name: Say where the builds are
+        run: |
+          {
+            echo "### Builds from this pull request"
+            echo
+            echo "Download **bundles** at the bottom of this run for the deb,"
+            echo "the rpm and the AppImage. They are built from this branch,"
+            echo "so you can install one and try the change yourself."
+            echo
+            echo "The Arch package is repackaged from the deb, so it is only"
+            echo "built on request: add the \`ci:arch\` label to the pull"
+            echo "request and it appears here as **sink-arch-package**."
+            echo
+            echo "Labels for the rest: \`ci:fedora\`, \`ci:debian\`,"
+            echo "\`ci:opensuse\`, \`ci:appimage\`, or \`ci:distros\` for all."
+            echo "Each installs the build on that distro and launches it."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Install what `bundles` built on each distro and launch it, which is what
   # catches a missing runtime dependency or a packaging mistake. Not required
   # to merge: release.yml runs the same gate before it publishes anything.
@@ -286,6 +304,9 @@ jobs:
               chown -R builder:builder /build
               sudo -u builder bash -lc 'cd /build && makepkg --noconfirm --nodeps'
               pacman -U --noconfirm /build/sink-bin-*-x86_64.pkg.tar.zst
+              # Keep it: this is the only package the pr does not already
+              # build, and someone may want to install it themselves.
+              cp /build/sink-bin-*-x86_64.pkg.tar.zst .
               ;;
             fedora)
               dnf -y install "$rpm"
@@ -313,3 +334,10 @@ jobs:
           else
             packaging/smoke-test.sh
           fi
+
+      - name: Attach the Arch package
+        if: matrix.distro == 'arch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: sink-arch-package
+          path: sink-bin-*-x86_64.pkg.tar.zst
