@@ -131,23 +131,7 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
         return None;
     }
     let name = name?;
-    // Skip launcher prefixes (env FOO=1, sh -c, flatpak-spawn --host).
-    let exec_base = exec.and_then(|e| {
-        let first = e.split_whitespace().find(|t| {
-            let base = Path::new(t)
-                .file_name()
-                .map(|f| f.to_string_lossy().into_owned());
-            !(t.contains('=')
-                || t.starts_with('-')
-                || matches!(
-                    base.as_deref(),
-                    Some("env" | "sh" | "bash" | "flatpak-spawn")
-                ))
-        })?;
-        Path::new(first)
-            .file_name()
-            .map(|f| f.to_string_lossy().to_lowercase())
-    });
+    let exec_base = exec.as_deref().and_then(exec_program);
     Some(DesktopEntry {
         id: path
             .file_stem()
@@ -158,6 +142,81 @@ fn parse_desktop_file(path: &Path) -> Option<DesktopEntry> {
         icon,
         exec_base,
         wm_class_lower: wm_class.map(|w| w.to_lowercase()),
+    })
+}
+
+/// Exec split the way the spec reads it: double quotes group a word,
+/// backslashes escape inside them.
+fn exec_tokens(exec: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut word = String::new();
+    let (mut quoted, mut started) = (false, false);
+    let mut chars = exec.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                started = true;
+            }
+            '\\' if quoted => {
+                if let Some(escaped) = chars.next() {
+                    word.push(escaped);
+                }
+            }
+            c if c.is_whitespace() && !quoted => {
+                if started {
+                    tokens.push(std::mem::take(&mut word));
+                    started = false;
+                }
+            }
+            c => {
+                word.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        tokens.push(word);
+    }
+    tokens
+}
+
+/// The program an Exec line runs, past the wrappers that only set it up
+/// (env FOO=1, sh -c, flatpak-spawn --host, gamescope -W 1920 -- game) and
+/// the field codes after it. A `--` ends the wrapper's own arguments.
+fn exec_program(exec: &str) -> Option<String> {
+    const WRAPPERS: [&str; 10] = [
+        "env",
+        "sh",
+        "bash",
+        "flatpak-spawn",
+        "gamescope",
+        "gamemoderun",
+        "mangohud",
+        "prime-run",
+        "optirun",
+        "nice",
+    ];
+    let tokens = exec_tokens(exec);
+    let after_dashes = tokens.iter().position(|t| t == "--").map_or(0, |i| i + 1);
+    tokens.into_iter().skip(after_dashes).find_map(|token| {
+        // An env assignment, an option, an option's numeric value, or the
+        // wrapper itself.
+        if token.starts_with('-')
+            || (token.contains('=') && !token.starts_with('/'))
+            || token.chars().all(|c| c.is_ascii_digit())
+        {
+            return None;
+        }
+        // A quoted path keeps its spaces; `sh -c "... /x/game --flag"` leaves
+        // a whole command line in one token, whose last path is the program.
+        let base = Path::new(&token).file_name().and_then(|f| {
+            f.to_string_lossy()
+                .split_whitespace()
+                .next()
+                .map(str::to_lowercase)
+        })?;
+        (!WRAPPERS.contains(&base.as_str())).then_some(base)
     })
 }
 
@@ -241,7 +300,9 @@ fn exe_basename(pid: u32) -> Option<String> {
 fn load_desktops() -> Vec<DesktopEntry> {
     let mut entries = Vec::new();
     for dir in desktop_dirs() {
-        let Ok(read) = fs::read_dir(&dir) else { continue };
+        let Ok(read) = fs::read_dir(&dir) else {
+            continue;
+        };
         for file in read.flatten() {
             let path = file.path();
             if path.extension().is_some_and(|e| e == "desktop") {
@@ -491,6 +552,42 @@ mod tests {
         assert_eq!(entry.exec_base.as_deref(), Some("coolapp"));
         assert_eq!(entry.wm_class_lower.as_deref(), Some("coolapp"));
         assert_eq!(entry.icon.as_deref(), Some("coolapp"));
+    }
+
+    #[test]
+    fn exec_lines_yield_the_program_they_run() {
+        assert_eq!(
+            exec_program("/usr/bin/coolapp --flag %U").as_deref(),
+            Some("coolapp")
+        );
+        assert_eq!(
+            exec_program("env FOO=1 BAR=x /usr/bin/coolapp").as_deref(),
+            Some("coolapp")
+        );
+        assert_eq!(
+            exec_program("\"/opt/My App/app\" %U").as_deref(),
+            Some("app"),
+            "a quoted path with a space stays one token"
+        );
+        assert_eq!(
+            exec_program("gamescope -W 1920 -H 1080 -- /usr/games/realgame %U").as_deref(),
+            Some("realgame")
+        );
+        assert_eq!(
+            exec_program("sh -c \"cd /opt/x && /opt/x/game --flag\"").as_deref(),
+            Some("game"),
+            "a shell one-liner names its program last"
+        );
+        assert_eq!(
+            exec_program("flatpak-spawn --host mangohud /usr/bin/game").as_deref(),
+            Some("game")
+        );
+        assert_eq!(
+            exec_program("\"/opt/Dir \\\"q\\\"/app\" --x").as_deref(),
+            Some("app"),
+            "escaped quotes inside a quoted word"
+        );
+        assert_eq!(exec_program("env FOO=1"), None);
     }
 
     fn entry(name: &str, exec: &str) -> DesktopEntry {

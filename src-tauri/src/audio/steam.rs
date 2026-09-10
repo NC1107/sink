@@ -25,6 +25,7 @@ fn steam_roots() -> Vec<PathBuf> {
         roots.push(home.join(".local/share/Steam"));
         roots.push(home.join(".steam/steam"));
         roots.push(home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"));
+        roots.push(home.join("snap/steam/common/.local/share/Steam"));
     }
     roots
 }
