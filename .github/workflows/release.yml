@@ -112,9 +112,11 @@ jobs:
             IFS=. read -r ma mi pa <<< "$latest"
             ver="$ma.$mi.$((pa + 1))"; tag="dev"; pre=true
           fi
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$ver"
+            echo "tag=$tag"
+            echo "prerelease=$pre"
+          } >> "$GITHUB_OUTPUT"
           echo "Publishing $tag (version $ver, prerelease=$pre)"
 
       - name: Stamp version into the build
