@@ -199,12 +199,19 @@ fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
     icons_by_identity.retain(|key, _| live.contains(key));
     for stream in streams.iter_mut() {
         let key = identity_key(&stream.match_prop, &stream.match_value);
-        let facts = icons_by_identity
-            .entry(key)
-            .or_insert_with(|| icon_facts(stream));
-        stream.icon_path = facts.icon_path.clone();
-        if let Some(name) = &facts.display_name {
-            stream.app_name = name.clone();
+        // An unsettled stream's facts may still change; look them up but
+        // don't keep them.
+        let facts = match icons_by_identity.get(&key) {
+            Some(facts) => facts.clone(),
+            None if stream.settled => icons_by_identity
+                .entry(key)
+                .or_insert_with(|| icon_facts(stream))
+                .clone(),
+            None => icon_facts(stream),
+        };
+        stream.icon_path = facts.icon_path;
+        if let Some(name) = facts.display_name {
+            stream.app_name = name;
         }
     }
 }

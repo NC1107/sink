@@ -198,6 +198,10 @@ fn exec_program(exec: &str) -> Option<String> {
         "nice",
     ];
     let tokens = exec_tokens(exec);
+    // `sh -c "..."` runs a command line, not a program to name.
+    if tokens.iter().any(|t| t == "-c") {
+        return None;
+    }
     let after_dashes = tokens.iter().position(|t| t == "--").map_or(0, |i| i + 1);
     tokens.into_iter().skip(after_dashes).find_map(|token| {
         // An env assignment, an option, an option's numeric value, or the
@@ -208,14 +212,10 @@ fn exec_program(exec: &str) -> Option<String> {
         {
             return None;
         }
-        // A quoted path keeps its spaces; `sh -c "... /x/game --flag"` leaves
-        // a whole command line in one token, whose last path is the program.
-        let base = Path::new(&token).file_name().and_then(|f| {
-            f.to_string_lossy()
-                .split_whitespace()
-                .next()
-                .map(str::to_lowercase)
-        })?;
+        // A quoted path keeps its spaces, basename included.
+        let base = Path::new(&token)
+            .file_name()
+            .map(|f| f.to_string_lossy().to_lowercase())?;
         (!WRAPPERS.contains(&base.as_str())).then_some(base)
     })
 }
@@ -574,9 +574,14 @@ mod tests {
             Some("realgame")
         );
         assert_eq!(
-            exec_program("sh -c \"cd /opt/x && /opt/x/game --flag\"").as_deref(),
-            Some("game"),
-            "a shell one-liner names its program last"
+            exec_program("sh -c \"cd /opt/x && /opt/x/game --flag\""),
+            None,
+            "a shell one-liner cannot be read"
+        );
+        assert_eq!(
+            exec_program("\"/opt/games/My Game.sh\" %U").as_deref(),
+            Some("my game.sh"),
+            "a basename with a space stays whole"
         );
         assert_eq!(
             exec_program("flatpak-spawn --host mangohud /usr/bin/game").as_deref(),

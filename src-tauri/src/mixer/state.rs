@@ -123,13 +123,18 @@ impl MixerState {
         planned
     }
 
-    /// The channel a stream's rules send it to: its identity's rule, else a
-    /// rule keyed on the stream's own props. A stream with no trusted
-    /// process never adopts, so its legacy rule keeps routing it this way.
+    /// The channel a stream's rules send it to: its identity's rule, or for
+    /// an identity that cannot adopt (no trusted process), a rule keyed on
+    /// the stream's own props. A process identity never falls back: its
+    /// legacy rules were adopted once, and a rule the user then cleared
+    /// must stay cleared.
     fn rule_for(&self, stream: &AppStream) -> Option<String> {
         self.assignments
             .sink_for(&stream.match_prop, &stream.match_value)
             .or_else(|| {
+                if crate::audio::identity::is_process_prop(&stream.match_prop) {
+                    return None;
+                }
                 crate::audio::identity::legacy_matchers(&stream.props)
                     .iter()
                     .find_map(|(prop, value)| self.assignments.sink_for(prop, value))
@@ -304,6 +309,23 @@ mod tests {
             state.plan_auto_routes(&[s]),
             vec![(3, "sink_music".to_string(), "Unknown".to_string())]
         );
+    }
+
+    #[test]
+    fn a_cleared_rule_on_a_process_identity_stays_cleared() {
+        // The legacy rule is kept on disk (it may route another app), but
+        // once adopted and then cleared it must not route this app again.
+        let mut state = MixerState::default();
+        state.init_defaults();
+        state
+            .assignments
+            .set("application.name", "Discord", "sink_voice");
+        let mut s = stream(3, 30, "Discord", None);
+        s.match_prop = "process.exe".into();
+        s.match_value = "discord".into();
+        s.props
+            .insert("application.name".to_string(), "Discord".to_string());
+        assert!(state.plan_auto_routes(&[s]).is_empty());
     }
 
     #[test]
