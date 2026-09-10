@@ -85,11 +85,13 @@ fn parse_pid(v: Option<&String>) -> Option<u32> {
 }
 
 /// Sandboxed clients report their in-sandbox pid, someone else on the host.
-/// The daemon's peer pid is kernel-verified (pipewire-pulse sets it from
-/// the socket's credentials too), so when it is there it is the only word
-/// that counts: a client naming another process's pid would otherwise
-/// inherit that process's rules. Without one (the pactl backend), the
-/// claimed pid must at least be running the claimed binary.
+/// A native client's peer pid is kernel-verified and must agree with the
+/// pid it reports, or a client naming another process's pid would inherit
+/// that process's rules. A pipewire-pulse client's verified pid is the
+/// bridge's own, so its claim is all there is: it must be running the
+/// claimed binary (or a loader like Wine's, which hides it). That is what
+/// the pactl backend has for every stream too. A same-user process that
+/// lies here gains nothing it could not get by editing the config files.
 fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option<u32> {
     if props.contains_key("pipewire.access.portal.app_id")
         || props.get("pipewire.access").map(String::as_str) == Some("flatpak")
@@ -97,12 +99,15 @@ fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option
         return None;
     }
     let reported = parse_pid(props.get("application.process.id"))?;
-    if let Some(verified) = parse_pid(props.get("pipewire.sec.pid")) {
-        return (verified == reported).then_some(reported);
+    let claim_only = props.get("client.api").map(String::as_str) == Some("pipewire-pulse");
+    match parse_pid(props.get("pipewire.sec.pid")) {
+        Some(verified) if verified == reported => return Some(reported),
+        Some(_) if !claim_only => return None,
+        _ => {}
     }
     let binary = props.get("application.process.binary")?;
     let exe = proc.exe_basename(reported)?;
-    exe.eq_ignore_ascii_case(binary.trim()).then_some(reported)
+    (exe.eq_ignore_ascii_case(binary.trim()) || types::is_wrapper_exe(&exe)).then_some(reported)
 }
 
 fn identity(prop: &str, value: &str, display: String, pid: Option<u32>) -> Identity {
@@ -367,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn a_loader_running_the_claimed_binary_is_trusted_only_on_the_daemons_word() {
+    fn a_loader_running_the_claimed_binary_keeps_the_pid_trusted() {
         // Wine reports the .exe as the binary while /proc shows the loader.
         let mut proc = FakeProc::new();
         proc.exe.insert(500, "wine64");
@@ -375,7 +380,6 @@ mod tests {
             ("application.name", "Game"),
             ("application.process.binary", "Game.exe"),
             ("application.process.id", "500"),
-            ("pipewire.sec.pid", "500"),
         ]);
         let id = resolve_with(&p, &proc);
         assert_eq!(id.pid, Some(500));
@@ -385,18 +389,10 @@ mod tests {
             (id.prop.as_str(), id.value.as_str()),
             ("application.name", "Game")
         );
-
-        // Without the verified pid, a loader could be anyone's: not trusted.
-        let p = props(&[
-            ("application.name", "Game"),
-            ("application.process.binary", "Game.exe"),
-            ("application.process.id", "500"),
-        ]);
-        assert_eq!(resolve_with(&p, &proc).pid, None);
     }
 
     #[test]
-    fn a_claimed_pid_that_disagrees_with_the_verified_one_is_not_trusted() {
+    fn a_native_client_naming_another_process_is_not_trusted() {
         // A client names a running game's pid and binary as its own.
         let mut proc = FakeProc::new();
         proc.exe.insert(100, "cs2");
@@ -413,6 +409,33 @@ mod tests {
             (id.prop.as_str(), id.value.as_str()),
             ("application.name", "Impostor")
         );
+    }
+
+    #[test]
+    fn a_pulse_client_is_taken_at_its_word_when_the_binary_agrees() {
+        // pipewire-pulse connects for the app, so the verified pid is the
+        // bridge's; the app's own pid and binary are what libpulse reports.
+        let mut proc = FakeProc::new();
+        proc.exe.insert(15226, "discord");
+        proc.exe.insert(15300, "python3");
+        let mut base = vec![
+            ("client.api", "pipewire-pulse"),
+            ("pipewire.sec.pid", "1840"),
+            ("application.process.binary", "Discord"),
+        ];
+        base.push(("application.process.id", "15226"));
+        assert_eq!(resolve_with(&props(&base), &proc).pid, Some(15226));
+
+        // A wrapper exe cannot disagree, so the claim stands.
+        base.pop();
+        base.push(("application.process.id", "15300"));
+        assert_eq!(resolve_with(&props(&base), &proc).pid, Some(15300));
+
+        // A pid running something else is not this stream's.
+        proc.exe.insert(15400, "firefox");
+        base.pop();
+        base.push(("application.process.id", "15400"));
+        assert_eq!(resolve_with(&props(&base), &proc).pid, None);
     }
 
     #[test]
