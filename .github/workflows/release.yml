@@ -21,18 +21,22 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     permissions:
       contents: write
+      # Provenance: proves an artifact came from this repo's workflow.
+      id-token: write
+      attestations: write
     outputs:
       version: ${{ steps.ver.outputs.version }}
       tag: ${{ steps.ver.outputs.tag }}
       prerelease: ${{ steps.ver.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
           cache: npm
@@ -45,6 +49,7 @@ jobs:
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2.9.1
         with:
           workspaces: .
+          shared-key: sink
 
       - name: Install system dependencies
         env:
@@ -149,6 +154,14 @@ jobs:
           cat runtime payload.squashfs > "$app"
           chmod +x "$app"
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            target/release/bundle/appimage/sink_*.AppImage
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
+
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -167,7 +180,13 @@ jobs:
           - **.rpm** - Fedora / openSUSE and derivatives
           - **.pkg.tar.zst** - Arch (\`sudo pacman -U\`)
 
-          Requires PipeWire with \`pipewire-pulse\` and WirePlumber 0.5+."
+          Requires PipeWire with \`pipewire-pulse\` and WirePlumber 0.5+.
+
+          Every file above is checksummed in \`SHA256SUMS\` and carries a build
+          provenance attestation, so you can check where it came from:
+          \`\`\`
+          gh attestation verify sink_${{ steps.ver.outputs.version }}_amd64.deb --owner NC1107
+          \`\`\`"
           fi
           # Checksums over what this job builds, by basename, so users can
           # verify downloads. The Arch package is built later and appends its
@@ -186,6 +205,7 @@ jobs:
     name: Arch package
     needs: build
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: write
     container: archlinux:latest
@@ -194,7 +214,7 @@ jobs:
         # openssh: git's ssh:// transport for the AUR push (not in base-devel).
         run: pacman -Syu --noconfirm --needed base-devel git github-cli openssh
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Build and attach sink-bin
         env:
@@ -293,12 +313,13 @@ jobs:
     needs: build
     if: needs.build.outputs.prerelease == 'false'
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     container: fedora:latest
     steps:
       - name: Install tooling
         run: dnf -y install git copr-cli rpm-build rpmdevtools binutils tar gzip >/dev/null
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Publish sink to COPR
         env:
