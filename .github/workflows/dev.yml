@@ -3,6 +3,10 @@ name: Dev
 on:
   pull_request:
     branches: [main]
+    # `labeled` so adding a ci:<distro> label to an open pr starts the run
+    # that installs it there; without it a label changes nothing until the
+    # next push.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
       distros:
