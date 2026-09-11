@@ -148,7 +148,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
             <div className="menu-div" />
             <MenuCheckItem
               checked={bus.input}
-              title="Off: the mix sits with the output devices instead, and recorders capture its monitor"
+              title="Off: the mix sits with the output devices instead, captured as its monitor. A recorder that already has this mix selected has to pick it again."
               onClick={() => void setBusInput(bus.name, !bus.input)}
             >
               <span className="menu-item-label">Show as a recording device</span>

@@ -1540,12 +1540,14 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             let outputs = s
                 .nodes
                 .values()
+                // Where a channel may be sent: real devices only. One of
+                // our own nodes would feed itself.
                 .filter(|n| {
                     n.media_class == SINK_CLASS
                         && !n
                             .props
                             .get("node.name")
-                            .is_some_and(|name| is_virtual_sink(name))
+                            .is_some_and(|name| is_own_sink(name))
                 })
                 .map(|n| OutputDevice {
                     index: n.id,
