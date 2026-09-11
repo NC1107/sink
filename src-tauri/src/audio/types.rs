@@ -141,8 +141,7 @@ pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String
                 continue;
             }
             let quality = name_quality(&value);
-            // (map_or keeps MSRV 1.80 - Option::is_none_or is 1.82+.)
-            if best.as_ref().map_or(true, |(q, _, _)| quality > *q) {
+            if best.as_ref().is_none_or(|(q, _, _)| quality > *q) {
                 let stop = quality == 2;
                 best = Some((quality, key.to_string(), value));
                 if stop {

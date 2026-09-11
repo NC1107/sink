@@ -454,7 +454,7 @@ fn pick_desktop<'a>(
                     && candidates.iter().any(|c| c == &d.id)
                     && exe
                         .as_deref()
-                        .map_or(true, |e| d.exec_base.as_deref() == Some(e))
+                        .is_none_or(|e| d.exec_base.as_deref() == Some(e))
             })
             .or_else(|| {
                 // A runtime's entry (python3, java) would claim every app on it.
