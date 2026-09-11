@@ -33,7 +33,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const setBusMembers = useMixerStore((s) => s.setBusMembers);
   const setBusExclude = useMixerStore((s) => s.setBusExclude);
   const setBusMic = useMixerStore((s) => s.setBusMic);
-  const setBusInput = useMixerStore((s) => s.setBusInput);
+  const setBusRole = useMixerStore((s) => s.setBusRole);
   const micEnabled = useMixerStore((s) => s.micConfig?.enabled ?? false);
   const renameBus = useMixerStore((s) => s.renameBus);
   const removeBus = useMixerStore((s) => s.removeBus);
@@ -191,7 +191,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         </button>
       </div>
 
-      <MixRoleSelect input={bus.input} onChange={(input) => void setBusInput(bus.name, input)} />
+      <MixRoleSelect role={bus.role} onChange={(role) => void setBusRole(bus.name, role)} />
 
       <ConfirmModal
         open={confirmingDelete}

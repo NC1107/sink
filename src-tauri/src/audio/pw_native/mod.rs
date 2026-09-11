@@ -159,13 +159,18 @@ impl AudioBackend for PipeWireBackend {
         })
     }
 
-    fn create_bus(&self, name: &str, label: &str, input: bool) -> Result<(), SinkError> {
+    fn create_bus(
+        &self,
+        name: &str,
+        label: &str,
+        role: crate::persistence::buses::MixRole,
+    ) -> Result<(), SinkError> {
         let name = name.to_string();
         let label = label.to_string();
         self.request(|reply| Cmd::CreateBus {
             name,
             label,
-            input,
+            role,
             reply,
         })
     }

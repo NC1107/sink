@@ -80,7 +80,7 @@ pub fn run() {
             commands::buses::set_bus_members,
             commands::buses::set_bus_mic,
             commands::buses::set_bus_exclude,
-            commands::buses::set_bus_input,
+            commands::buses::set_bus_role,
             commands::buses::set_bus_volume,
             commands::buses::set_bus_mute,
             commands::buses::set_bus_member_gain,

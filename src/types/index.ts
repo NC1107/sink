@@ -128,6 +128,9 @@ export interface SeenApp {
 }
 
 /** A user-defined mix (record bus). The label is what recorders display. */
+/** Where a mix appears to the rest of the system. */
+export type MixRole = "recording" | "playback";
+
 export interface BusDef {
   name: string;
   label: string;
@@ -141,10 +144,8 @@ export interface BusDef {
   muted: boolean;
   /** Whether the processed virtual mic feeds this mix too. Persisted. */
   mic: boolean;
-  /** True: the mix is a recording device, which is what a recorder picks
-   *  from its input list. False: a playback device instead, still
-   *  recordable through its monitor. Persisted. */
-  input: boolean;
+  /** Which device list the mix shows up in. Persisted. */
+  role: MixRole;
   /** Per-member send level within this mix (0-150%); a member absent here
    *  carries at 100%. Keyed by channel sink name, or "sink_mic". */
   member_gains: Record<string, number>;

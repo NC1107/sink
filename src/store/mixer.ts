@@ -5,6 +5,7 @@ import type {
   BusDef,
   EqConfig,
   MicConfig,
+  MixRole,
   OutputDevice,
   ProfileInfo,
   SeenApp,
@@ -111,8 +112,8 @@ interface MixerStore {
   setBusExclude: (name: string, exclude: boolean) => Promise<void>;
   /** Whether the processed virtual mic feeds this mix too; persisted. */
   setBusMic: (name: string, mic: boolean) => Promise<void>;
-  /** Show the mix among the recording devices, or among the outputs. */
-  setBusInput: (name: string, input: boolean) => Promise<void>;
+  /** Which device list the mix shows up in. */
+  setBusRole: (name: string, role: MixRole) => Promise<void>;
   /** A mix's playback level for recorders (0-150%); persisted. */
   setBusVolume: (name: string, volume: number) => Promise<void>;
   /** Mute a mix for recorders; persisted. */
@@ -680,12 +681,12 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setBusInput: async (name, input) => {
+  setBusRole: async (name, role) => {
     set((s) => ({
-      buses: s.buses.map((b) => (b.name === name ? { ...b, input } : b)),
+      buses: s.buses.map((b) => (b.name === name ? { ...b, role } : b)),
     }));
     try {
-      await invoke("set_bus_input", { name, input });
+      await invoke("set_bus_role", { name, role });
     } catch (e) {
       set({ error: String(e) });
       await get().fetchBuses();

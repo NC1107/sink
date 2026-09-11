@@ -48,7 +48,7 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
     };
     if let Err(e) = state
         .backend
-        .create_bus(&def.name, &prefs.decorate(&def.label), def.input)
+        .create_bus(&def.name, &prefs.decorate(&def.label), def.role)
     {
         let mut mixer = state.lock_mixer()?;
         let _ = mixer.buses.remove(&def.name);
@@ -96,7 +96,7 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
         .map_err(|e| e.to_string())?;
     state
         .backend
-        .create_bus(&def.name, &prefs.decorate(&def.label), def.input)
+        .create_bus(&def.name, &prefs.decorate(&def.label), def.role)
         .map_err(|e| e.to_string())?;
     state
         .backend
@@ -121,16 +121,20 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
     Ok(())
 }
 
-/// Show a mix among the recording devices, or among the playback ones.
-/// A node cannot change its `media.class`, so this recreates it and puts
-/// the members, mic, level and sends back.
+/// Which device list a mix shows up in. A node cannot change its
+/// `media.class`, so this recreates it and puts the members, mic, level
+/// and sends back.
 #[tauri::command]
-pub fn set_bus_input(state: State<'_, AppState>, name: String, input: bool) -> Result<(), String> {
+pub fn set_bus_role(
+    state: State<'_, AppState>,
+    name: String,
+    role: crate::persistence::buses::MixRole,
+) -> Result<(), String> {
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
         let def = mixer
             .buses
-            .set_input(&name, input)
+            .set_role(&name, role)
             .map_err(|e| e.to_string())?;
         (
             def,
@@ -146,7 +150,7 @@ pub fn set_bus_input(state: State<'_, AppState>, name: String, input: bool) -> R
         .map_err(|e| e.to_string())?;
     state
         .backend
-        .create_bus(&def.name, &prefs.decorate(&def.label), def.input)
+        .create_bus(&def.name, &prefs.decorate(&def.label), def.role)
         .map_err(|e| e.to_string())?;
     state
         .backend

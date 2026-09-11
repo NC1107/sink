@@ -349,7 +349,12 @@ impl AudioBackend for PactlBackend {
         ))
     }
 
-    fn create_bus(&self, _name: &str, _label: &str, _input: bool) -> Result<(), SinkError> {
+    fn create_bus(
+        &self,
+        _name: &str,
+        _label: &str,
+        _role: crate::persistence::buses::MixRole,
+    ) -> Result<(), SinkError> {
         Err(SinkError::Config(
             "mix buses require the native PipeWire backend".into(),
         ))

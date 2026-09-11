@@ -96,7 +96,7 @@ pub enum Cmd {
     CreateBus {
         name: String,
         label: String,
-        input: bool,
+        role: crate::persistence::buses::MixRole,
         reply: Reply<()>,
     },
     /// Destroy a mix bus and its links.
@@ -1360,8 +1360,8 @@ enum NodeKind {
 }
 
 impl NodeKind {
-    fn mix(input: bool) -> Self {
-        if input {
+    fn mix(role: crate::persistence::buses::MixRole) -> Self {
+        if role.is_recording() {
             Self::MixSource
         } else {
             Self::MixSink
@@ -1598,10 +1598,10 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
         Cmd::CreateBus {
             name,
             label,
-            input,
+            role,
             reply,
         } => {
-            let kind = NodeKind::mix(input);
+            let kind = NodeKind::mix(role);
             let mut s = state.borrow_mut();
             if s.bus_sources.contains_key(&name) || s.node_by_name(&name).is_some() {
                 s.desired.insert(name, (label, kind)); // adopted - keep alive
@@ -2170,13 +2170,19 @@ mod tests {
 
     #[test]
     fn a_mix_takes_the_node_shape_its_role_asks_for() {
-        assert_eq!(NodeKind::mix(true).media_class(), VIRTUAL_SOURCE_CLASS);
-        assert_eq!(NodeKind::mix(false).media_class(), SINK_CLASS);
+        use crate::persistence::buses::MixRole;
+        assert_eq!(
+            NodeKind::mix(MixRole::Recording).media_class(),
+            VIRTUAL_SOURCE_CLASS
+        );
+        assert_eq!(NodeKind::mix(MixRole::Playback).media_class(), SINK_CLASS);
         // Both shapes are still a mix: the member, mic and send-level
         // commands all gate on that, and one of them is a sink.
-        assert!(NodeKind::mix(true).is_mix() && NodeKind::mix(false).is_mix());
+        assert!(
+            NodeKind::mix(MixRole::Recording).is_mix() && NodeKind::mix(MixRole::Playback).is_mix()
+        );
         assert!(!NodeKind::Channel.is_mix() && !NodeKind::Mic.is_mix());
-        assert!(NodeKind::mix(false).needs_monitor_volumes());
+        assert!(NodeKind::mix(MixRole::Playback).needs_monitor_volumes());
         assert_eq!(NodeKind::Mic.audio_position(), "[ MONO ]");
     }
 

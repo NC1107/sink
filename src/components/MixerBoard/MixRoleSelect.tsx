@@ -1,12 +1,12 @@
 import { useState } from "react";
+import type { MixRole } from "../../types";
 import { Ms } from "../Icons";
 import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 
 interface MixRoleSelectProps {
-  /** True: the mix is a recording device. False: a playback device. */
-  input: boolean;
-  onChange: (input: boolean) => void;
+  role: MixRole;
+  onChange: (role: MixRole) => void;
 }
 
 /**
@@ -15,9 +15,10 @@ interface MixRoleSelectProps {
  * devices", "Playback devices") so the label matches what the user sees
  * in their sound settings.
  */
-export function MixRoleSelect({ input, onChange }: Readonly<MixRoleSelectProps>) {
+export function MixRoleSelect({ role, onChange }: Readonly<MixRoleSelectProps>) {
   const [open, setOpen] = useState(false);
-  const pick = (value: boolean) => {
+  const recording = role === "recording";
+  const pick = (value: MixRole) => {
     onChange(value);
     setOpen(false);
   };
@@ -29,13 +30,13 @@ export function MixRoleSelect({ input, onChange }: Readonly<MixRoleSelectProps>)
         className="strip-route strip-route-btn"
         onClick={() => setOpen((o) => !o)}
         title={
-          input
+          recording
             ? "Shows up as a recording device, which is what a recorder captures"
             : "Shows up as a playback device; a recorder captures its monitor"
         }
       >
-        <Ms name={input ? "mic" : "speaker"} />
-        <span className="strip-route-name">{input ? "Recording" : "Playback"}</span>
+        <Ms name={recording ? "mic" : "speaker"} />
+        <span className="strip-route-name">{recording ? "Recording" : "Playback"}</span>
         <Ms name="expand_more" />
       </button>
       <Popover
@@ -47,18 +48,18 @@ export function MixRoleSelect({ input, onChange }: Readonly<MixRoleSelectProps>)
       >
         <MenuItem
           icon="mic"
-          selected={input}
+          selected={recording}
           showCheck
-          onClick={() => pick(true)}
+          onClick={() => pick("recording")}
           title="Where a recorder looks first"
         >
           Recording device
         </MenuItem>
         <MenuItem
           icon="speaker"
-          selected={!input}
+          selected={!recording}
           showCheck
-          onClick={() => pick(false)}
+          onClick={() => pick("playback")}
           title="Keeps the mix out of your microphone list; recorders capture its monitor"
         >
           Playback device
