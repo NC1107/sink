@@ -788,19 +788,6 @@ fn on_node(
         return;
     }
 
-    // The device the chain is pinned to turned up - plugged in, or
-    // installed by a tool like noisetorch that starts after we do.
-    if is_capture_class(&media_class)
-        && s.mic_config.enabled
-        && s.mic_config.input_device.as_deref() == Some(node_name.as_str())
-    {
-        s.mic_streams = None;
-        drop(s);
-        build_mic_streams(state);
-        ensure_all_links(state);
-        return;
-    }
-
     // The virtual mic source came up: attach the DSP streams and link it
     // into any mix that carries the mic.
     if media_class == VIRTUAL_SOURCE_CLASS && node_name == MIC_NODE {
@@ -825,6 +812,19 @@ fn on_node(
         return;
     }
 
+    // A chain waiting for its device: plugged in now, or installed by a
+    // tool that starts after we do.
+    if s.mic_streams.is_none()
+        && s.mic_config.enabled
+        && s.mic_config.input_device.as_deref() == Some(node_name.as_str())
+        && is_capture_class(&media_class)
+    {
+        drop(s);
+        build_mic_streams(state);
+        ensure_all_links(state);
+        return;
+    }
+
     drop(s);
     // A new hardware sink may be the (returning) target of a channel.
     if media_class == SINK_CLASS {
@@ -832,8 +832,7 @@ fn on_node(
     }
 }
 
-/// Something the mic chain could capture from: a real source, or a virtual
-/// one like noisetorch's or another app's.
+/// A virtual source counts: noisetorch and friends install their mic as one.
 fn is_capture_class(media_class: &str) -> bool {
     media_class == SOURCE_CLASS || media_class == VIRTUAL_SOURCE_CLASS
 }
@@ -848,11 +847,9 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
     if !s.mic_config.enabled {
         return;
     }
-    // A pinned device that is not here yet (noisetorch and friends install
-    // their source after we start) cannot be targeted: the session manager
-    // would connect the capture to whatever it likes instead, including our
-    // own virtual mic, and `dont-reconnect` then keeps it there. Wait for
-    // the node to appear - `on_node` builds the chain when it does.
+    // Targeting a device that is not here yet gets the capture connected
+    // to something else, which dont-reconnect then pins. Wait; `on_node`
+    // builds the chain when the device turns up.
     if let Some(pinned) = &s.mic_config.input_device {
         if !s
             .nodes
@@ -2105,8 +2102,6 @@ mod tests {
 
     #[test]
     fn a_mic_can_be_pinned_to_a_virtual_source_too() {
-        // noisetorch, easyeffects and the like install a virtual source,
-        // so the chain has to accept one as its capture device.
         assert!(is_capture_class(SOURCE_CLASS));
         assert!(is_capture_class(VIRTUAL_SOURCE_CLASS));
         assert!(!is_capture_class(SINK_CLASS));
