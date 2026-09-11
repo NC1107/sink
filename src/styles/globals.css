@@ -2020,8 +2020,11 @@ body,
   margin-left: calc(var(--sp-6) + 14px);
   position: relative;
 }
+/* No tile on a sub-row: it reads as subordinate, and the elbow can run to
+   the glyph instead of stopping at a box that paints over it. */
 .row.row-sub .ricon {
   opacity: 0.7;
+  background: none;
 }
 /* Drops from the centre of the parent's icon and turns in to meet the left
    edge of this row's. */
@@ -2031,7 +2034,8 @@ body,
   left: 0;
   top: -2px;
   bottom: 50%;
-  width: 14px;
+  /* Past the tile's padding, to the glyph itself. */
+  width: 26px;
   border-left: 1px solid var(--fg-muted);
   border-bottom: 1px solid var(--fg-muted);
   border-bottom-left-radius: 5px;
