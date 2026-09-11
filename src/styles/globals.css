@@ -2013,18 +2013,14 @@ body,
   transition: left 0.06s linear;
 }
 
-/* settings sub-row: indented dependent option (e.g. start minimized) */
 /* A setting that belongs to the one above it. The extra indent leaves the
    elbow room for its arm. */
 .row.row-sub {
   margin-left: calc(var(--sp-6) + 14px);
   position: relative;
 }
-/* No tile on a sub-row: it reads as subordinate, and the elbow can run to
-   the glyph instead of stopping at a box that paints over it. */
 .row.row-sub .ricon {
   opacity: 0.7;
-  background: none;
 }
 /* Drops from the centre of the parent's icon and turns in to meet the left
    edge of this row's. */
@@ -2032,12 +2028,12 @@ body,
   content: "";
   position: absolute;
   left: 0;
-  /* Up into the parent row, so the line leaves its icon rather than
-     starting in the gap below it. */
-  top: -13px;
+  /* Far enough up to tuck under the parent's tile, so the line leaves it
+     rather than starting in the gap below. */
+  top: -17px;
   bottom: 50%;
-  /* Past the tile's padding, to the glyph itself. */
-  width: 26px;
+  /* Stops where this row's tile starts. */
+  width: 14px;
   border-left: 1px solid var(--fg-muted);
   border-bottom: 1px solid var(--fg-muted);
   border-bottom-left-radius: 5px;
