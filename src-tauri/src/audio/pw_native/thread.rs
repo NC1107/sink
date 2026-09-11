@@ -386,6 +386,14 @@ fn setup_and_run(
                         s.meters.remove(&name);
                         s.adopted_sinks.remove(&name);
                     }
+                    // The mic chain's device left: unplugged, or a card that
+                    // switched profile. Drop the chain so it is rebuilt when
+                    // the device comes back rather than running on a corpse.
+                    if is_capture_class(&node.media_class)
+                        && s.mic_config.input_device.as_deref() == Some(name.as_str())
+                    {
+                        s.mic_streams = None;
+                    }
                     match s.desired.get(&name).cloned() {
                         Some((label, kind)) => {
                             // Drop any dangling proxy so the heal isn't
@@ -820,11 +828,30 @@ fn on_node(
         return;
     }
 
+    // A chain waiting for its device: plugged in now, or installed by a
+    // tool that starts after we do.
+    if s.mic_streams.is_none()
+        && s.mic_config.enabled
+        && s.mic_config.input_device.as_deref() == Some(node_name.as_str())
+        && is_capture_class(&media_class)
+    {
+        drop(s);
+        build_mic_streams(state);
+        ensure_all_links(state);
+        return;
+    }
+
     drop(s);
     // A new hardware sink may be the (returning) target of a channel.
     if media_class == SINK_CLASS {
         ensure_all_links(state);
     }
+}
+
+/// Both classes: a noise suppressor publishes its cleaned-up mic as a
+/// virtual source, not a real device, and the chain can capture either.
+fn is_capture_class(media_class: &str) -> bool {
+    media_class == SOURCE_CLASS || media_class == VIRTUAL_SOURCE_CLASS
 }
 
 /// (Re)build the mic capture/DSP/playback streams. The loop links the
@@ -836,6 +863,19 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
     let mut s = state.borrow_mut();
     if !s.mic_config.enabled {
         return;
+    }
+    // Targeting a device that is not here yet gets the capture connected
+    // to something else, which dont-reconnect then pins. Wait; `on_node`
+    // builds the chain when the device turns up.
+    if let Some(pinned) = &s.mic_config.input_device {
+        if !s
+            .nodes
+            .values()
+            .any(|n| n.props.get("node.name") == Some(pinned) && is_capture_class(&n.media_class))
+        {
+            eprintln!("sink: mic chain waiting for {pinned}");
+            return;
+        }
     }
     // Resolve "follow default" to the actual hardware source at build
     // time - the capture must be pinned (and must never point at our own
@@ -2129,6 +2169,14 @@ mod tests {
     #[test]
     fn resolve_source_prefers_live_eq_playback() {
         assert_eq!(resolve_source(Some(77), 10), 77);
+    }
+
+    #[test]
+    fn a_mic_can_be_pinned_to_a_virtual_source_too() {
+        assert!(is_capture_class(SOURCE_CLASS));
+        assert!(is_capture_class(VIRTUAL_SOURCE_CLASS));
+        assert!(!is_capture_class(SINK_CLASS));
+        assert!(!is_capture_class(STREAM_CLASS));
     }
 
     #[test]
