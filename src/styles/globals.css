@@ -2032,7 +2032,9 @@ body,
   content: "";
   position: absolute;
   left: 0;
-  top: -2px;
+  /* Up into the parent row, so the line leaves its icon rather than
+     starting in the gap below it. */
+  top: -13px;
   bottom: 50%;
   /* Past the tile's padding, to the glyph itself. */
   width: 26px;
