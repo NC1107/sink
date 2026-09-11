@@ -121,9 +121,9 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
     Ok(())
 }
 
-/// Show a mix among the recording devices (true) or the playback devices
-/// (false). The node carries its role in `media.class`, so switching means
-/// recreating it and putting its members, mic, level and sends back.
+/// Show a mix among the recording devices, or among the playback ones.
+/// A node cannot change its `media.class`, so this recreates it and puts
+/// the members, mic, level and sends back.
 #[tauri::command]
 pub fn set_bus_input(state: State<'_, AppState>, name: String, input: bool) -> Result<(), String> {
     let (def, defs, prefs, all) = {

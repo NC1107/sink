@@ -53,10 +53,10 @@ pub struct BusDef {
     /// member's own volume. Keyed by sink name, or "sink_mic".
     #[serde(default)]
     pub member_gains: HashMap<String, u8>,
-    /// Recording device (true) or playback device (false). A recorder picks
-    /// an input straight from its list, which is what a mix is usually for,
-    /// so this is on. Off puts the mix among the outputs instead, where it
-    /// stays recordable through its monitor and can be played into.
+    /// Recording device (true) or playback device (false). On, because a
+    /// recorder picks a mix straight out of its input list, which is what
+    /// most mixes are for. Off is for everyone else, whose input list this
+    /// would otherwise clutter.
     #[serde(default = "default_input")]
     pub input: bool,
 }
@@ -339,8 +339,8 @@ impl Buses {
         Ok(())
     }
 
-    /// Switch a mix between the recording and playback device lists,
-    /// returning the updated definition for the caller to rebuild from.
+    /// The updated definition comes back because the node has to be
+    /// rebuilt in the new shape from it.
     pub fn set_input(&mut self, name: &str, input: bool) -> Result<BusDef, SinkError> {
         let def = self
             .buses
@@ -611,7 +611,6 @@ mod tests {
         assert!(b.get(&mix.name).expect("mix").input, "a new mix too");
         assert!(b.set_input("sink_missing", false).is_err());
 
-        // sync_master preserves the role across membership resyncs.
         b.set_input("sink_stream", false).expect("sets the role");
         b.sync_master(&["sink_game".into()]);
         assert!(!b.get("sink_stream").expect("master").input);
