@@ -8,6 +8,7 @@ import { ConfirmModal } from "../ConfirmModal";
 import { MenuCheckItem, MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Fader } from "./Fader";
+import { MixRoleSelect } from "./MixRoleSelect";
 import { StripName } from "./StripName";
 import { VuMeter } from "./VuMeter";
 
@@ -146,14 +147,6 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
               </>
             )}
             <div className="menu-div" />
-            <MenuCheckItem
-              checked={bus.input}
-              title="Off: the mix sits with the output devices instead, captured as its monitor. A recorder that already has this mix selected has to pick it again."
-              onClick={() => void setBusInput(bus.name, !bus.input)}
-            >
-              <span className="menu-item-label">Show as a recording device</span>
-            </MenuCheckItem>
-            <div className="menu-div" />
             <MenuItem
               icon="open_in_new"
               onClick={() => {
@@ -198,7 +191,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         </button>
       </div>
 
-      <div className="strip-route" title={`Capture "${bus.label}" in OBS`} />
+      <MixRoleSelect input={bus.input} onChange={(input) => void setBusInput(bus.name, input)} />
 
       <ConfirmModal
         open={confirmingDelete}
