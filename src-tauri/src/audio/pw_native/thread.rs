@@ -22,7 +22,9 @@ use crate::audio::pw_native::meter::MeterHandle;
 use crate::audio::pw_native::mic::{MicStreams, MIC_NODE};
 use crate::audio::pw_native::pods;
 use crate::audio::pw_native::send_gain::SendGainHandle;
-use crate::audio::types::{is_virtual_sink, AppStream, EqConfig, MicConfig, OutputDevice};
+use crate::audio::types::{
+    is_own_sink, is_virtual_sink, AppStream, EqConfig, MicConfig, OutputDevice,
+};
 use crate::error::SinkError;
 use crate::persistence::buses::is_bus_name;
 
@@ -94,6 +96,7 @@ pub enum Cmd {
     CreateBus {
         name: String,
         label: String,
+        role: crate::persistence::buses::MixRole,
         reply: Reply<()>,
     },
     /// Destroy a mix bus and its links.
@@ -200,10 +203,10 @@ struct State {
     owned_sinks: HashMap<String, Node>,
     /// Sinks that existed before us (e.g. leftover pactl modules): name -> global id.
     adopted_sinks: HashMap<String, u32>,
-    /// Nodes that must stay alive: name -> (label, kind 0=sink 1=bus 2=mic).
+    /// Nodes that must stay alive, by name, with what to recreate them as.
     /// If one vanishes without us destroying it (another instance dying,
     /// a PipeWire restart, wpctl) it gets recreated on the spot.
-    desired: HashMap<String, (String, u8)>,
+    desired: HashMap<String, (String, NodeKind)>,
     /// Create requests waiting for the sink's global to appear.
     pending_creates: HashMap<String, Vec<Reply<()>>>,
     /// Live meter capture streams per virtual sink name.
@@ -368,7 +371,7 @@ fn setup_and_run(
                 enum Heal {
                     Nothing,
                     Relink,
-                    Recreate(String, String, u8),
+                    Recreate(String, String, NodeKind),
                 }
                 let heal = {
                     let mut s = state.borrow_mut();
@@ -388,13 +391,13 @@ fn setup_and_run(
                             // Drop any dangling proxy so the heal isn't
                             // blocked by a corpse.
                             match kind {
-                                0 => {
+                                NodeKind::Channel => {
                                     s.owned_sinks.remove(&name);
                                 }
-                                1 => {
+                                NodeKind::MixSource | NodeKind::MixSink => {
                                     s.bus_sources.remove(&name);
                                 }
-                                _ => {}
+                                NodeKind::Mic => {}
                             }
                             // A deliberate recreate (mic rename) already has
                             // a fresh proxy/node - don't double up. For the
@@ -403,7 +406,7 @@ fn setup_and_run(
                             // can't tell our own destroy from an external one;
                             // the expected-removals counter can.
                             let already_back = match kind {
-                                2 => {
+                                NodeKind::Mic => {
                                     if s.mic_expected_removals > 0 {
                                         s.mic_expected_removals -= 1;
                                         true
@@ -415,7 +418,9 @@ fn setup_and_run(
                                         false
                                     }
                                 }
-                                _ => s.node_by_name(&name).is_some(),
+                                NodeKind::Channel | NodeKind::MixSource | NodeKind::MixSink => {
+                                    s.node_by_name(&name).is_some()
+                                }
                             };
                             if already_back {
                                 Heal::Relink
@@ -446,13 +451,13 @@ fn setup_and_run(
                                 Ok(proxy) => {
                                     let mut s = state.borrow_mut();
                                     match kind {
-                                        0 => {
+                                        NodeKind::Channel => {
                                             s.owned_sinks.insert(name, proxy);
                                         }
-                                        1 => {
+                                        NodeKind::MixSource | NodeKind::MixSink => {
                                             s.bus_sources.insert(name, proxy);
                                         }
-                                        _ => s.mic_source = Some(proxy),
+                                        NodeKind::Mic => s.mic_source = Some(proxy),
                                     }
                                 }
                                 Err(e) => eprintln!("sink: recreate {name} failed: {e}"),
@@ -797,10 +802,13 @@ fn on_node(
         return;
     }
 
-    // A mix bus came up: meter it (direct source capture) and link members.
-    if media_class == VIRTUAL_SOURCE_CLASS && is_bus_name(&node_name) {
+    // A mix in the playback list has no source of its own to meter, so it
+    // is metered through its monitor, like a channel.
+    if (media_class == VIRTUAL_SOURCE_CLASS || media_class == SINK_CLASS) && is_bus_name(&node_name)
+    {
+        let from_monitor = media_class == SINK_CLASS;
         if !s.meters.contains_key(&node_name) {
-            match MeterHandle::new(core, &node_name, global.id, levels.clone(), false) {
+            match MeterHandle::new(core, &node_name, global.id, levels.clone(), from_monitor) {
                 Ok(meter) => {
                     s.meters.insert(node_name.clone(), meter);
                 }
@@ -923,7 +931,7 @@ fn desired_pairs(s: &State, channel_id: u32, target_id: u32) -> Vec<(u32, u32)> 
 /// device the OS would pick, consistently across distros.
 fn pick_fallback_sink<'a>(candidates: impl Iterator<Item = (u32, &'a str, i64)>) -> Option<u32> {
     candidates
-        .filter(|(_, name, _)| !is_virtual_sink(name))
+        .filter(|(_, name, _)| !is_own_sink(name))
         .max_by_key(|&(_, _, priority)| priority)
         .map(|(id, _, _)| id)
 }
@@ -1196,15 +1204,16 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
             .as_deref()
             .and_then(|name| node_ids.get(name).copied());
         let strict = s.channel_strict.contains(sink_name);
-        // A user can make one of our channels the system default; following
-        // it would loop every follow-default channel (and the channel's own
-        // EQ playback) back into it. Treat that as "no default" so the real
-        // device fallback applies - pick_fallback_sink never picks a
-        // virtual sink.
+        // A user can make one of our own nodes the system default - a
+        // channel, or a mix they moved into the playback list. Following it
+        // would loop every follow-default channel (and the channel's own EQ
+        // playback) back into it. Treat that as "no default" so the real
+        // device fallback applies - pick_fallback_sink never picks one of
+        // ours either.
         let default_id = s
             .default_sink_name
             .as_ref()
-            .filter(|name| !is_virtual_sink(name))
+            .filter(|name| !is_own_sink(name))
             .and_then(|name| node_ids.get(name))
             .copied();
         let target_id = resolve_target(explicit_id, pinned, strict, default_id, fallback);
@@ -1283,12 +1292,12 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     }
 
     // ---- monitor links (listen on the default output, session scoped) ----
-    // Same virtual-default guard as the channel links above: never treat
-    // one of our own channels as the listening device.
+    // Same guard as the channel links above: listening on one of our own
+    // nodes would feed it whatever it already carries.
     let default_id = s
         .default_sink_name
         .as_ref()
-        .filter(|name| !is_virtual_sink(name))
+        .filter(|name| !is_own_sink(name))
         .and_then(|name| node_ids.get(name))
         .copied();
     let monitored: Vec<String> = s.monitored.iter().cloned().collect();
@@ -1339,27 +1348,65 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     s.eq_desired_targets = eq_targets;
 }
 
-fn node_needs_monitor_volumes(kind: u8) -> bool {
-    kind == 0 || kind == 1
+/// A node Sink creates and keeps alive. A mix comes in two shapes because
+/// the user picks which device list it belongs in; nothing else about a mix
+/// depends on that, so the rest of the loop asks `is_mix`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NodeKind {
+    Channel,
+    MixSource,
+    MixSink,
+    Mic,
 }
 
-/// The three virtual node shapes we own (kind 0=channel sink, 1=mix bus,
-/// 2=virtual mic). The heal path mirrors the create handlers with this.
-fn create_node_object(core: &CoreRc, name: &str, label: &str, kind: u8) -> Result<Node, pw::Error> {
-    let class = if kind == 0 {
-        SINK_CLASS
-    } else {
-        VIRTUAL_SOURCE_CLASS
-    };
-    let position = if kind == 2 { "[ MONO ]" } else { "[ FL FR ]" };
+impl NodeKind {
+    fn mix(role: crate::persistence::buses::MixRole) -> Self {
+        if role.is_recording() {
+            Self::MixSource
+        } else {
+            Self::MixSink
+        }
+    }
+
+    fn is_mix(self) -> bool {
+        matches!(self, Self::MixSource | Self::MixSink)
+    }
+
+    fn media_class(self) -> &'static str {
+        match self {
+            Self::Channel | Self::MixSink => SINK_CLASS,
+            Self::MixSource | Self::Mic => VIRTUAL_SOURCE_CLASS,
+        }
+    }
+
+    fn audio_position(self) -> &'static str {
+        match self {
+            Self::Mic => "[ MONO ]",
+            _ => "[ FL FR ]",
+        }
+    }
+
+    /// Everything the user sets a level on needs its monitor to follow that
+    /// level; the mic chain sets its own gain upstream.
+    fn needs_monitor_volumes(self) -> bool {
+        !matches!(self, Self::Mic)
+    }
+}
+
+fn create_node_object(
+    core: &CoreRc,
+    name: &str,
+    label: &str,
+    kind: NodeKind,
+) -> Result<Node, pw::Error> {
     let mut props = pw::properties::properties! {
         "factory.name" => "support.null-audio-sink",
         "node.name" => name,
         "node.description" => label,
-        "media.class" => class,
-        "audio.position" => position,
+        "media.class" => kind.media_class(),
+        "audio.position" => kind.audio_position(),
     };
-    if node_needs_monitor_volumes(kind) {
+    if kind.needs_monitor_volumes() {
         props.insert("monitor.channel-volumes", "true");
     }
     core.create_object::<Node>("adapter", &props)
@@ -1372,7 +1419,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             if s.node_by_name(&name).is_some() {
                 // Already exists (e.g. leftover from a previous run) - the
                 // registry handler has adopted it. Still ours to keep alive.
-                s.desired.insert(name, (label, 0));
+                s.desired.insert(name, (label, NodeKind::Channel));
                 let _ = reply.send(Ok(()));
                 return;
             }
@@ -1401,7 +1448,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 // reply fires when the global appears in the registry.
                 Ok(proxy) => {
                     s.owned_sinks.insert(name.clone(), proxy);
-                    s.desired.insert(name.clone(), (label, 0));
+                    s.desired.insert(name.clone(), (label, NodeKind::Channel));
                     s.pending_creates.entry(name).or_default().push(reply);
                 }
                 Err(e) => {
@@ -1493,12 +1540,14 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             let outputs = s
                 .nodes
                 .values()
+                // Where a channel may be sent: real devices only. One of
+                // our own nodes would feed itself.
                 .filter(|n| {
                     n.media_class == SINK_CLASS
                         && !n
                             .props
                             .get("node.name")
-                            .is_some_and(|name| is_virtual_sink(name))
+                            .is_some_and(|name| is_own_sink(name))
                 })
                 .map(|n| OutputDevice {
                     index: n.id,
@@ -1546,10 +1595,16 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             let s = state.borrow();
             let _ = reply.send(set_props(s.nodes.get(&id), Some(percent), None));
         }
-        Cmd::CreateBus { name, label, reply } => {
+        Cmd::CreateBus {
+            name,
+            label,
+            role,
+            reply,
+        } => {
+            let kind = NodeKind::mix(role);
             let mut s = state.borrow_mut();
             if s.bus_sources.contains_key(&name) || s.node_by_name(&name).is_some() {
-                s.desired.insert(name, (label, 1)); // adopted - keep alive
+                s.desired.insert(name, (label, kind)); // adopted - keep alive
                 let _ = reply.send(Ok(()));
                 return;
             }
@@ -1557,9 +1612,9 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 let _ = reply.send(Err(SinkError::Config("core is gone".into())));
                 return;
             };
-            match create_node_object(&core, &name, &label, 1) {
+            match create_node_object(&core, &name, &label, kind) {
                 Ok(proxy) => {
-                    s.desired.insert(name.clone(), (label, 1));
+                    s.desired.insert(name.clone(), (label, kind));
                     s.bus_sources.insert(name, proxy);
                     let _ = reply.send(Ok(()));
                 }
@@ -1608,7 +1663,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 // but a deletion can race this queue: DestroyBus may land
                 // between that check and here, and a stale insert would be
                 // inherited by a same-named mix created later.
-                if !s.desired.get(&name).is_some_and(|(_, kind)| *kind == 1) {
+                if !s.desired.get(&name).is_some_and(|(_, kind)| kind.is_mix()) {
                     let _ = reply.send(Err(SinkError::UnknownSink(name)));
                     return;
                 }
@@ -1632,9 +1687,14 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 let mut s = state.borrow_mut();
                 // Same deletion race as SetBusMic: re-check both names
                 // against the loop's own live state before storing.
-                let bus_live = s.desired.get(&bus_name).is_some_and(|(_, kind)| *kind == 1);
+                let bus_live = s
+                    .desired
+                    .get(&bus_name)
+                    .is_some_and(|(_, kind)| kind.is_mix());
                 let member_live = member == MIC_NODE
-                    || s.desired.get(&member).is_some_and(|(_, kind)| *kind == 0);
+                    || s.desired
+                        .get(&member)
+                        .is_some_and(|(_, kind)| *kind == NodeKind::Channel);
                 if !bus_live || !member_live {
                     let _ = reply.send(Err(SinkError::UnknownSink(bus_name)));
                     return;
@@ -1836,8 +1896,10 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     Ok(proxy) => {
                         let mut s = state.borrow_mut();
                         s.mic_source = Some(proxy);
-                        s.desired
-                            .insert(MIC_NODE.to_string(), (config.output_label.clone(), 2));
+                        s.desired.insert(
+                            MIC_NODE.to_string(),
+                            (config.output_label.clone(), NodeKind::Mic),
+                        );
                         // Re-point streams that were capturing the old node
                         // (target.object by name survives the recreation -
                         // the session manager re-attaches them when the new
@@ -2071,9 +2133,9 @@ mod tests {
 
     #[test]
     fn mixes_get_monitor_volumes_like_channels() {
-        assert!(node_needs_monitor_volumes(0));
-        assert!(node_needs_monitor_volumes(1));
-        assert!(!node_needs_monitor_volumes(2));
+        assert!(NodeKind::Channel.needs_monitor_volumes());
+        assert!(NodeKind::MixSource.needs_monitor_volumes());
+        assert!(!NodeKind::Mic.needs_monitor_volumes());
     }
 
     #[test]
@@ -2104,6 +2166,24 @@ mod tests {
         let mut pairs = desired_pairs(&s, 10, 20);
         pairs.sort_unstable();
         assert_eq!(pairs, vec![(1, 2), (1, 3)]);
+    }
+
+    #[test]
+    fn a_mix_takes_the_node_shape_its_role_asks_for() {
+        use crate::persistence::buses::MixRole;
+        assert_eq!(
+            NodeKind::mix(MixRole::Recording).media_class(),
+            VIRTUAL_SOURCE_CLASS
+        );
+        assert_eq!(NodeKind::mix(MixRole::Playback).media_class(), SINK_CLASS);
+        // Both shapes are still a mix: the member, mic and send-level
+        // commands all gate on that, and one of them is a sink.
+        assert!(
+            NodeKind::mix(MixRole::Recording).is_mix() && NodeKind::mix(MixRole::Playback).is_mix()
+        );
+        assert!(!NodeKind::Channel.is_mix() && !NodeKind::Mic.is_mix());
+        assert!(NodeKind::mix(MixRole::Playback).needs_monitor_volumes());
+        assert_eq!(NodeKind::Mic.audio_position(), "[ MONO ]");
     }
 
     #[test]
@@ -2153,12 +2233,26 @@ mod tests {
     }
 
     #[test]
-    fn fallback_is_none_when_only_virtual_channel_sinks_exist() {
-        // Channel sinks are virtual and must never be a fallback target.
-        // (sink_mic/sink_stream are sources, excluded by media_class before
-        // reaching here - so they're not exercised at this layer.)
-        let candidates = [(1u32, "sink_game", 0i64), (2, "sink_chat", 0)];
+    fn fallback_is_none_when_only_our_own_sinks_exist() {
+        // Routing a channel into one of our own nodes feeds it back: a mix
+        // already receives every channel, and a channel receiving itself is
+        // a loop. A mix the user moved into the playback list is a sink and
+        // reaches this layer, unlike a mix left as a source.
+        let candidates = [
+            (1u32, "sink_game", 0i64),
+            (2, "sink_chat", 0),
+            (3, "sink_stream", 0),
+            (4, "sink_bus_voice_only", 0),
+        ];
         assert_eq!(pick_fallback_sink(candidates.into_iter()), None);
+
+        // A real device among them still wins.
+        let candidates = [
+            (1u32, "sink_game", 0i64),
+            (3, "sink_stream", 0),
+            (9, "alsa_output.pci-0000_00_1f.3.analog-stereo", 1000),
+        ];
+        assert_eq!(pick_fallback_sink(candidates.into_iter()), Some(9));
     }
 
     fn kv(pairs: &[(&str, &str)]) -> HashMap<String, String> {

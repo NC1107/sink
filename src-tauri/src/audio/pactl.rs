@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use serde::Deserialize;
 
 use crate::audio::backend::AudioBackend;
-use crate::audio::types::{is_virtual_sink, AppStream, OutputDevice};
+use crate::audio::types::{is_own_sink, is_virtual_sink, AppStream, OutputDevice};
 use crate::error::SinkError;
 
 /// `owner_module` value pactl uses when a sink has no owning module.
@@ -275,7 +275,7 @@ impl AudioBackend for PactlBackend {
     fn list_output_devices(&self) -> Result<Vec<OutputDevice>, SinkError> {
         Ok(Self::list_sinks()?
             .into_iter()
-            .filter(|s| !is_virtual_sink(&s.name))
+            .filter(|s| !is_own_sink(&s.name))
             .map(|s| OutputDevice {
                 index: s.index,
                 name: s.name,
@@ -349,7 +349,12 @@ impl AudioBackend for PactlBackend {
         ))
     }
 
-    fn create_bus(&self, _name: &str, _label: &str) -> Result<(), SinkError> {
+    fn create_bus(
+        &self,
+        _name: &str,
+        _label: &str,
+        _role: crate::persistence::buses::MixRole,
+    ) -> Result<(), SinkError> {
         Err(SinkError::Config(
             "mix buses require the native PipeWire backend".into(),
         ))

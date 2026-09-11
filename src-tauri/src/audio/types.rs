@@ -2,6 +2,14 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Any sink node Sink itself created: a channel, a service node, or a mix
+/// the user moved into the playback list. None of these is somewhere audio
+/// may be routed *to* as if it were an output - a mix already receives every
+/// channel, so sending a channel into one feeds it back into itself.
+pub fn is_own_sink(name: &str) -> bool {
+    name.starts_with("sink_")
+}
+
 /// True if `sink_name` is one of our managed virtual channels. Channels
 /// are user-defined (see persistence::channels) but always carry the
 /// `sink_` prefix; Sink's own service nodes and mix buses are excluded,
@@ -150,6 +158,33 @@ pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String
             "application.name".to_string(),
             "Unknown".to_string(),
         ),
+    }
+}
+
+#[cfg(test)]
+mod own_sink_tests {
+    use super::*;
+
+    #[test]
+    fn every_node_we_create_counts_as_ours() {
+        // Whatever list the user puts a mix in, audio must never be routed
+        // into it as if it were an output.
+        for name in [
+            "sink_game",
+            "sink_music",
+            "sink_stream",
+            "sink_bus_voice_only",
+            "sink_mic",
+        ] {
+            assert!(is_own_sink(name), "{name}");
+        }
+        for name in [
+            "alsa_output.pci-0000_00_1f.3.analog-stereo",
+            "bluez_output.AA_BB",
+            "",
+        ] {
+            assert!(!is_own_sink(name), "{name}");
+        }
     }
 }
 

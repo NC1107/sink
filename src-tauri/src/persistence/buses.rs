@@ -53,6 +53,27 @@ pub struct BusDef {
     /// member's own volume. Keyed by sink name, or "sink_mic".
     #[serde(default)]
     pub member_gains: HashMap<String, u8>,
+    /// Which device list the mix shows up in. Named rather than a flag so
+    /// a third role can be added without rewriting anyone's config.
+    #[serde(default)]
+    pub role: MixRole,
+}
+
+/// Where a mix appears to the rest of the system.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MixRole {
+    /// A recording device, where a recorder looks first.
+    #[default]
+    Recording,
+    /// A playback device, captured through its monitor.
+    Playback,
+}
+
+impl MixRole {
+    pub fn is_recording(self) -> bool {
+        matches!(self, Self::Recording)
+    }
 }
 
 fn default_volume() -> u8 {
@@ -92,6 +113,7 @@ impl Default for Buses {
                 muted: false,
                 mic: false,
                 member_gains: HashMap::new(),
+                role: MixRole::Recording,
             }],
         }
     }
@@ -196,6 +218,7 @@ impl Buses {
                 muted: false,
                 mic: false,
                 member_gains: HashMap::new(),
+                role: MixRole::Recording,
             },
         };
         def.channels = channels.to_vec();
@@ -272,6 +295,7 @@ impl Buses {
             muted: false,
             mic: false,
             member_gains: HashMap::new(),
+            role: MixRole::Recording,
         };
         self.buses.push(def.clone());
         Ok(def)
@@ -324,6 +348,18 @@ impl Buses {
             .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
         def.channels = channels;
         Ok(())
+    }
+
+    /// The updated definition comes back because the node has to be
+    /// rebuilt in the new shape from it.
+    pub fn set_role(&mut self, name: &str, role: MixRole) -> Result<BusDef, SinkError> {
+        let def = self
+            .buses
+            .iter_mut()
+            .find(|b| b.name == name)
+            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        def.role = role;
+        Ok(def.clone())
     }
 
     pub fn set_volume(&mut self, name: &str, volume: u8) -> Result<(), SinkError> {
@@ -569,6 +605,53 @@ mod tests {
         let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false}]}"#;
         let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
         assert!(!loaded.buses[0].mic);
+    }
+
+    #[test]
+    fn device_role_persists_and_defaults_to_a_recording_device() {
+        let mut b = Buses::default();
+        // The default is what a recorder expects to find in its input list.
+        assert!(b.buses[0].role.is_recording());
+
+        let def = b
+            .set_role("sink_stream", MixRole::Playback)
+            .expect("sets the role");
+        assert_eq!(def.role, MixRole::Playback);
+        assert_eq!(
+            b.get("sink_stream").expect("master").role,
+            MixRole::Playback
+        );
+        assert!(b
+            .set_role("sink_stream", MixRole::Recording)
+            .expect("sets back")
+            .role
+            .is_recording());
+
+        let mix = b.add("Voice Only").expect("adds");
+        assert!(
+            b.get(&mix.name).expect("mix").role.is_recording(),
+            "a new mix too"
+        );
+        assert!(b.set_role("sink_missing", MixRole::Playback).is_err());
+
+        b.set_role("sink_stream", MixRole::Playback)
+            .expect("sets the role");
+        b.sync_master(&["sink_game".into()]);
+        assert_eq!(
+            b.get("sink_stream").expect("master").role,
+            MixRole::Playback
+        );
+
+        // A buses.json written before this field keeps every mix where it
+        // was: an upgrade must not take anyone's mix out of obs.
+        let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false,"mic":true}]}"#;
+        let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
+        assert!(loaded.buses[0].role.is_recording());
+        assert!(loaded.buses[0].mic);
+
+        // The name on disk is the word, so a new role can join it later.
+        let json = serde_json::to_string(&b).expect("serializes");
+        assert!(json.contains("\"role\":\"playback\""), "{json}");
     }
 
     #[test]

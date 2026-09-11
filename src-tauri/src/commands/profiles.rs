@@ -174,10 +174,17 @@ pub fn load_profile(
         }
     }
     for bus in &target_buses.buses {
-        if current_buses.get(&bus.name).is_none() {
-            if let Err(e) = state
-                .backend
-                .create_bus(&bus.name, &prefs.decorate(&bus.label))
+        // A mix whose role differs is a different kind of node, so the live
+        // one cannot be reused.
+        let live_role = current_buses.get(&bus.name).map(|b| b.role);
+        if live_role.is_some_and(|role| role != bus.role) {
+            let _ = state.backend.destroy_bus(&bus.name);
+        }
+        if live_role != Some(bus.role) {
+            if let Err(e) =
+                state
+                    .backend
+                    .create_bus(&bus.name, &prefs.decorate(&bus.label), bus.role)
             {
                 eprintln!("sink: profile mix {} failed: {e}", bus.name);
                 continue;
