@@ -325,10 +325,6 @@ body,
   flex-direction: column;
   background: var(--bg-main);
 }
-/* Form-like screens (mic, settings) read better in a tighter column. */
-.content.narrow {
-  --content-w: 720px;
-}
 .screen-head {
   flex: 0 0 auto;
   padding: var(--sp-6) var(--sp-7) var(--sp-4);
@@ -844,16 +840,28 @@ body,
   font-weight: 600;
   color: var(--fg-primary);
   margin-bottom: var(--sp-3);
+  /* Typing takes exactly the room reading does, so nothing below moves. */
+  height: 17px;
+  line-height: 17px;
 }
 .strip-readout-editable {
   cursor: text;
 }
 .strip-readout-input {
-  width: 54px;
+  width: 38px;
+  height: 17px;
+  box-sizing: border-box;
+  padding: 0 2px;
+  vertical-align: top;
   text-align: center;
-  font-size: var(--fs-meta);
+  font-family: inherit;
+  font-size: var(--fs-caption);
   font-weight: 600;
-  padding: 1px 4px;
+  color: var(--fg-primary);
+  background: var(--bg-main);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  outline: none;
 }
 .strip-readout .db {
   color: var(--fg-muted);
@@ -965,6 +973,26 @@ body,
 }
 .row + .row {
   margin-top: 2px;
+}
+/* A setting that belongs to the one above it: indented, with an elbow
+   drawn back up to its parent. */
+.row.row-sub {
+  margin-left: calc(var(--sp-4) + 20px);
+  position: relative;
+}
+.row.row-sub::before {
+  content: "";
+  position: absolute;
+  /* Drops from under the parent's icon and turns in towards this row's. */
+  left: 0;
+  top: -2px;
+  bottom: 50%;
+  width: 15px;
+  border-left: 1px solid var(--fg-muted);
+  border-bottom: 1px solid var(--fg-muted);
+  border-bottom-left-radius: 5px;
+  opacity: 0.55;
+  pointer-events: none;
 }
 .row:hover {
   background: var(--bg-surface-hover);

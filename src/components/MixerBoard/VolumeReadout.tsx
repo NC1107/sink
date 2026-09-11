@@ -31,7 +31,7 @@ export function VolumeReadout({
     return (
       <div className="strip-readout">
         <input
-          className="menu-input strip-readout-input"
+          className="strip-readout-input"
           value={draft}
           autoFocus
           inputMode="numeric"
