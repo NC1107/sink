@@ -175,9 +175,10 @@ pub fn load_profile(
     }
     for bus in &target_buses.buses {
         if current_buses.get(&bus.name).is_none() {
-            if let Err(e) = state
-                .backend
-                .create_bus(&bus.name, &prefs.decorate(&bus.label), bus.input)
+            if let Err(e) =
+                state
+                    .backend
+                    .create_bus(&bus.name, &prefs.decorate(&bus.label), bus.input)
             {
                 eprintln!("sink: profile mix {} failed: {e}", bus.name);
                 continue;
