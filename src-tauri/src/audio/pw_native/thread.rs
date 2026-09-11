@@ -22,7 +22,9 @@ use crate::audio::pw_native::meter::MeterHandle;
 use crate::audio::pw_native::mic::{MicStreams, MIC_NODE};
 use crate::audio::pw_native::pods;
 use crate::audio::pw_native::send_gain::SendGainHandle;
-use crate::audio::types::{is_virtual_sink, AppStream, EqConfig, MicConfig, OutputDevice};
+use crate::audio::types::{
+    is_own_sink, is_virtual_sink, AppStream, EqConfig, MicConfig, OutputDevice,
+};
 use crate::error::SinkError;
 use crate::persistence::buses::is_bus_name;
 
@@ -929,7 +931,7 @@ fn desired_pairs(s: &State, channel_id: u32, target_id: u32) -> Vec<(u32, u32)> 
 /// device the OS would pick, consistently across distros.
 fn pick_fallback_sink<'a>(candidates: impl Iterator<Item = (u32, &'a str, i64)>) -> Option<u32> {
     candidates
-        .filter(|(_, name, _)| !is_virtual_sink(name))
+        .filter(|(_, name, _)| !is_own_sink(name))
         .max_by_key(|&(_, _, priority)| priority)
         .map(|(id, _, _)| id)
 }
@@ -1202,15 +1204,16 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
             .as_deref()
             .and_then(|name| node_ids.get(name).copied());
         let strict = s.channel_strict.contains(sink_name);
-        // A user can make one of our channels the system default; following
-        // it would loop every follow-default channel (and the channel's own
-        // EQ playback) back into it. Treat that as "no default" so the real
-        // device fallback applies - pick_fallback_sink never picks a
-        // virtual sink.
+        // A user can make one of our own nodes the system default - a
+        // channel, or a mix they moved into the playback list. Following it
+        // would loop every follow-default channel (and the channel's own EQ
+        // playback) back into it. Treat that as "no default" so the real
+        // device fallback applies - pick_fallback_sink never picks one of
+        // ours either.
         let default_id = s
             .default_sink_name
             .as_ref()
-            .filter(|name| !is_virtual_sink(name))
+            .filter(|name| !is_own_sink(name))
             .and_then(|name| node_ids.get(name))
             .copied();
         let target_id = resolve_target(explicit_id, pinned, strict, default_id, fallback);
@@ -2222,12 +2225,26 @@ mod tests {
     }
 
     #[test]
-    fn fallback_is_none_when_only_virtual_channel_sinks_exist() {
-        // Channel sinks are virtual and must never be a fallback target.
-        // (sink_mic/sink_stream are sources, excluded by media_class before
-        // reaching here - so they're not exercised at this layer.)
-        let candidates = [(1u32, "sink_game", 0i64), (2, "sink_chat", 0)];
+    fn fallback_is_none_when_only_our_own_sinks_exist() {
+        // Routing a channel into one of our own nodes feeds it back: a mix
+        // already receives every channel, and a channel receiving itself is
+        // a loop. A mix the user moved into the playback list is a sink and
+        // reaches this layer, unlike a mix left as a source.
+        let candidates = [
+            (1u32, "sink_game", 0i64),
+            (2, "sink_chat", 0),
+            (3, "sink_stream", 0),
+            (4, "sink_bus_voice_only", 0),
+        ];
         assert_eq!(pick_fallback_sink(candidates.into_iter()), None);
+
+        // A real device among them still wins.
+        let candidates = [
+            (1u32, "sink_game", 0i64),
+            (3, "sink_stream", 0),
+            (9, "alsa_output.pci-0000_00_1f.3.analog-stereo", 1000),
+        ];
+        assert_eq!(pick_fallback_sink(candidates.into_iter()), Some(9));
     }
 
     fn kv(pairs: &[(&str, &str)]) -> HashMap<String, String> {
