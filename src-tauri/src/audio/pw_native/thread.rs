@@ -383,6 +383,14 @@ fn setup_and_run(
                         s.meters.remove(&name);
                         s.adopted_sinks.remove(&name);
                     }
+                    // The mic chain's device left: unplugged, or a card that
+                    // switched profile. Drop the chain so it is rebuilt when
+                    // the device comes back rather than running on a corpse.
+                    if is_capture_class(&node.media_class)
+                        && s.mic_config.input_device.as_deref() == Some(name.as_str())
+                    {
+                        s.mic_streams = None;
+                    }
                     match s.desired.get(&name).cloned() {
                         Some((label, kind)) => {
                             // Drop any dangling proxy so the heal isn't
@@ -832,7 +840,8 @@ fn on_node(
     }
 }
 
-/// A virtual source counts: noisetorch and friends install their mic as one.
+/// Both classes: a noise suppressor publishes its cleaned-up mic as a
+/// virtual source, not a real device, and the chain can capture either.
 fn is_capture_class(media_class: &str) -> bool {
     media_class == SOURCE_CLASS || media_class == VIRTUAL_SOURCE_CLASS
 }

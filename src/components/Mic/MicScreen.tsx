@@ -37,8 +37,11 @@ function MicLevel() {
   );
 }
 
-function micStatusLabel(enabled: boolean, muted: boolean): string {
+function micStatusLabel(enabled: boolean, muted: boolean, waiting: boolean): string {
   if (!enabled) return "Off";
+  // A device that is not here yet (plugged in later, or installed by a tool
+  // that starts after us) is the one case where the chain is on but silent.
+  if (waiting) return "Waiting";
   if (muted) return "Muted";
   return "Live";
 }
@@ -62,6 +65,7 @@ export function MicScreen() {
   }
 
   const currentDevice = inputDevices.find((d) => d.name === micConfig.input_device);
+  const waiting = micConfig.input_device !== null && currentDevice === undefined;
   const deviceLabel =
     micConfig.input_device === null
       ? "System default"
@@ -72,9 +76,14 @@ export function MicScreen() {
       <div className="screen-head">
         <h1>Microphone</h1>
         <div className="screen-head-actions">
-          <span className={"tag" + (!micConfig.enabled || micConfig.muted ? " tag-off" : " live")}>
+          <span
+            className={
+              "tag" + (!micConfig.enabled || micConfig.muted || waiting ? " tag-off" : " live")
+            }
+            title={waiting ? `Waiting for ${micConfig.input_device}` : undefined}
+          >
             <Ms name="fiber_manual_record" style={{ fontSize: 11 }} />
-            {micStatusLabel(micConfig.enabled, micConfig.muted)}
+            {micStatusLabel(micConfig.enabled, micConfig.muted, waiting)}
           </span>
           <Toggle
             on={micConfig.enabled}
