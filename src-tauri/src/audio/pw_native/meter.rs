@@ -71,8 +71,13 @@ impl MeterHandle {
                 let Some(bytes) = data.data() else { return };
                 let mut peaks = [0.0f32; 2];
                 // f32 interleaved stereo (negotiated below).
-                for (i, raw) in bytes[..valid.min(bytes.len())].chunks_exact(4).enumerate() {
-                    let v = f32::from_ne_bytes([raw[0], raw[1], raw[2], raw[3]]).abs();
+                for (i, raw) in bytes[..valid.min(bytes.len())]
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .enumerate()
+                {
+                    let v = f32::from_ne_bytes(*raw).abs();
                     let ch = i & 1;
                     if v > peaks[ch] {
                         peaks[ch] = v;
