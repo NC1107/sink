@@ -325,10 +325,6 @@ body,
   flex-direction: column;
   background: var(--bg-main);
 }
-/* Form-like screens (mic, settings) read better in a tighter column. */
-.content.narrow {
-  --content-w: 720px;
-}
 .screen-head {
   flex: 0 0 auto;
   padding: var(--sp-6) var(--sp-7) var(--sp-4);
@@ -688,6 +684,8 @@ body,
   font-size: var(--fs-caption);
   color: var(--fg-muted);
   text-align: center;
+  /* One line: a wrapped chevron reads as a second control. */
+  white-space: nowrap;
 }
 
 .strip-body {
@@ -842,6 +840,28 @@ body,
   font-weight: 600;
   color: var(--fg-primary);
   margin-bottom: var(--sp-3);
+  /* Typing takes exactly the room reading does, so nothing below moves. */
+  height: 17px;
+  line-height: 17px;
+}
+.strip-readout-editable {
+  cursor: text;
+}
+.strip-readout-input {
+  width: 38px;
+  height: 17px;
+  box-sizing: border-box;
+  padding: 0 2px;
+  vertical-align: top;
+  text-align: center;
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--fg-primary);
+  background: var(--bg-main);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  outline: none;
 }
 .strip-readout .db {
   color: var(--fg-muted);
@@ -906,6 +926,7 @@ body,
 }
 /* clickable variant: the per-strip output picker */
 .strip-route-btn {
+  border-radius: 4px;
   width: 100%;
   background: none;
   border: none;
@@ -1656,6 +1677,14 @@ body,
   outline-offset: 1px;
 }
 
+/* One focus ring for the whole app: the engine's own is a loose box in a
+   colour that is not ours, and it sits outside small controls. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+
 /* Global hover tooltip (see components/Tooltip.tsx): replaces the native
    `title` popups so timing and on-screen clamping are ours to control.
    Positioned imperatively; sits above modals and menus. */
@@ -1984,12 +2013,31 @@ body,
   transition: left 0.06s linear;
 }
 
-/* settings sub-row: indented dependent option (e.g. start minimized) */
+/* A setting that belongs to the one above it. The extra indent leaves the
+   elbow room for its arm. */
 .row.row-sub {
-  margin-left: var(--sp-6);
+  margin-left: calc(var(--sp-6) + 14px);
+  position: relative;
 }
 .row.row-sub .ricon {
   opacity: 0.7;
+}
+/* Drops from the centre of the parent's icon and turns in to meet the left
+   edge of this row's. */
+.row.row-sub::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  /* Starts at the parent tile's bottom edge, not inside it. */
+  top: -14px;
+  bottom: 50%;
+  /* Stops where this row's tile starts. */
+  width: 14px;
+  border-left: 1px solid var(--fg-muted);
+  border-bottom: 1px solid var(--fg-muted);
+  border-bottom-left-radius: 5px;
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 /* ---- Parametric EQ modal (eqm-) ---- */

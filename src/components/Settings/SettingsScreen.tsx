@@ -162,7 +162,7 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="content narrow">
+    <div className="content">
       <div className="screen-head">
         <h1>Settings</h1>
       </div>

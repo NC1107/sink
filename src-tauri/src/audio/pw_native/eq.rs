@@ -320,7 +320,7 @@ impl EqEngine {
         if !self.enabled {
             return;
         }
-        for frame in buf.chunks_exact_mut(2) {
+        for frame in buf.as_chunks_mut::<2>().0 {
             for (ch, sample) in frame.iter_mut().enumerate() {
                 let mut x = *sample * self.preamp_linear;
                 for i in 0..self.count {

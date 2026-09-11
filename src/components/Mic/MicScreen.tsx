@@ -72,7 +72,7 @@ export function MicScreen() {
       : (currentDevice?.description ?? micConfig.input_device);
 
   return (
-    <div className="content narrow">
+    <div className="content">
       <div className="screen-head">
         <h1>Microphone</h1>
         <div className="screen-head-actions">
