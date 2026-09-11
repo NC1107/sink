@@ -788,6 +788,19 @@ fn on_node(
         return;
     }
 
+    // The device the chain is pinned to turned up - plugged in, or
+    // installed by a tool like noisetorch that starts after we do.
+    if is_capture_class(&media_class)
+        && s.mic_config.enabled
+        && s.mic_config.input_device.as_deref() == Some(node_name.as_str())
+    {
+        s.mic_streams = None;
+        drop(s);
+        build_mic_streams(state);
+        ensure_all_links(state);
+        return;
+    }
+
     // The virtual mic source came up: attach the DSP streams and link it
     // into any mix that carries the mic.
     if media_class == VIRTUAL_SOURCE_CLASS && node_name == MIC_NODE {
@@ -819,6 +832,12 @@ fn on_node(
     }
 }
 
+/// Something the mic chain could capture from: a real source, or a virtual
+/// one like noisetorch's or another app's.
+fn is_capture_class(media_class: &str) -> bool {
+    media_class == SOURCE_CLASS || media_class == VIRTUAL_SOURCE_CLASS
+}
+
 /// (Re)build the mic capture/DSP/playback streams. The loop links the
 /// playback stream to the virtual source by name, so no id is needed.
 fn build_mic_streams(state: &Rc<RefCell<State>>) {
@@ -828,6 +847,21 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
     let mut s = state.borrow_mut();
     if !s.mic_config.enabled {
         return;
+    }
+    // A pinned device that is not here yet (noisetorch and friends install
+    // their source after we start) cannot be targeted: the session manager
+    // would connect the capture to whatever it likes instead, including our
+    // own virtual mic, and `dont-reconnect` then keeps it there. Wait for
+    // the node to appear - `on_node` builds the chain when it does.
+    if let Some(pinned) = &s.mic_config.input_device {
+        if !s
+            .nodes
+            .values()
+            .any(|n| n.props.get("node.name") == Some(pinned) && is_capture_class(&n.media_class))
+        {
+            eprintln!("sink: mic chain waiting for {pinned}");
+            return;
+        }
     }
     // Resolve "follow default" to the actual hardware source at build
     // time - the capture must be pinned (and must never point at our own
@@ -2067,6 +2101,16 @@ mod tests {
     #[test]
     fn resolve_source_prefers_live_eq_playback() {
         assert_eq!(resolve_source(Some(77), 10), 77);
+    }
+
+    #[test]
+    fn a_mic_can_be_pinned_to_a_virtual_source_too() {
+        // noisetorch, easyeffects and the like install a virtual source,
+        // so the chain has to accept one as its capture device.
+        assert!(is_capture_class(SOURCE_CLASS));
+        assert!(is_capture_class(VIRTUAL_SOURCE_CLASS));
+        assert!(!is_capture_class(SINK_CLASS));
+        assert!(!is_capture_class(STREAM_CLASS));
     }
 
     #[test]
