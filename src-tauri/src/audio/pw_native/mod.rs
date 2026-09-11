@@ -159,10 +159,15 @@ impl AudioBackend for PipeWireBackend {
         })
     }
 
-    fn create_bus(&self, name: &str, label: &str) -> Result<(), SinkError> {
+    fn create_bus(&self, name: &str, label: &str, input: bool) -> Result<(), SinkError> {
         let name = name.to_string();
         let label = label.to_string();
-        self.request(|reply| Cmd::CreateBus { name, label, reply })
+        self.request(|reply| Cmd::CreateBus {
+            name,
+            label,
+            input,
+            reply,
+        })
     }
 
     fn destroy_bus(&self, name: &str) -> Result<(), SinkError> {

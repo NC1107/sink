@@ -94,6 +94,7 @@ pub enum Cmd {
     CreateBus {
         name: String,
         label: String,
+        input: bool,
         reply: Reply<()>,
     },
     /// Destroy a mix bus and its links.
@@ -797,10 +798,13 @@ fn on_node(
         return;
     }
 
-    // A mix bus came up: meter it (direct source capture) and link members.
-    if media_class == VIRTUAL_SOURCE_CLASS && is_bus_name(&node_name) {
+    // A mix bus came up: meter it and link members. A mix exposed as a
+    // playback device is metered through its monitor, like a channel.
+    if (media_class == VIRTUAL_SOURCE_CLASS || media_class == SINK_CLASS) && is_bus_name(&node_name)
+    {
+        let from_monitor = media_class == SINK_CLASS;
         if !s.meters.contains_key(&node_name) {
-            match MeterHandle::new(core, &node_name, global.id, levels.clone(), false) {
+            match MeterHandle::new(core, &node_name, global.id, levels.clone(), from_monitor) {
                 Ok(meter) => {
                     s.meters.insert(node_name.clone(), meter);
                 }
@@ -1340,13 +1344,24 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
 }
 
 fn node_needs_monitor_volumes(kind: u8) -> bool {
-    kind == 0 || kind == 1
+    kind == 0 || kind == 1 || kind == 3
 }
 
-/// The three virtual node shapes we own (kind 0=channel sink, 1=mix bus,
-/// 2=virtual mic). The heal path mirrors the create handlers with this.
+/// A mix is a recording device by default and a playback device when the
+/// user turns that off; the node kind carries the choice.
+fn bus_kind(input: bool) -> u8 {
+    if input {
+        1
+    } else {
+        3
+    }
+}
+
+/// The virtual node shapes we own (kind 0=channel sink, 1=mix as a source,
+/// 2=virtual mic, 3=mix as a sink). The heal path mirrors the create
+/// handlers with this.
 fn create_node_object(core: &CoreRc, name: &str, label: &str, kind: u8) -> Result<Node, pw::Error> {
-    let class = if kind == 0 {
+    let class = if kind == 0 || kind == 3 {
         SINK_CLASS
     } else {
         VIRTUAL_SOURCE_CLASS
@@ -1546,10 +1561,16 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             let s = state.borrow();
             let _ = reply.send(set_props(s.nodes.get(&id), Some(percent), None));
         }
-        Cmd::CreateBus { name, label, reply } => {
+        Cmd::CreateBus {
+            name,
+            label,
+            input,
+            reply,
+        } => {
+            let kind = bus_kind(input);
             let mut s = state.borrow_mut();
             if s.bus_sources.contains_key(&name) || s.node_by_name(&name).is_some() {
-                s.desired.insert(name, (label, 1)); // adopted - keep alive
+                s.desired.insert(name, (label, kind)); // adopted - keep alive
                 let _ = reply.send(Ok(()));
                 return;
             }
@@ -1557,9 +1578,9 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 let _ = reply.send(Err(SinkError::Config("core is gone".into())));
                 return;
             };
-            match create_node_object(&core, &name, &label, 1) {
+            match create_node_object(&core, &name, &label, kind) {
                 Ok(proxy) => {
-                    s.desired.insert(name.clone(), (label, 1));
+                    s.desired.insert(name.clone(), (label, kind));
                     s.bus_sources.insert(name, proxy);
                     let _ = reply.send(Ok(()));
                 }
@@ -2104,6 +2125,17 @@ mod tests {
         let mut pairs = desired_pairs(&s, 10, 20);
         pairs.sort_unstable();
         assert_eq!(pairs, vec![(1, 2), (1, 3)]);
+    }
+
+    #[test]
+    fn a_mix_takes_the_node_shape_its_role_asks_for() {
+        // Recording device: a virtual source a recorder can select.
+        assert_eq!(bus_kind(true), 1);
+        // Playback device: a sink, metered through its monitor like a
+        // channel, still capturable there.
+        assert_eq!(bus_kind(false), 3);
+        assert!(node_needs_monitor_volumes(bus_kind(false)));
+        assert!(node_needs_monitor_volumes(bus_kind(true)));
     }
 
     #[test]

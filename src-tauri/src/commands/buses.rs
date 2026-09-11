@@ -48,7 +48,7 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
     };
     if let Err(e) = state
         .backend
-        .create_bus(&def.name, &prefs.decorate(&def.label))
+        .create_bus(&def.name, &prefs.decorate(&def.label), def.input)
     {
         let mut mixer = state.lock_mixer()?;
         let _ = mixer.buses.remove(&def.name);
@@ -96,7 +96,7 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
         .map_err(|e| e.to_string())?;
     state
         .backend
-        .create_bus(&def.name, &prefs.decorate(&def.label))
+        .create_bus(&def.name, &prefs.decorate(&def.label), def.input)
         .map_err(|e| e.to_string())?;
     state
         .backend
@@ -112,6 +112,51 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
         }
     }
     // The node is fresh; restore its saved level and send gains.
+    apply_bus_level(state.backend.as_ref(), &def);
+    apply_bus_member_gains(state.backend.as_ref(), &def);
+
+    defs.save().map_err(|e| e.to_string())?;
+    let mixer = state.lock_mixer()?;
+    crate::commands::profiles::autosave_active(&mixer);
+    Ok(())
+}
+
+/// Show a mix among the recording devices (true) or the playback devices
+/// (false). The node carries its role in `media.class`, so switching means
+/// recreating it and putting its members, mic, level and sends back.
+#[tauri::command]
+pub fn set_bus_input(state: State<'_, AppState>, name: String, input: bool) -> Result<(), String> {
+    let (def, defs, prefs, all) = {
+        let mut mixer = state.lock_mixer()?;
+        let def = mixer
+            .buses
+            .set_input(&name, input)
+            .map_err(|e| e.to_string())?;
+        (
+            def,
+            mixer.buses.clone(),
+            mixer.prefs.clone(),
+            channel_names(&mixer),
+        )
+    };
+
+    state
+        .backend
+        .destroy_bus(&name)
+        .map_err(|e| e.to_string())?;
+    state
+        .backend
+        .create_bus(&def.name, &prefs.decorate(&def.label), def.input)
+        .map_err(|e| e.to_string())?;
+    state
+        .backend
+        .set_bus_members(&def.name, &def.effective_members(&all))
+        .map_err(|e| e.to_string())?;
+    if def.mic {
+        if let Err(e) = state.backend.set_bus_mic(&def.name, true) {
+            eprintln!("sink: mic membership for mix {} failed: {e}", def.name);
+        }
+    }
     apply_bus_level(state.backend.as_ref(), &def);
     apply_bus_member_gains(state.backend.as_ref(), &def);
 

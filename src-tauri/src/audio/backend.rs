@@ -60,7 +60,9 @@ pub trait AudioBackend: Send + Sync {
 
     /// Create a mix bus: a capturable virtual source whose label is the
     /// device name recorders (OBS) display. Native-only.
-    fn create_bus(&self, name: &str, label: &str) -> Result<(), SinkError>;
+    /// `input`: expose the mix as a recording device rather than a
+    /// playback device (see `BusDef::input`).
+    fn create_bus(&self, name: &str, label: &str, input: bool) -> Result<(), SinkError>;
 
     /// Destroy a mix bus (its links go with it).
     fn destroy_bus(&self, name: &str) -> Result<(), SinkError>;

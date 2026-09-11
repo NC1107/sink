@@ -162,7 +162,7 @@ impl AudioBackend for MockBackend {
         Ok(std::collections::HashMap::new())
     }
 
-    fn create_bus(&self, _name: &str, _label: &str) -> Result<(), SinkError> {
+    fn create_bus(&self, _name: &str, _label: &str, _input: bool) -> Result<(), SinkError> {
         Ok(())
     }
 

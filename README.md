@@ -31,7 +31,9 @@ processed virtual microphone for voice chat.
   input device holds your voice plus app audio (Sonar-style Stream Mix),
   and each member gets its own send level and mute inside the mix - what
   recorders hear, independent of your own volume (pop out a mix's levels
-  from its strip). In OBS, add a mix as an audio input - not Desktop Audio.
+  from its strip). In OBS, add a mix as an audio input - not Desktop Audio. A mix can also
+  sit with the output devices instead, if you would rather keep your
+  recording list short; it stays capturable through its monitor.
 - **Equalizer** - per-channel parametric EQ (up to 10 bands) with a
   draggable response curve, bundled community presets, and import/export
   including AutoEq text blocks

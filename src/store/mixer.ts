@@ -111,6 +111,8 @@ interface MixerStore {
   setBusExclude: (name: string, exclude: boolean) => Promise<void>;
   /** Whether the processed virtual mic feeds this mix too; persisted. */
   setBusMic: (name: string, mic: boolean) => Promise<void>;
+  /** Show the mix among the recording devices, or among the outputs. */
+  setBusInput: (name: string, input: boolean) => Promise<void>;
   /** A mix's playback level for recorders (0-150%); persisted. */
   setBusVolume: (name: string, volume: number) => Promise<void>;
   /** Mute a mix for recorders; persisted. */
@@ -672,6 +674,18 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }));
     try {
       await invoke("set_bus_exclude", { name, exclude });
+    } catch (e) {
+      set({ error: String(e) });
+      await get().fetchBuses();
+    }
+  },
+
+  setBusInput: async (name, input) => {
+    set((s) => ({
+      buses: s.buses.map((b) => (b.name === name ? { ...b, input } : b)),
+    }));
+    try {
+      await invoke("set_bus_input", { name, input });
     } catch (e) {
       set({ error: String(e) });
       await get().fetchBuses();

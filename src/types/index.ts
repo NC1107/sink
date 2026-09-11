@@ -141,6 +141,10 @@ export interface BusDef {
   muted: boolean;
   /** Whether the processed virtual mic feeds this mix too. Persisted. */
   mic: boolean;
+  /** True: the mix is a recording device, which is what a recorder picks
+   *  from its input list. False: a playback device instead, still
+   *  recordable through its monitor. Persisted. */
+  input: boolean;
   /** Per-member send level within this mix (0-150%); a member absent here
    *  carries at 100%. Keyed by channel sink name, or "sink_mic". */
   member_gains: Record<string, number>;

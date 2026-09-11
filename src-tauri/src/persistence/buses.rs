@@ -53,6 +53,16 @@ pub struct BusDef {
     /// member's own volume. Keyed by sink name, or "sink_mic".
     #[serde(default)]
     pub member_gains: HashMap<String, u8>,
+    /// Recording device (true) or playback device (false). A recorder picks
+    /// an input straight from its list, which is what a mix is usually for,
+    /// so this is on. Off puts the mix among the outputs instead, where it
+    /// stays recordable through its monitor and can be played into.
+    #[serde(default = "default_input")]
+    pub input: bool,
+}
+
+fn default_input() -> bool {
+    true
 }
 
 fn default_volume() -> u8 {
@@ -92,6 +102,7 @@ impl Default for Buses {
                 muted: false,
                 mic: false,
                 member_gains: HashMap::new(),
+                input: true,
             }],
         }
     }
@@ -196,6 +207,7 @@ impl Buses {
                 muted: false,
                 mic: false,
                 member_gains: HashMap::new(),
+                input: true,
             },
         };
         def.channels = channels.to_vec();
@@ -272,6 +284,7 @@ impl Buses {
             muted: false,
             mic: false,
             member_gains: HashMap::new(),
+            input: true,
         };
         self.buses.push(def.clone());
         Ok(def)
@@ -324,6 +337,18 @@ impl Buses {
             .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
         def.channels = channels;
         Ok(())
+    }
+
+    /// Switch a mix between the recording and playback device lists,
+    /// returning the updated definition for the caller to rebuild from.
+    pub fn set_input(&mut self, name: &str, input: bool) -> Result<BusDef, SinkError> {
+        let def = self
+            .buses
+            .iter_mut()
+            .find(|b| b.name == name)
+            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        def.input = input;
+        Ok(def.clone())
     }
 
     pub fn set_volume(&mut self, name: &str, volume: u8) -> Result<(), SinkError> {
@@ -569,6 +594,34 @@ mod tests {
         let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false}]}"#;
         let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
         assert!(!loaded.buses[0].mic);
+    }
+
+    #[test]
+    fn device_role_persists_and_defaults_to_a_recording_device() {
+        let mut b = Buses::default();
+        // The default is what a recorder expects to find in its input list.
+        assert!(b.buses[0].input);
+
+        let def = b.set_input("sink_stream", false).expect("sets the role");
+        assert!(!def.input);
+        assert!(!b.get("sink_stream").expect("master").input);
+        assert!(b.set_input("sink_stream", true).expect("sets back").input);
+
+        let mix = b.add("Voice Only").expect("adds");
+        assert!(b.get(&mix.name).expect("mix").input, "a new mix too");
+        assert!(b.set_input("sink_missing", false).is_err());
+
+        // sync_master preserves the role across membership resyncs.
+        b.set_input("sink_stream", false).expect("sets the role");
+        b.sync_master(&["sink_game".into()]);
+        assert!(!b.get("sink_stream").expect("master").input);
+
+        // A buses.json written before this field keeps every mix where it
+        // was: an upgrade must not take anyone's mix out of obs.
+        let legacy = r#"{"buses":[{"name":"sink_stream","label":"Master Mix","channels":[],"exclude":false,"mic":true}]}"#;
+        let loaded: Buses = serde_json::from_str(legacy).expect("legacy loads");
+        assert!(loaded.buses[0].input);
+        assert!(loaded.buses[0].mic);
     }
 
     #[test]

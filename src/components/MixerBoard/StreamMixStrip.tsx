@@ -32,6 +32,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
   const setBusMembers = useMixerStore((s) => s.setBusMembers);
   const setBusExclude = useMixerStore((s) => s.setBusExclude);
   const setBusMic = useMixerStore((s) => s.setBusMic);
+  const setBusInput = useMixerStore((s) => s.setBusInput);
   const micEnabled = useMixerStore((s) => s.micConfig?.enabled ?? false);
   const renameBus = useMixerStore((s) => s.renameBus);
   const removeBus = useMixerStore((s) => s.removeBus);
@@ -144,6 +145,14 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
                 </MenuCheckItem>
               </>
             )}
+            <div className="menu-div" />
+            <MenuCheckItem
+              checked={bus.input}
+              title="Off: the mix sits with the output devices instead, and recorders capture its monitor"
+              onClick={() => void setBusInput(bus.name, !bus.input)}
+            >
+              <span className="menu-item-label">Show as a recording device</span>
+            </MenuCheckItem>
             <div className="menu-div" />
             <MenuItem
               icon="open_in_new"
