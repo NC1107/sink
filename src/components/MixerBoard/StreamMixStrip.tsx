@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import type { BusDef } from "../../types";
 import { busMembers, MASTER_BUS, MAX_VOLUME } from "../../types";
-import { perceptual, volToDb } from "../../lib/audio";
+import { perceptual } from "../../lib/audio";
 import { Ms } from "../Icons";
 import { ConfirmModal } from "../ConfirmModal";
 import { MenuCheckItem, MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Fader } from "./Fader";
+import { VolumeReadout } from "./VolumeReadout";
 import { MixRoleSelect } from "./MixRoleSelect";
 import { StripName } from "./StripName";
 import { VuMeter } from "./VuMeter";
@@ -18,14 +19,12 @@ import { VuMeter } from "./VuMeter";
  * it and OBS sees the new name. Volume/mute shape what recorders hear,
  * not what you hear.
  */
-/** Compact "what this mix carries" label for the membership button. */
-function memberLabel(exclude: boolean, carried: number, all: number, mic: boolean): string {
-  const channels = !exclude
-    ? `${carried} ${carried === 1 ? "channel" : "channels"}`
-    : carried === all
-      ? "all channels"
-      : `all but ${all - carried}`;
-  return mic ? `${channels} + mic` : channels;
+/** Compact "what this mix carries" label for the membership button. The
+ *  mic rides along as an icon: spelling it out wraps a narrow strip. */
+export function memberLabel(carried: number, all: number): string {
+  return carried === all && all > 0
+    ? "all channels"
+    : `${carried} ${carried === 1 ? "channel" : "channels"}`;
 }
 
 export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
@@ -102,10 +101,11 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
           <button
             type="button"
             className="strip-meta strip-meta-btn"
-            title={isMaster ? "Mic and levels" : "Channels and levels"}
+            title={`${isMaster ? "Mic and levels" : "Channels and levels"}${bus.mic ? " (carries the mic)" : ""}`}
             onClick={() => setManaging(true)}
           >
-            {memberLabel(bus.exclude, carried.length, allNames.length, bus.mic)}
+            {memberLabel(carried.length, allNames.length)}
+            {bus.mic && <Ms name="mic" style={{ fontSize: 12 }} />}
             <Ms name="expand_more" style={{ fontSize: 13 }} />
           </button>
           <Popover
@@ -126,7 +126,6 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
                 editing there, but its mic and send levels are fair game. */}
             {!isMaster && (
               <>
-                <div className="menu-div" />
                 {channels.map((c) => (
                   <MenuCheckItem
                     key={c.name}
@@ -165,10 +164,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
         <VuMeter target={muted ? 0 : perceptual(amplitude)} />
       </div>
 
-      <div className="strip-readout">
-        {volume}
-        <span style={{ fontSize: 11 }}>%</span> <span className="db">{volToDb(volume)}</span>
-      </div>
+      <VolumeReadout percent={volume} max={MAX_VOLUME} onChange={applyVolume} />
 
       <div className="strip-btns">
         <button

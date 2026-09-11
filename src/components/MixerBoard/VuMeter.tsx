@@ -52,7 +52,9 @@ export function VuMeter({ target }: Readonly<VuMeterProps>) {
       }
       if (dbRef.current) {
         // Held peak in dBFS (height is sqrt(amplitude), so dB = 40·log10).
-        const text = peak < 0.02 ? "−∞" : String(Math.round(40 * Math.log10(peak)));
+        // Silence shows nothing: the empty bar already says it, and a
+        // minus infinity reads like a fault.
+        const text = peak < 0.02 ? "" : String(Math.round(40 * Math.log10(peak)));
         if (text !== lastDbText) {
           lastDbText = text;
           dbRef.current.textContent = text;
@@ -72,9 +74,7 @@ export function VuMeter({ target }: Readonly<VuMeterProps>) {
         <div className="meter-tick" style={{ bottom: `${TICK_6DB}%` }} />
         <div className="meter-peak" ref={peakRef} style={{ bottom: "0%" }} />
       </div>
-      <div className="vu-db" ref={dbRef}>
-        −∞
-      </div>
+      <div className="vu-db" ref={dbRef} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { MAX_MIC_GAIN, MIC_LEVEL_KEY } from "../../types";
 import { perceptual } from "../../lib/audio";
 import { Ms } from "../Icons";
 import { Fader } from "./Fader";
+import { VolumeReadout } from "./VolumeReadout";
 import { VuMeter } from "./VuMeter";
 
 /** Mic channel strip (Phase 3): fader = chain gain, meters = processed
@@ -70,10 +71,12 @@ export function MicStrip() {
         <VuMeter target={target} />
       </div>
 
-      <div className="strip-readout">
-        {micConfig.gain_percent}
-        <span style={{ fontSize: 11 }}>%</span> <span className="db">gain</span>
-      </div>
+      <VolumeReadout
+        percent={micConfig.gain_percent}
+        max={MAX_MIC_GAIN}
+        unit="gain"
+        onChange={(v: number) => void setMicConfig({ gain_percent: v })}
+      />
 
       <div className="strip-btns">
         <button

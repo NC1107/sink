@@ -688,6 +688,8 @@ body,
   font-size: var(--fs-caption);
   color: var(--fg-muted);
   text-align: center;
+  /* One line: a wrapped chevron reads as a second control. */
+  white-space: nowrap;
 }
 
 .strip-body {
@@ -843,6 +845,16 @@ body,
   color: var(--fg-primary);
   margin-bottom: var(--sp-3);
 }
+.strip-readout-editable {
+  cursor: text;
+}
+.strip-readout-input {
+  width: 54px;
+  text-align: center;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  padding: 1px 4px;
+}
 .strip-readout .db {
   color: var(--fg-muted);
   font-weight: 400;
@@ -906,6 +918,7 @@ body,
 }
 /* clickable variant: the per-strip output picker */
 .strip-route-btn {
+  border-radius: 4px;
   width: 100%;
   background: none;
   border: none;
@@ -1654,6 +1667,14 @@ body,
 .error-banner-x:focus-visible {
   outline: 2px solid #fca5a5;
   outline-offset: 1px;
+}
+
+/* One focus ring for the whole app: the engine's own is a loose box in a
+   colour that is not ours, and it sits outside small controls. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: inherit;
 }
 
 /* Global hover tooltip (see components/Tooltip.tsx): replaces the native
