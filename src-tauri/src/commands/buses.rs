@@ -130,6 +130,10 @@ pub fn set_bus_role(
     name: String,
     role: crate::persistence::buses::MixRole,
 ) -> Result<(), String> {
+    let _rebuild = state
+        .bus_rebuild
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
         let def = mixer

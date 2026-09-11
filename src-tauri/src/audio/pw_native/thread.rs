@@ -1292,12 +1292,12 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     }
 
     // ---- monitor links (listen on the default output, session scoped) ----
-    // Same virtual-default guard as the channel links above: never treat
-    // one of our own channels as the listening device.
+    // Same guard as the channel links above: listening on one of our own
+    // nodes would feed it whatever it already carries.
     let default_id = s
         .default_sink_name
         .as_ref()
-        .filter(|name| !is_virtual_sink(name))
+        .filter(|name| !is_own_sink(name))
         .and_then(|name| node_ids.get(name))
         .copied();
     let monitored: Vec<String> = s.monitored.iter().cloned().collect();
