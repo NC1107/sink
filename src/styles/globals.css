@@ -2028,9 +2028,8 @@ body,
   content: "";
   position: absolute;
   left: 0;
-  /* Far enough up to tuck under the parent's tile, so the line leaves it
-     rather than starting in the gap below. */
-  top: -17px;
+  /* Starts at the parent tile's bottom edge, not inside it. */
+  top: -14px;
   bottom: 50%;
   /* Stops where this row's tile starts. */
   width: 14px;
