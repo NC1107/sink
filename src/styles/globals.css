@@ -104,6 +104,14 @@
 
   /* Strong enough to separate a panel from an equally dark surface below. */
   --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.45);
+  /* Strip tints: a channel carries the accent, a mix its own hue, so the
+     two columns stay apart at a glance in every theme. */
+  --tint-channel: #2e2e55;
+  --tint-channel-wash: rgba(85, 87, 224, 0.06);
+  --tint-bus: #46350f;
+  --tint-bus-wash: rgba(245, 158, 11, 0.05);
+  --tint-bus-fg: #f59e0b;
+  --tint-bus-icon: rgba(245, 158, 11, 0.12);
 }
 
 * {
@@ -1284,22 +1292,22 @@ body,
 
 /* mic input strip accent (design: input-strip) */
 .strip.input-strip {
-  border-color: #2e2e55;
-  background: linear-gradient(180deg, rgba(85, 87, 224, 0.06), var(--bg-surface) 38%);
+  border-color: var(--tint-channel);
+  background: linear-gradient(180deg, var(--tint-channel-wash), var(--bg-surface) 38%);
 }
 .strip-icon-mic {
   background: var(--accent-light);
   color: var(--accent-hover);
 }
 
-/* stream mix bus strip (record bus - amber accents) */
+/* stream mix bus strip (record bus) */
 .strip.bus-strip {
-  border-color: #46350f;
-  background: linear-gradient(180deg, rgba(245, 158, 11, 0.05), var(--bg-surface) 38%);
+  border-color: var(--tint-bus);
+  background: linear-gradient(180deg, var(--tint-bus-wash), var(--bg-surface) 38%);
 }
 .strip-icon-bus {
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--warning);
+  background: var(--tint-bus-icon);
+  color: var(--tint-bus-fg);
 }
 
 /* inactive / ignored app history */
@@ -1822,18 +1830,18 @@ body,
   color: var(--fg-muted);
 }
 .ob-flow-node.is-channel {
-  border-color: #2e2e55;
+  border-color: var(--tint-channel);
   color: var(--accent-hover);
 }
 .ob-flow-node.is-channel .ms {
   color: var(--accent-hover);
 }
 .ob-flow-node.is-mix {
-  border-color: #46350f;
-  color: var(--warning);
+  border-color: var(--tint-bus);
+  color: var(--tint-bus-fg);
 }
 .ob-flow-node.is-mix .ms {
-  color: var(--warning);
+  color: var(--tint-bus-fg);
 }
 .ob-flow-arrow {
   font-size: 14px;
@@ -2515,6 +2523,12 @@ body,
   --online: #9ece6a;
   --danger: #f7768e;
   --warning: #e0af68;
+  --tint-channel: #2f3d63;
+  --tint-channel-wash: rgba(122, 162, 247, 0.07);
+  --tint-bus: #4b3a1e;
+  --tint-bus-wash: rgba(224, 175, 104, 0.06);
+  --tint-bus-fg: #e0af68;
+  --tint-bus-icon: rgba(224, 175, 104, 0.12);
 }
 
 :root[data-theme="gruvbox-dark"] {
@@ -2543,6 +2557,12 @@ body,
   --online: #b8bb26;
   --danger: #fb4934;
   --warning: #fabd2f;
+  --tint-channel: #5b3a17;
+  --tint-channel-wash: rgba(254, 128, 25, 0.07);
+  --tint-bus: #553a44;
+  --tint-bus-wash: rgba(211, 134, 155, 0.07);
+  --tint-bus-fg: #d3869b;
+  --tint-bus-icon: rgba(211, 134, 155, 0.14);
 }
 
 /* Theme picker (Settings › Appearance) */
