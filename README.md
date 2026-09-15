@@ -36,7 +36,7 @@ processed virtual microphone for voice chat.
   [NoiseTorch](https://github.com/noisetorch/NoiseTorch) on the input for
   noise suppression before the chain.
 - **Profiles** - save and switch full layouts from the tray
-- **Themes** - Original, Tokyo Night, or Catppuccin Mocha, to match
+- **Themes** - Original, Tokyo Night, or Gruvbox Dark, to match
   the rest of your desktop
 
 ![Equalizer](docs/eq.png)

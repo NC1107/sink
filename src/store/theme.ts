@@ -1,11 +1,11 @@
 import { create } from "zustand";
 
-export type ThemeId = "original" | "tokyo-night" | "catppuccin-mocha";
+export type ThemeId = "original" | "tokyo-night" | "gruvbox-dark";
 
 export const THEMES: { id: ThemeId; label: string; swatch: string[] }[] = [
   { id: "original", label: "Original", swatch: ["#0a0a0b", "#5557e0", "#ededef"] },
   { id: "tokyo-night", label: "Tokyo Night", swatch: ["#1a1b26", "#7aa2f7", "#bb9af7"] },
-  { id: "catppuccin-mocha", label: "Catppuccin", swatch: ["#1e1e2e", "#cba6f7", "#89b4fa"] },
+  { id: "gruvbox-dark", label: "Gruvbox", swatch: ["#282828", "#fe8019", "#b8bb26"] },
 ];
 
 const STORAGE_KEY = "sink-theme";

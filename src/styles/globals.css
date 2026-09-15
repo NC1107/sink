@@ -2517,32 +2517,32 @@ body,
   --warning: #e0af68;
 }
 
-:root[data-theme="catppuccin-mocha"] {
-  --bg-main: #1e1e2e;
-  --bg-sidebar: #181825;
-  --bg-chat: #1e1e2e;
-  --bg-surface: #252537;
-  --bg-surface-hover: #2b2b40;
-  --bg-active: #313244;
+:root[data-theme="gruvbox-dark"] {
+  --bg-main: #282828;
+  --bg-sidebar: #1d2021;
+  --bg-chat: #282828;
+  --bg-surface: #32302f;
+  --bg-surface-hover: #3c3836;
+  --bg-active: #504945;
 
-  --fg-primary: #cdd6f4;
-  --fg-secondary: #bac2de;
-  --fg-muted: #7f849c;
+  --fg-primary: #ebdbb2;
+  --fg-secondary: #d5c4a1;
+  --fg-muted: #a89984;
 
-  --accent: #cba6f7;
-  --accent-hover: #ddbdfa;
-  --accent-light: rgba(203, 166, 247, 0.12);
-  --on-accent: #1e1e2e;
+  --accent: #fe8019;
+  --accent-hover: #fe9a47;
+  --accent-light: rgba(254, 128, 25, 0.12);
+  --on-accent: #282828;
 
-  --bg-popover: #313244;
-  --bg-popover-hover: #45475a;
+  --bg-popover: #3c3836;
+  --bg-popover-hover: #504945;
 
-  --border: #313244;
-  --border-popover: #45475a;
+  --border: #3c3836;
+  --border-popover: #504945;
 
-  --online: #a6e3a1;
-  --danger: #f38ba8;
-  --warning: #f9e2af;
+  --online: #b8bb26;
+  --danger: #fb4934;
+  --warning: #fabd2f;
 }
 
 /* Theme picker (Settings › Appearance) */
