@@ -1,10 +1,11 @@
 import { create } from "zustand";
 
-export type ThemeId = "original" | "tokyo-night";
+export type ThemeId = "original" | "tokyo-night" | "catppuccin-mocha";
 
 export const THEMES: { id: ThemeId; label: string; swatch: string[] }[] = [
   { id: "original", label: "Original", swatch: ["#0a0a0b", "#5557e0", "#ededef"] },
   { id: "tokyo-night", label: "Tokyo Night", swatch: ["#1a1b26", "#7aa2f7", "#bb9af7"] },
+  { id: "catppuccin-mocha", label: "Catppuccin", swatch: ["#1e1e2e", "#cba6f7", "#89b4fa"] },
 ];
 
 const STORAGE_KEY = "sink-theme";
@@ -17,7 +18,8 @@ function apply(theme: ThemeId) {
 
 function initial(): ThemeId {
   const saved = localStorage.getItem(STORAGE_KEY);
-  return saved === "tokyo-night" || saved === "original" ? saved : "original";
+  // Checked against the list so a new theme needs no second edit here.
+  return THEMES.some((t) => t.id === saved) ? (saved as ThemeId) : "original";
 }
 
 interface ThemeState {

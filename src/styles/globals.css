@@ -2484,8 +2484,10 @@ body,
 }
 
 /* ============================================================
-   Theme: Tokyo Night (opt-in via <html data-theme="tokyo-night">)
-   Original theme stays the default under :root.
+   Themes (opt-in via <html data-theme="...">)
+   Original stays the default under :root. A theme is these 20
+   colour tokens and nothing else; the EQ band palette is
+   deliberately shared so a curve reads the same everywhere.
    ============================================================ */
 :root[data-theme="tokyo-night"] {
   --bg-main: #1a1b26;
@@ -2513,6 +2515,34 @@ body,
   --online: #9ece6a;
   --danger: #f7768e;
   --warning: #e0af68;
+}
+
+:root[data-theme="catppuccin-mocha"] {
+  --bg-main: #1e1e2e;
+  --bg-sidebar: #181825;
+  --bg-chat: #1e1e2e;
+  --bg-surface: #252537;
+  --bg-surface-hover: #2b2b40;
+  --bg-active: #313244;
+
+  --fg-primary: #cdd6f4;
+  --fg-secondary: #bac2de;
+  --fg-muted: #7f849c;
+
+  --accent: #cba6f7;
+  --accent-hover: #ddbdfa;
+  --accent-light: rgba(203, 166, 247, 0.12);
+  --on-accent: #1e1e2e;
+
+  --bg-popover: #313244;
+  --bg-popover-hover: #45475a;
+
+  --border: #313244;
+  --border-popover: #45475a;
+
+  --online: #a6e3a1;
+  --danger: #f38ba8;
+  --warning: #f9e2af;
 }
 
 /* Theme picker (Settings › Appearance) */
