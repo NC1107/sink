@@ -69,8 +69,8 @@ jobs:
           echo "install-testing: ${picked:-nothing}"
           jq -nc --arg picked "$picked" '
             {
-              # Runs on the runner itself (real desktop libs) - a bare container
-              # would only prove it doesn't bundle gtk, by design.
+              # Runs on the runner itself (real desktop libs); a bare container
+              # would only prove it does not bundle gtk, by design.
               arch:     "archlinux:latest",
               fedora:   "fedora:latest",
               opensuse: "opensuse/tumbleweed:latest",
