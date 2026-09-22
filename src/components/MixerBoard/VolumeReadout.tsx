@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { volToDb } from "../../lib/audio";
+import { useEditTrigger } from "./useEditTrigger";
 
 interface VolumeReadoutProps {
   percent: number;
@@ -10,7 +11,7 @@ interface VolumeReadoutProps {
   unit?: string;
 }
 
-/** A strip's level, typed in directly on double-click. */
+/** A strip's level, typed in directly on double-click or Enter. */
 export function VolumeReadout({
   percent,
   max = 100,
@@ -18,10 +19,16 @@ export function VolumeReadout({
   unit,
 }: Readonly<VolumeReadoutProps>) {
   const [draft, setDraft] = useState<string | null>(null);
+  const trigger = useEditTrigger(() => setDraft(String(percent)));
+
+  const close = () => {
+    setDraft(null);
+    trigger.restoreFocus();
+  };
 
   const commit = () => {
     const typed = Number.parseInt(draft ?? "", 10);
-    setDraft(null);
+    close();
     if (Number.isNaN(typed)) return;
     const next = Math.min(max, Math.max(0, typed));
     if (next !== percent) onChange(next);
@@ -42,7 +49,7 @@ export function VolumeReadout({
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
-            if (e.key === "Escape") setDraft(null);
+            if (e.key === "Escape") close();
           }}
         />
         <span style={{ fontSize: 11 }}>%</span>
@@ -52,9 +59,10 @@ export function VolumeReadout({
 
   return (
     <div
+      {...trigger.props}
       className="strip-readout strip-readout-editable"
-      title={`Double-click to type a level (0-${max}%)`}
-      onDoubleClick={() => setDraft(String(percent))}
+      title={`Double-click or press Enter to type a level (0-${max}%)`}
+      aria-label={`Level ${percent} percent, press Enter to type a level`}
     >
       {percent}
       <span style={{ fontSize: 11 }}>%</span> <span className="db">{unit ?? volToDb(percent)}</span>
