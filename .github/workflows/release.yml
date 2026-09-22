@@ -105,6 +105,13 @@ jobs:
               echo "::error::tag v$input already exists"
               exit 1
             fi
+            # A lower number would still tag, become "Latest", and push an
+            # older pkgver to the AUR: nothing downstream checks ordering.
+            latest=$(git tag -l 'v*' --sort=-v:refname | head -1); latest=${latest#v}
+            if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$input" | sort -V | tail -1)" != "$input" ]; then
+              echo "::error::version $input is not above the latest tag v$latest"
+              exit 1
+            fi
             ver="$input"; tag="v$ver"; pre=false
           else
             latest=$(git tag -l 'v*' --sort=-v:refname | head -1)
@@ -210,6 +217,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     container: archlinux:latest
     steps:
       - name: Install build tooling
@@ -219,6 +228,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Build and attach sink-bin
+        id: pkg
         env:
           VER: ${{ needs.build.outputs.version }}
           TAG: ${{ needs.build.outputs.tag }}
@@ -241,16 +251,31 @@ jobs:
           pacman -S --noconfirm --needed xorg-server-xvfb mesa >/dev/null
           packaging/smoke-test.sh
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "$pkg"
-          # Append the Arch package checksum to the release SHA256SUMS.
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir /tmp 2>/dev/null || true
+          # Append the Arch package checksum to the release SHA256SUMS. The
+          # download must succeed: with --clobber below, a missing file
+          # would replace the manifest for the other three artifacts with
+          # this one line.
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir /tmp
+          if [ "$(wc -l < /tmp/SHA256SUMS)" -lt 3 ]; then
+            echo "::error::downloaded SHA256SUMS has fewer than 3 entries; refusing to republish it"
+            exit 1
+          fi
           echo "$(sha256sum "$pkg" | cut -d' ' -f1)  $(basename "$pkg")" >> /tmp/SHA256SUMS
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber /tmp/SHA256SUMS
+          echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.pkg.outputs.pkg }}
 
       - name: Publish sink-bin to the AUR
         # Stable releases only - never the rolling dev prerelease. Best effort:
-        # the .pkg.tar.zst is already on the release, so an AUR failure here
-        # must not fail the run (it surfaces as a warning instead).
+        # the .pkg.tar.zst is already on the release, so an AUR failure must
+        # not fail the run - but the step itself fails, so it shows as such
+        # in the run summary rather than as a warning inside a green job.
         if: needs.build.outputs.prerelease == 'false'
+        continue-on-error: true
         env:
           VER: ${{ needs.build.outputs.version }}
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
@@ -292,7 +317,8 @@ jobs:
           '; then
             echo "sink-bin ${VER} published to the AUR"
           else
-            echo "::warning::AUR publish failed for sink-bin ${VER}. The .pkg.tar.zst is on the release; push packaging/arch/PKGBUILD to ssh://aur@aur.archlinux.org/sink-bin.git manually."
+            echo "::error::AUR publish failed for sink-bin ${VER}. The .pkg.tar.zst is on the release; push packaging/arch/PKGBUILD to ssh://aur@aur.archlinux.org/sink-bin.git manually."
+            exit 1
           fi
 
   copr:
