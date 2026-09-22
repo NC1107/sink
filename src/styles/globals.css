@@ -77,6 +77,12 @@
   --online: #22c55e;
   --danger: #ef4444;
   --warning: #f59e0b;
+  /* Channel triplets for washes and glows that take their own alpha. */
+  --danger-rgb: 239, 68, 68;
+  --online-rgb: 34, 197, 94;
+  /* Text on a danger wash. Fixed on purpose: --danger itself drops under
+     4.5:1 on the wash in gruvbox, this holds 6.9:1 or better in every theme. */
+  --on-danger-wash: #fca5a5;
 
   /* Type */
   --font-sans: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -215,11 +221,11 @@ body,
   height: 7px;
   border-radius: 50%;
   background: var(--online);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  box-shadow: 0 0 0 3px rgba(var(--online-rgb), 0.16);
 }
 .hb-status.err .dot {
   background: var(--danger);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+  box-shadow: 0 0 0 3px rgba(var(--danger-rgb), 0.16);
 }
 
 /* window controls */
@@ -830,7 +836,7 @@ body,
 .vu-clip.on {
   background: var(--danger);
   border-color: var(--danger);
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 6px rgba(var(--danger-rgb), 0.7);
 }
 .vu-db {
   flex: 0 0 auto;
@@ -1098,7 +1104,7 @@ body,
   background: var(--bg-active);
 }
 .icon-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.16);
+  background: rgba(var(--danger-rgb), 0.16);
   color: var(--danger);
 }
 .row .rtrail {
@@ -1286,7 +1292,7 @@ body,
 }
 
 .tag.live {
-  background: rgba(34, 197, 94, 0.14);
+  background: rgba(var(--online-rgb), 0.14);
   color: var(--online);
 }
 
@@ -1656,9 +1662,9 @@ body,
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-7);
-  background: rgba(239, 68, 68, 0.12);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.35);
-  color: #fca5a5;
+  background: rgba(var(--danger-rgb), 0.12);
+  border-bottom: 1px solid rgba(var(--danger-rgb), 0.35);
+  color: var(--on-danger-wash);
   font-size: var(--fs-meta);
 }
 .error-banner-msg {
@@ -1678,10 +1684,10 @@ body,
   cursor: pointer;
 }
 .error-banner-x:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(var(--danger-rgb), 0.2);
 }
 .error-banner-x:focus-visible {
-  outline: 2px solid #fca5a5;
+  outline: 2px solid var(--on-danger-wash);
   outline-offset: 1px;
 }
 
@@ -2507,7 +2513,7 @@ body,
 
   --fg-primary: #c0caf5;
   --fg-secondary: #a9b1d6;
-  --fg-muted: #565f89;
+  --fg-muted: #9aa5ce;
 
   --accent: #7aa2f7;
   --accent-hover: #9eb8f9;
@@ -2523,6 +2529,8 @@ body,
   --online: #9ece6a;
   --danger: #f7768e;
   --warning: #e0af68;
+  --danger-rgb: 247, 118, 142;
+  --online-rgb: 158, 206, 106;
   --tint-channel: #2f3d63;
   --tint-channel-wash: rgba(122, 162, 247, 0.07);
   --tint-bus: #4b3a1e;
@@ -2557,6 +2565,8 @@ body,
   --online: #b8bb26;
   --danger: #fb4934;
   --warning: #fabd2f;
+  --danger-rgb: 251, 73, 52;
+  --online-rgb: 184, 187, 38;
   --tint-channel: #5b3a17;
   --tint-channel-wash: rgba(254, 128, 25, 0.07);
   --tint-bus: #553a44;
