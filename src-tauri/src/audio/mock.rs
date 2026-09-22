@@ -17,17 +17,23 @@ use crate::error::SinkError;
 pub enum Call {
     MoveStream { index: u32, sink: String },
     ListStreams,
+    DestroyBus(String),
+    CreateBus(String),
     Other(&'static str),
 }
 
 /// Called on every move, so a test can inspect the world mid-command.
 type MoveHook = Box<dyn Fn(u32, &str) + Send + Sync>;
+/// Called on every bus destroy and create, so a test can hold a rebuild
+/// open while another thread tries to start one.
+type BusHook = Box<dyn Fn(&Call) + Send + Sync>;
 
 #[derive(Default)]
 pub struct MockBackend {
     streams: Mutex<Vec<AppStream>>,
     calls: Mutex<Vec<Call>>,
     on_move: Mutex<Option<MoveHook>>,
+    on_bus: Mutex<Option<BusHook>>,
 }
 
 impl MockBackend {
@@ -42,8 +48,30 @@ impl MockBackend {
         *self.on_move.lock().expect("on_move") = Some(Box::new(f));
     }
 
+    pub fn on_bus(&self, f: impl Fn(&Call) + Send + Sync + 'static) {
+        *self.on_bus.lock().expect("on_bus") = Some(Box::new(f));
+    }
+
     pub fn calls(&self) -> Vec<Call> {
         self.calls.lock().expect("calls").clone()
+    }
+
+    /// Only the destroy/create calls, in order: the shape a rebuild race
+    /// shows up in.
+    pub fn bus_ops(&self) -> Vec<Call> {
+        self.calls()
+            .into_iter()
+            .filter(|c| matches!(c, Call::DestroyBus(_) | Call::CreateBus(_)))
+            .collect()
+    }
+
+    fn record_bus(&self, call: Call) {
+        // Recorded before the hook runs, so anything that lands while the
+        // hook holds the call open shows up after it in the log.
+        self.record(call.clone());
+        if let Some(f) = self.on_bus.lock().expect("on_bus").as_ref() {
+            f(&call);
+        }
     }
 
     pub fn moves(&self) -> Vec<(u32, String)> {
@@ -164,15 +192,16 @@ impl AudioBackend for MockBackend {
 
     fn create_bus(
         &self,
-        _name: &str,
+        name: &str,
         _label: &str,
         _role: crate::persistence::buses::MixRole,
     ) -> Result<(), SinkError> {
+        self.record_bus(Call::CreateBus(name.to_string()));
         Ok(())
     }
 
-    fn destroy_bus(&self, _name: &str) -> Result<(), SinkError> {
-        self.record(Call::Other("destroy_bus"));
+    fn destroy_bus(&self, name: &str) -> Result<(), SinkError> {
+        self.record_bus(Call::DestroyBus(name.to_string()));
         Ok(())
     }
 

@@ -64,6 +64,23 @@ pub mod testing {
         }
     }
 
+    impl TempConfig {
+        /// The override is per thread, so a thread a test spawns must adopt
+        /// the root or it would write into the developer's own config.
+        pub fn adopt(&self) -> AdoptedRoot {
+            ROOT.with(|r| *r.borrow_mut() = Some(self.0.clone()));
+            AdoptedRoot
+        }
+    }
+
+    pub struct AdoptedRoot;
+
+    impl Drop for AdoptedRoot {
+        fn drop(&mut self) {
+            ROOT.with(|r| *r.borrow_mut() = None);
+        }
+    }
+
     impl Drop for TempConfig {
         fn drop(&mut self) {
             ROOT.with(|r| *r.borrow_mut() = None);

@@ -13,8 +13,9 @@ pub struct AppState {
     pub mixer: Mutex<MixerState>,
     /// Held for a whole profile load, which takes the mixer lock piecemeal.
     pub profile_switch: Mutex<()>,
-    /// Held while a mix node is torn down and built again, so two role
-    /// switches cannot interleave and leave the node in the other shape.
+    /// Held while a mix node is torn down and built again. A hotkey or tray
+    /// profile switch runs off the IPC thread, so it can land mid-rebuild
+    /// and leave the node in the other shape unless every rebuild takes it.
     pub bus_rebuild: Mutex<()>,
     /// Lets the pactl-backend ticker yield while an on-screen window is
     /// already polling (see `lib::spawn_route_enforcer`).
@@ -51,6 +52,13 @@ impl AppState {
         self.mixer
             .lock()
             .map_err(|_| "mixer state lock poisoned".to_string())
+    }
+
+    /// Never taken while the mixer lock is held, so it cannot deadlock.
+    pub fn lock_bus_rebuild(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.bus_rebuild
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn new(backend: Arc<dyn AudioBackend>, backend_native: bool) -> Self {

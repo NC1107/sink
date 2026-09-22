@@ -71,6 +71,11 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
 /// capture re-attaches automatically).
 #[tauri::command]
 pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Result<(), String> {
+    rename_bus_on(&state, name, label)
+}
+
+pub fn rename_bus_on(state: &AppState, name: String, label: String) -> Result<(), String> {
+    let _rebuild = state.lock_bus_rebuild();
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
         mixer
@@ -130,10 +135,15 @@ pub fn set_bus_role(
     name: String,
     role: crate::persistence::buses::MixRole,
 ) -> Result<(), String> {
-    let _rebuild = state
-        .bus_rebuild
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    set_bus_role_on(&state, name, role)
+}
+
+pub fn set_bus_role_on(
+    state: &AppState,
+    name: String,
+    role: crate::persistence::buses::MixRole,
+) -> Result<(), String> {
+    let _rebuild = state.lock_bus_rebuild();
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
         let def = mixer
@@ -177,6 +187,11 @@ pub fn set_bus_role(
 /// Delete a mix.
 #[tauri::command]
 pub fn remove_bus(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    remove_bus_on(&state, name)
+}
+
+pub fn remove_bus_on(state: &AppState, name: String) -> Result<(), String> {
+    let _rebuild = state.lock_bus_rebuild();
     // Validate before the node goes away. Rejecting afterwards (unknown
     // name, or the master mix, which can't be deleted) would leave the mix
     // torn down in PipeWire but still defined here.
@@ -421,4 +436,142 @@ pub fn set_bus_mute(state: State<'_, AppState>, name: String, muted: bool) -> Re
 /// The current channel sink names (the "all channels" set for mixes).
 pub(crate) fn channel_names(mixer: &crate::mixer::state::MixerState) -> Vec<String> {
     mixer.channels.iter().map(|c| c.name.clone()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::mock::{Call, MockBackend};
+    use crate::persistence::buses::MixRole;
+    use crate::persistence::profiles::{self, Profile};
+    use crate::persistence::testing::TempConfig;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+    use std::time::Duration;
+
+    fn state_with_mix(backend: Arc<MockBackend>) -> (AppState, String) {
+        let state = AppState::new(backend, true);
+        let name = {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            mixer.init_defaults();
+            mixer.buses.add("Solo").expect("add mix").name
+        };
+        (state, name)
+    }
+
+    /// Parks the first rebuild between its destroy and its create, and lets
+    /// the test know once it is parked, so a second rebuild can be started
+    /// while the first is still open.
+    fn park_first_rebuild(backend: &MockBackend) -> Arc<Barrier> {
+        let inside = Arc::new(Barrier::new(2));
+        let signal = inside.clone();
+        let parked = AtomicBool::new(false);
+        backend.on_bus(move |call| {
+            if matches!(call, Call::DestroyBus(_)) && !parked.swap(true, Ordering::SeqCst) {
+                signal.wait();
+                thread::sleep(Duration::from_millis(150));
+            }
+        });
+        inside
+    }
+
+    fn assert_rebuilds_do_not_interleave(ops: &[Call], bus: &str) {
+        let mut open = false;
+        for op in ops {
+            match op {
+                Call::DestroyBus(n) if n == bus => {
+                    assert!(
+                        !open,
+                        "{bus} destroyed twice before it was recreated: {ops:?}"
+                    );
+                    open = true;
+                }
+                Call::CreateBus(n) if n == bus => {
+                    assert!(open, "{bus} created without a destroy first: {ops:?}");
+                    open = false;
+                }
+                _ => {}
+            }
+        }
+        assert!(!open, "{bus} left destroyed: {ops:?}");
+    }
+
+    #[test]
+    fn a_rename_waits_for_a_role_switch_to_finish() {
+        let cfg = TempConfig::new("bus-rebuild-rename");
+        let backend = Arc::new(MockBackend::default());
+        let (state, name) = state_with_mix(backend.clone());
+        let inside = park_first_rebuild(&backend);
+
+        thread::scope(|s| {
+            let switch = s.spawn(|| {
+                let _root = cfg.adopt();
+                set_bus_role_on(&state, name.clone(), MixRole::Playback)
+            });
+            inside.wait();
+            let rename = s.spawn(|| {
+                let _root = cfg.adopt();
+                rename_bus_on(&state, name.clone(), "Renamed".into())
+            });
+            switch.join().expect("switch thread").expect("role switch");
+            rename.join().expect("rename thread").expect("rename");
+        });
+
+        assert_rebuilds_do_not_interleave(&backend.bus_ops(), &name);
+        let mixer = state.lock_mixer().expect("mixer");
+        let def = mixer.buses.get(&name).expect("mix still defined");
+        assert_eq!(
+            (def.role, def.label.as_str()),
+            (MixRole::Playback, "Renamed")
+        );
+    }
+
+    // A hotkey or tray profile switch runs off the IPC thread, so it can
+    // land while the UI is mid-rebuild; this is the interleaving that
+    // actually happens in use.
+    #[test]
+    fn a_profile_switch_waits_for_a_rename_to_finish() {
+        let cfg = TempConfig::new("bus-rebuild-profile");
+        let backend = Arc::new(MockBackend::default());
+        let (state, name) = state_with_mix(backend.clone());
+        {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            let mut buses = mixer.buses.clone();
+            buses.set_role(&name, MixRole::Playback).expect("role");
+            profiles::save(&Profile {
+                name: "Stream".into(),
+                channels: mixer.channels.clone(),
+                assignments: mixer.assignments.clone(),
+                outputs: mixer.outputs.clone(),
+                eq: mixer.eq.clone(),
+                trigger_device: None,
+                buses,
+            })
+            .expect("save profile");
+            mixer.active_profile = None;
+        }
+        let inside = park_first_rebuild(&backend);
+
+        thread::scope(|s| {
+            let rename = s.spawn(|| {
+                let _root = cfg.adopt();
+                rename_bus_on(&state, name.clone(), "Renamed".into())
+            });
+            inside.wait();
+            let switch = s.spawn(|| {
+                let _root = cfg.adopt();
+                crate::commands::profiles::load_profile_on(&state, "Stream".into())
+            });
+            rename.join().expect("rename thread").expect("rename");
+            switch.join().expect("switch thread").expect("profile load");
+        });
+
+        assert_rebuilds_do_not_interleave(&backend.bus_ops(), &name);
+        let mixer = state.lock_mixer().expect("mixer");
+        assert_eq!(
+            mixer.buses.get(&name).map(|b| b.role),
+            Some(MixRole::Playback)
+        );
+    }
 }

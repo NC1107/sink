@@ -26,7 +26,7 @@ pub fn autosave_active(mixer: &crate::mixer::state::MixerState) {
     }
 }
 
-fn set_active(state: &State<'_, AppState>, name: Option<String>) -> Result<(), String> {
+fn set_active(state: &AppState, name: Option<String>) -> Result<(), String> {
     // Refresh the cached trigger from the profile we're binding to (a rare
     // profile switch, not the per-mutation autosave path).
     let trigger = name
@@ -84,6 +84,12 @@ pub fn load_profile(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<(), String> {
+    load_profile_on(&state, name)?;
+    crate::refresh_tray(&app);
+    Ok(())
+}
+
+pub fn load_profile_on(state: &AppState, name: String) -> Result<(), String> {
     // A tray click, a hotkey and the UI can all land here at once; the
     // reconcile below reads and writes the mixer in several steps.
     let _switching = state
@@ -159,6 +165,7 @@ pub fn load_profile(
     }
 
     // ---- mix bus reconciliation ----
+    let _rebuild = state.lock_bus_rebuild();
     let mut target_buses = profile.buses.clone();
     // The master mix always exists and carries the profile's full channel
     // set (this also upgrades old profiles saved before the master model).
@@ -170,7 +177,9 @@ pub fn load_profile(
     };
     for old in &current_buses.buses {
         if target_buses.get(&old.name).is_none() {
-            let _ = state.backend.destroy_bus(&old.name);
+            if let Err(e) = state.backend.destroy_bus(&old.name) {
+                eprintln!("sink: removing mix {} for profile failed: {e}", old.name);
+            }
         }
     }
     for bus in &target_buses.buses {
@@ -178,7 +187,9 @@ pub fn load_profile(
         // one cannot be reused.
         let live_role = current_buses.get(&bus.name).map(|b| b.role);
         if live_role.is_some_and(|role| role != bus.role) {
-            let _ = state.backend.destroy_bus(&bus.name);
+            if let Err(e) = state.backend.destroy_bus(&bus.name) {
+                eprintln!("sink: rebuilding mix {} for profile failed: {e}", bus.name);
+            }
         }
         if live_role != Some(bus.role) {
             if let Err(e) =
@@ -245,8 +256,7 @@ pub fn load_profile(
     eq.save().map_err(|e| e.to_string())?;
     target_buses.save().map_err(|e| e.to_string())?;
     // The loaded profile becomes the live-bound (autosaving) one.
-    set_active(&state, Some(name))?;
-    crate::refresh_tray(&app);
+    set_active(state, Some(name))?;
     Ok(())
 }
 
