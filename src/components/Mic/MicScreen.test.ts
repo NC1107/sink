@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { micStatusLabel } from "./MicScreen";
 
-// enabled, muted, waiting -> label. Waiting is the #73 case: a pinned device
-// that has not appeared yet, and it must show even while muted.
+// A pinned device that hasn't appeared yet must show as waiting even while
+// muted.
 describe("micStatusLabel", () => {
   it.each([
     [false, false, false, "Off"],

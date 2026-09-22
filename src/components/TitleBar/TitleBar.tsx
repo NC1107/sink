@@ -5,9 +5,8 @@ import { BalanceBar } from "../MixerBoard/BalanceBar";
 import { ProfileMenu } from "./ProfileMenu";
 
 /**
- * Frameless headerbar: brand, current screen, engine status, window
- * controls. The close button triggers the normal close-requested flow,
- * which the Rust side intercepts to hide to tray.
+ * Frameless headerbar: brand, screen, engine status, window controls.
+ * The close button hides to tray (intercepted on the Rust side).
  */
 export function TitleBar({ screen }: Readonly<{ screen: string }>) {
   const win = getCurrentWindow();

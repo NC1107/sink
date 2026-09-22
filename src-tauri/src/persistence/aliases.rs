@@ -5,9 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::SinkError;
 
-/// A user-chosen display name for a discovered app, keyed by the same
-/// stream identity used for routing assignments (e.g. apps like Spotify
-/// that only expose a generic `media.name = "audio-src"`).
+/// A user-chosen display name for a discovered app, keyed by the same stream
+/// identity used for routing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AliasEntry {
     pub match_prop: String,

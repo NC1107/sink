@@ -7,22 +7,21 @@ use crate::audio::types::VirtualSink;
 use crate::error::SinkError;
 use crate::persistence::assignments::Assignments;
 
-/// A named snapshot of the mixer: channel volumes/mutes, the app→channel
-/// assignment set, and per-channel output choices. Stored as JSON in
-/// `$XDG_CONFIG_HOME/sink/profiles/<name>.json`.
+/// A named snapshot of the mixer: volumes/mutes, assignments, and output
+/// choices, stored as JSON in `$XDG_CONFIG_HOME/sink/profiles/<name>.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
     pub channels: Vec<VirtualSink>,
     pub assignments: Assignments,
-    /// Added in Phase 4; default keeps older profile files loadable.
+    /// `serde(default)` keeps older profile files loadable.
     #[serde(default)]
     pub outputs: crate::persistence::outputs::ChannelOutputs,
     /// Per-channel parametric EQ; default keeps older profile files loadable.
     #[serde(default)]
     pub eq: crate::persistence::eq::ChannelEq,
-    /// Phase 5: output device (node.name) whose appearance auto-loads this
-    /// profile - Sonar-style hardware profile switching.
+    /// Output device (node.name) whose appearance auto-loads this profile -
+    /// Sonar-style hardware profile switching.
     #[serde(default)]
     pub trigger_device: Option<String>,
     /// User-defined mixes (record buses) with their member channels.

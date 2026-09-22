@@ -1,13 +1,6 @@
-//! Per-channel EQ insert: captures a channel sink's monitor (post-fader,
-//! the same tap point as the meters), runs the biquad cascade, and plays
-//! the processed signal back out through a stream whose ports the loop
-//! links to the channel's real targets (device, buses) instead of the raw
-//! monitor.
-//!
-//! Topology:  channel sink ──monitor──▶ capture ──EQ──▶ ring ──▶ playback ──▶ device/buses
-//!
-//! Same construction as the mic chain (`mic.rs`), minus metering: EQ taps
-//! add no LevelStore slots, so the MAX_METERS budget is untouched.
+//! Per-channel EQ insert: captures a channel sink's monitor, runs the biquad
+//! cascade, and plays the processed signal back through a stream the loop links
+//! to the channel's real targets (device, buses) instead of the raw monitor.
 
 use std::sync::Arc;
 
@@ -45,9 +38,8 @@ pub struct EqChainHandle {
 }
 
 impl EqChainHandle {
-    /// Node id of the playback stream - the loop links its output ports to
-    /// the channel's targets. Only valid once the server has created the
-    /// stream's node (callers filter u32::MAX, like `mic_playback_node`).
+    /// Node id of the playback stream. Only valid once the server has created
+    /// the stream's node - callers must filter the u32::MAX sentinel.
     pub fn playback_node_id(&self) -> u32 {
         self.playback.node_id()
     }
@@ -85,9 +77,8 @@ impl EqChainHandle {
         // 48 kHz as the mic's 4096 mono; real added latency is one quantum.
         let ring = Arc::new(Ring::new(8192));
 
-        // ---- capture: channel monitor -> EQ -> ring ----
-        // Passive like the meters: the channel's own app streams drive the
-        // sink; the EQ tap must not keep an idle channel running.
+        // Capture stage (channel monitor -> EQ -> ring): passive like the
+        // meters, since the EQ tap must not keep an idle channel running.
         let capture_name = format!("{EQ_CAPTURE_PREFIX}{sink_name}");
         let capture = pw::stream::StreamRc::new(
             core.clone(),
@@ -164,11 +155,8 @@ impl EqChainHandle {
             )
             .map_err(|e| err("capture connect", e))?;
 
-        // ---- playback: ring -> device/buses ----
-        // node.autoconnect=false keeps WirePlumber's hands off this stream
-        // (it routes playback streams to the default sink - the link police
-        // in thread.rs destroys anything that slips through anyway); the
-        // loop links it to the channel's resolved targets itself.
+        // Playback stage: node.autoconnect=false keeps WirePlumber from routing
+        // this to the default sink; the link police in thread.rs backs it up.
         let playback_name = format!("{EQ_PLAYBACK_PREFIX}{sink_name}");
         let playback = pw::stream::StreamRc::new(
             core.clone(),

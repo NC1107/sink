@@ -12,9 +12,8 @@ import type {
   VirtualSink,
 } from "../types";
 
-// Faders fire on every pointer move; debounce backend calls per target so a
-// drag doesn't spawn a pactl subprocess per pixel. UI state updates
-// optimistically and immediately.
+// Faders fire on every pointer move; debounce per target so a drag doesn't
+// spawn a pactl subprocess per pixel. UI state updates optimistically.
 const pendingInvokes = new Map<string, number>();
 function debouncedInvoke(
   key: string,
@@ -47,15 +46,13 @@ interface MixerStore {
   /** Channel -> chosen output node name (null = follow system default). */
   channelOutputs: Record<string, string | null>;
   /**
-   * Channel -> the device node name it is actually routed to right now (after
-   * default/fallback resolution). Lets a follow-default strip show where its
-   * audio really goes, and reflects failover. Empty on the pactl fallback.
+   * Channel -> the device node name it is actually routed to right now.
+   * Lets a follow-default strip show where audio really goes and reflects failover.
    */
   resolvedOutputs: Record<string, string | null>;
   /**
    * Channel -> whether it fails over to another device when its chosen device
-   * (or the default) is gone. Off = play only on the chosen device / exact
-   * default, silence otherwise. Defaults to on (absent treated as true).
+   * is gone. Defaults to on (absent treated as true).
    */
   channelFailover: Record<string, boolean>;
   fetchOutputs: () => Promise<void>;
@@ -67,13 +64,13 @@ interface MixerStore {
   eqConfigs: Record<string, EqConfig>;
   fetchEq: () => Promise<void>;
   setChannelEq: (sinkName: string, config: EqConfig) => Promise<void>;
-  /** Mic chain (Phase 3). Null until loaded. */
+  /** Null until loaded. */
   micConfig: MicConfig | null;
   inputDevices: OutputDevice[];
   fetchMic: () => Promise<void>;
   setMicConfig: (patch: Partial<MicConfig>) => Promise<void>;
   profiles: ProfileInfo[];
-  /** Bind/clear an output device that auto-loads a profile (Phase 5). */
+  /** Bind or clear the output device that auto-loads a profile. */
   setProfileTrigger: (name: string, device: string | null) => Promise<void>;
   /** Create a clean-slate profile (saved, not applied). */
   createBlankProfile: (name: string) => Promise<void>;
@@ -167,7 +164,7 @@ interface MixerStore {
 }
 
 /** Structural equality via JSON, to skip no-op store writes on each poll and
- *  avoid re-rendering the whole board when nothing changed (TD-029). */
+ *  avoid re-rendering the whole board when nothing changed. */
 const jsonEqual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 export const useMixerStore = create<MixerStore>((set, get) => ({

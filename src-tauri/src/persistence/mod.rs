@@ -90,8 +90,7 @@ pub mod testing {
 }
 
 /// Create Sink's config directory (and parents) with owner-only access -
-/// routing rules and app history are nobody else's business. Used by every
-/// save path that writes under `$XDG_CONFIG_HOME/sink`.
+/// routing rules and app history are nobody else's business.
 pub fn ensure_private_dir(path: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)?;
     #[cfg(unix)]
@@ -102,12 +101,8 @@ pub fn ensure_private_dir(path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Write `contents` to `path` atomically: write a sibling temp file, fsync it,
-/// then rename it over the target. A crash or power loss mid-write then leaves
-/// either the old file or the complete new one - never a truncated file that
-/// load paths silently discard (resetting the user's config). The parent
-/// directory is created if missing; callers needing 0700 call
-/// [`ensure_private_dir`] first, which this preserves.
+/// Write `contents` to `path` atomically via a temp file, fsync, then rename -
+/// a crash mid-write leaves the old file or the new one, never truncated.
 pub fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     use std::io::Write;
     if let Some(parent) = path.parent() {
@@ -131,8 +126,7 @@ pub fn write_atomic(path: &std::path::Path, contents: impl AsRef<[u8]>) -> std::
 }
 
 /// Factory reset: delete everything Sink ever saved - the whole config
-/// directory (channels, mixes, profiles, assignments, history, prefs)
-/// and the WirePlumber routing rules.
+/// directory and the WirePlumber routing rules.
 pub fn wipe_all() -> Result<(), crate::error::SinkError> {
     if let Some(dir) = crate::persistence::config_root() {
         let sink_dir = dir.join("sink");

@@ -1,16 +1,6 @@
-//! Per-channel parametric EQ core: RBJ Audio EQ Cookbook biquads in a
-//! cascade of up to MAX_EQ_BANDS, preceded by a preamp trim.
-//!
-//! Pure Rust, no external DSP crates (same stance as the mic chain in
-//! `dsp.rs`). The frequency-response math is hand-mirrored in
-//! `src/lib/eqMath.ts` for the UI curve - keep both in sync.
-//!
-//! Threading model: the command thread writes band parameters into
-//! `EqParams` (plain atomics) and bumps a generation counter with Release
-//! ordering; the RT capture callback owns an `EqEngine` and redesigns its
-//! coefficients only when an Acquire load of the generation sees a change.
-//! Coefficient design (a few sin/cos) off the hot path per *change*, not
-//! per buffer, and never a lock on the RT thread.
+//! Per-channel parametric EQ core: RBJ Audio EQ Cookbook biquads in a cascade,
+//! preceded by a preamp trim. Hand-mirrored in `src/lib/eqMath.ts` for the UI
+//! curve - keep both in sync.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 
@@ -38,13 +28,11 @@ impl BiquadCoeffs {
         }
     }
 
-    /// RBJ Audio EQ Cookbook design. For shelves, `q` is the shelf slope S
-    /// (not a resonance Q) - the schema shares one field for both, see
-    /// `EqBand::q`. LowPass/HighPass ignore `gain_db`.
+    /// RBJ Audio EQ Cookbook design. For shelves, `q` is the shelf slope S, not
+    /// resonance Q - one field, two meanings (see `EqBand::q`).
     pub fn design(kind: EqBandKind, freq_hz: f32, gain_db: f32, q: f32, sample_rate: f32) -> Self {
-        // Guard the math: freq must sit below Nyquist and q must be
-        // positive. Config-level clamps enforce this for real input; this
-        // is the last line of defense against a divide-by-zero.
+        // Guard the math: freq below Nyquist, q positive - last line of defense
+        // against a divide-by-zero (config clamps handle real input).
         let freq = freq_hz.clamp(1.0, sample_rate * 0.49);
         let q = q.max(0.01);
         let w0 = 2.0 * std::f32::consts::PI * freq / sample_rate;
@@ -144,10 +132,8 @@ impl BiquadState {
     }
 }
 
-/// Feedback state decays toward zero during silence but never reaches it;
-/// once subnormal, every multiply on it takes a microcode assist on Intel
-/// cores, and this runs per band per channel per sample on the RT thread.
-/// Nothing in the tree sets FTZ/DAZ, so the state is zeroed by hand.
+/// Feedback state decays toward zero but never reaches it; once subnormal,
+/// every multiply costs a microcode assist on the RT thread.
 #[inline]
 pub(crate) fn flush_denormal(v: f32) -> f32 {
     if v.abs() < DENORMAL_FLOOR {
@@ -223,13 +209,8 @@ impl AtomicBand {
     }
 }
 
-/// Live-tunable EQ parameters shared with the RT capture callback.
-///
-/// Single writer (the loop thread handling commands), single reader (the RT
-/// callback). Field writes are Relaxed; the trailing Release bump of
-/// `generation` publishes them all to the reader's Acquire load - no locks,
-/// no retries, and torn *intermediate* states are impossible because the
-/// reader only redesigns after seeing a new generation.
+/// Live-tunable EQ params shared with the RT callback: field writes are
+/// Relaxed, a trailing Release bump of `generation` publishes atomically.
 pub struct EqParams {
     enabled: AtomicBool,
     preamp_bits: AtomicU32,
@@ -329,9 +310,8 @@ impl EqEngine {
         }
     }
 
-    /// Process an interleaved stereo buffer in place. Pass-through when the
-    /// config is disabled (the chain is normally torn down on disable; this
-    /// covers the window between a disable apply() and the relink).
+    /// Process an interleaved stereo buffer in place. Pass-through when
+    /// disabled - covers the window between a disable apply() and the relink.
     pub fn process_interleaved(&mut self, buf: &mut [f32], params: &EqParams) {
         self.refresh(params);
         if !self.enabled {
@@ -353,8 +333,8 @@ impl EqEngine {
 mod tests {
     use super::*;
 
-    // Before the flush, z1/z2 sat at a subnormal for as long as the input
-    // stayed silent (measured: all bands still subnormal after 30 s).
+    // Before the flush, z1/z2 would sit at a subnormal indefinitely once the
+    // input went silent.
     #[test]
     fn filter_state_settles_to_exact_zero_over_silence() {
         let c = BiquadCoeffs::design(EqBandKind::Peaking, 1000.0, 6.0, 1.0, SR);
@@ -381,9 +361,8 @@ mod tests {
         assert_eq!(flush_denormal(-f32::MIN_POSITIVE / 4.0), 0.0);
     }
 
-    /// Analytic magnitude response |H(e^jw)| in dB - exact, no time-domain
-    /// sampling artifacts. This is the same formula the UI curve uses
-    /// (src/lib/eqMath.ts), so these tests also pin the shared math.
+    /// Analytic magnitude response |H(e^jw)| in dB - exact, no sampling
+    /// artifacts; the same formula `src/lib/eqMath.ts` uses, pinning both.
     fn measured_gain_db(c: &BiquadCoeffs, freq: f32, sample_rate: f32) -> f32 {
         let w = 2.0 * std::f64::consts::PI * f64::from(freq) / f64::from(sample_rate);
         let (b0, b1, b2) = (f64::from(c.b0), f64::from(c.b1), f64::from(c.b2));

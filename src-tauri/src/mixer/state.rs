@@ -26,17 +26,14 @@ pub struct MixerState {
     pub mic: crate::audio::types::MicConfig,
     /// Every app identity ever observed (history + ignore list).
     pub seen: crate::persistence::seen::SeenApps,
-    /// Unix seconds of the last `seen` write. The poll only saves on
-    /// structural changes, so this drives a slow flush that bounds how stale
-    /// on-disk `last_seen` timestamps can get if Sink dies without a clean
-    /// quit - the age-based prune trusts them.
+    /// Unix seconds of the last `seen` write; bounds how stale `last_seen`
+    /// gets before the age-based prune trusts it.
     pub seen_saved_at: u64,
     /// Profile changes autosave into this profile (live-bound, not a
     /// snapshot). None = unmanaged state.
     pub active_profile: Option<String>,
     /// Cached trigger device of `active_profile`, so autosave preserves it
-    /// without re-reading the profile file on every mutation. Kept in step
-    /// whenever the active profile or its trigger changes.
+    /// without re-reading the profile file on every mutation.
     pub active_trigger: Option<String>,
     /// User-defined mixes (record buses), persisted to disk.
     pub buses: crate::persistence::buses::Buses,
@@ -48,9 +45,8 @@ pub struct MixerState {
 }
 
 impl MixerState {
-    /// Populate the channel strips from the user's channel definitions,
-    /// each restored to its persisted volume/mute (100%/unmuted for a
-    /// channel that has never been touched).
+    /// Populate the channel strips, each restored to its persisted volume/mute
+    /// (100%/unmuted if the channel has never been touched).
     pub fn init_defaults(&mut self) {
         self.channels = self
             .channel_defs
@@ -73,8 +69,7 @@ impl MixerState {
     }
 
     /// Forget history entries the user never acted on and hasn't seen in a
-    /// week, so the "not running" list stays about apps they actually use.
-    /// Returns true when the history changed and should be saved.
+    /// week; returns true when something changed and should be persisted.
     pub fn prune_stale_apps(&mut self, now: u64) -> bool {
         // Disjoint field borrows: `prune` needs `seen` mutably while the
         // intent test reads the other two.
@@ -93,13 +88,8 @@ impl MixerState {
         )
     }
 
-    /// Decide which live streams to move onto their saved channel, and
-    /// record them as handled. Each stream is considered once, on first
-    /// sight, so a manual re-route (here or in pavucontrol) isn't fought;
-    /// streams that have gone away are forgotten so the ledger stays bounded.
-    ///
-    /// Returns `(stream index, target sink, app name)` for the caller to
-    /// execute once it has released the lock.
+    /// Each stream is considered once, so a manual re-route isn't fought; the
+    /// caller applies the returned moves after releasing the lock.
     pub fn plan_auto_routes(&mut self, streams: &[AppStream]) -> Vec<(u32, String, String)> {
         // Enforce only once the virtual sinks exist, or streams would be
         // marked handled while their target can't be moved to yet.
@@ -123,11 +113,8 @@ impl MixerState {
         planned
     }
 
-    /// The channel a stream's rules send it to: its identity's rule, or for
-    /// an identity that cannot adopt (no trusted process), a rule keyed on
-    /// the stream's own props. A process identity never falls back: its
-    /// legacy rules were adopted once, and a rule the user then cleared
-    /// must stay cleared.
+    /// A process identity's own rule wins; only an identity with no trusted
+    /// process falls back to a rule on the stream's own props.
     fn rule_for(&self, stream: &AppStream) -> Option<String> {
         self.assignments
             .sink_for(&stream.match_prop, &stream.match_value)
@@ -295,8 +282,8 @@ mod tests {
 
     #[test]
     fn auto_route_still_honours_a_rule_keyed_on_the_streams_own_props() {
-        // A stream with no trusted process keeps its identity's fallback
-        // name, but the user's rule was keyed on its media.name.
+        // Bug shape: a rule keyed on the stream's own media.name must still
+        // apply.
         let mut state = MixerState::default();
         state.init_defaults();
         state
@@ -313,8 +300,8 @@ mod tests {
 
     #[test]
     fn a_cleared_rule_on_a_process_identity_stays_cleared() {
-        // The legacy rule is kept on disk (it may route another app), but
-        // once adopted and then cleared it must not route this app again.
+        // Bug shape: a cleared rule must not be revived by its adopted legacy
+        // rule.
         let mut state = MixerState::default();
         state.init_defaults();
         state

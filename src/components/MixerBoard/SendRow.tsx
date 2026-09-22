@@ -4,8 +4,7 @@ import { Ms } from "../Icons";
 import { HSlider } from "../AppList/HSlider";
 
 /** One member's send level within one mix: what that mix's recorders hear,
- *  independent of the member's own fader. Mute is gain 0 scoped to this mix,
- *  restoring the pre-mute level on unmute (the main strips' mute shape). */
+ *  independent of the member's own fader. */
 export function SendRow({
   icon,
   label,

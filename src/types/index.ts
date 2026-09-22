@@ -42,7 +42,7 @@ export interface OutputDevice {
   description: string;
 }
 
-/** Phase 3 mic chain configuration (mirrors Rust MicConfig). */
+/** Mirrors Rust MicConfig. */
 export interface MicConfig {
   enabled: boolean;
   /** node.name of the hardware mic (null = system default). */
@@ -156,7 +156,7 @@ export function busMembers(bus: BusDef, allChannels: string[]): string[] {
   return bus.exclude ? allChannels.filter((c) => !bus.channels.includes(c)) : bus.channels;
 }
 
-/** Profile listing entry (Phase 5: trigger_device auto-loads the profile). */
+/** Profile listing entry; trigger_device auto-loads the profile. */
 export interface ProfileInfo {
   name: string;
   trigger_device: string | null;

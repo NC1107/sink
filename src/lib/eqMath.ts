@@ -1,6 +1,5 @@
 // Frequency-response math for the EQ curve - a hand-synced mirror of the
-// RBJ designs in src-tauri/src/audio/pw_native/eq.rs. If a formula changes
-// on either side, change both; the parallel test suites pin the contract.
+// RBJ designs in src-tauri/src/audio/pw_native/eq.rs; change both together.
 
 import type { EqBand, EqBandKind, EqConfig } from "../types";
 import { EQ_FREQ_MAX_HZ, EQ_FREQ_MIN_HZ } from "../types";

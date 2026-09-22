@@ -1,7 +1,6 @@
 //! The user's local EQ preset library: named JSON files (the same schema
 //! as the bundled presets) under `$XDG_CONFIG_HOME/sink/eq_presets/`,
-//! modeled on the profiles store - including its name sanitization, so a
-//! preset name can never traverse out of the directory.
+//! modeled on the profiles store, including its name sanitization.
 
 use std::fs;
 use std::path::PathBuf;

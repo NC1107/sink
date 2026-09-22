@@ -55,9 +55,8 @@ pub fn set_device_label_style(
     prefs.save().map_err(|e| e.to_string())
 }
 
-/// Toggle "start minimized" (boot to tray when autostarting). Rewrites
-/// the systemd unit when autostart is already enabled so the flag tracks
-/// the preference.
+/// Toggle "start minimized" (boot to tray when autostarting); rewrites the
+/// systemd unit when autostart is already enabled so the flag stays in sync.
 #[tauri::command]
 pub fn set_start_minimized(state: State<'_, AppState>, minimized: bool) -> Result<(), String> {
     let prefs = {

@@ -16,12 +16,8 @@ const TICK_6DB = heightForDb(-6) * 100; // ≈ 70.8%
 const CLIP_AT = heightForDb(-0.2);
 
 /**
- * Live level meter, calibrated in dBFS. Targets arrive at 10 Hz from the
- * backend's `levels` events; an rAF loop smooths toward them (fast attack,
- * slow release) outside React state. Green below −6 dB, amber to −3 dB,
- * red above - and a clip light that latches for 1.5 s when the signal
- * touches 0 dBFS. The readout shows the held peak in dBFS.
- * Under the pactl fallback no events arrive and the meter rests at zero.
+ * Live level meter, calibrated in dBFS; an rAF loop smooths toward targets
+ * outside React state. Rests at zero under the pactl fallback (no events).
  */
 export function VuMeter({ target }: Readonly<VuMeterProps>) {
   const fillRef = useRef<HTMLDivElement>(null);
@@ -51,7 +47,6 @@ export function VuMeter({ target }: Readonly<VuMeterProps>) {
         clipRef.current.className = "vu-clip" + (performance.now() < clipUntil ? " on" : "");
       }
       if (dbRef.current) {
-        // Held peak in dBFS (height is sqrt(amplitude), so dB = 40·log10).
         // Silence shows nothing: the empty bar already says it, and a
         // minus infinity reads like a fault.
         const text = peak < 0.02 ? "" : String(Math.round(40 * Math.log10(peak)));

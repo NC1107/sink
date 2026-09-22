@@ -5,9 +5,8 @@ use crate::commands::routing::MAX_VOLUME;
 use crate::persistence::buses::{is_bus_name, BusDef};
 use crate::state::AppState;
 
-/// Re-apply a mix's persisted volume/mute to its node. Bus nodes are born at
-/// unity/unmuted, so this restores the saved level after create/rename/load.
-/// Best-effort: a routing failure shouldn't abort bringing the mix up.
+/// Re-apply a mix's persisted volume/mute to its node: bus nodes are born at
+/// unity/unmuted, and a routing failure shouldn't abort bringing the mix up.
 pub(crate) fn apply_bus_level(backend: &dyn AudioBackend, def: &BusDef) {
     if def.volume_percent != 100 {
         let _ = backend.set_sink_volume(&def.name, def.volume_percent);
@@ -66,9 +65,8 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
     Ok(())
 }
 
-/// Rename a mix. The node is recreated so recorders immediately see the
-/// new name (the node name stays stable, so OBS configs keep working -
-/// capture re-attaches automatically).
+/// Rename a mix by recreating its node - the node name itself stays stable,
+/// so OBS configs keep working and capture re-attaches automatically.
 #[tauri::command]
 pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Result<(), String> {
     rename_bus_on(&state, name, label)
@@ -126,9 +124,8 @@ pub fn rename_bus_on(state: &AppState, name: String, label: String) -> Result<()
     Ok(())
 }
 
-/// Which device list a mix shows up in. A node cannot change its
-/// `media.class`, so this recreates it and puts the members, mic, level
-/// and sends back.
+/// Which device list a mix shows up in. A node can't change its `media.class`,
+/// so this recreates it and restores members, mic, level and sends.
 #[tauri::command]
 pub fn set_bus_role(
     state: State<'_, AppState>,
@@ -192,9 +189,8 @@ pub fn remove_bus(state: State<'_, AppState>, name: String) -> Result<(), String
 
 pub fn remove_bus_on(state: &AppState, name: String) -> Result<(), String> {
     let _rebuild = state.lock_bus_rebuild();
-    // Validate before the node goes away. Rejecting afterwards (unknown
-    // name, or the master mix, which can't be deleted) would leave the mix
-    // torn down in PipeWire but still defined here.
+    // Validate before the node goes away - rejecting afterwards would leave
+    // the mix torn down in PipeWire but still defined here.
     state
         .lock_mixer()?
         .buses
@@ -213,18 +209,16 @@ pub fn remove_bus_on(state: &AppState, name: String) -> Result<(), String> {
     defs.save().map_err(|e| e.to_string())
 }
 
-/// Replace the channel set a mix carries. `channels` is what the user
-/// sees checked; for auto-include mixes the complement (the unchecked
-/// set) is what gets stored, so future channels keep flowing in.
+/// Replace the channel set a mix carries. For auto-include mixes the stored
+/// value is the complement (unchecked set), so future channels keep flowing in.
 #[tauri::command]
 pub fn set_bus_members(
     state: State<'_, AppState>,
     name: String,
     channels: Vec<String>,
 ) -> Result<(), String> {
-    // Validate against the definition set first, so a rejected request
-    // (master mix, unknown name) never reaches the backend - otherwise
-    // backend membership and the persisted definition could diverge.
+    // Validate against the definition set, so a rejected request never reaches
+    // the backend - membership and the persisted definition could diverge.
     let stored = {
         let mixer = state.lock_mixer()?;
         if crate::persistence::buses::is_master(&name) {
@@ -281,9 +275,8 @@ pub fn set_bus_mic(state: State<'_, AppState>, name: String, mic: bool) -> Resul
     defs.save().map_err(|e| e.to_string())
 }
 
-/// One member's send level within one mix (0-150%; 100 = no override) -
-/// only this mix's recorders/listeners hear the difference. `member` is a
-/// channel sink name or "sink_mic".
+/// `member` is a channel sink name or `sink_mic`; 100 means no override,
+/// and only this mix's listeners hear the difference.
 #[tauri::command]
 pub fn set_bus_member_gain(
     state: State<'_, AppState>,
@@ -291,9 +284,8 @@ pub fn set_bus_member_gain(
     member: String,
     percent: u8,
 ) -> Result<(), String> {
-    // Both names validate against the definition sets before the backend
-    // is touched (the `set_bus_members` rule) - a call racing a mix's
-    // deletion could otherwise plant a gain a recreated mix would inherit.
+    // Both names validate before the backend is touched - a call racing a
+    // mix's deletion could otherwise plant a gain a recreated mix inherits.
     {
         let mixer = state.lock_mixer()?;
         if mixer.buses.get(&bus).is_none() {
@@ -332,9 +324,8 @@ pub fn open_mix_fader_window(
 ) -> Result<(), String> {
     use tauri::Manager;
 
-    // The mix must exist before any window does (also what bounds the
-    // window count to the real bus count), and the title comes from the
-    // definition set rather than trusting a caller-supplied label.
+    // The mix must exist before any window does; the title comes from the
+    // definition set, not a caller-supplied label.
     let label = {
         let mixer = state.lock_mixer()?;
         let Some(def) = mixer.buses.get(&bus) else {
@@ -387,8 +378,7 @@ pub fn set_bus_exclude(
 }
 
 /// Set a mix's playback level (0-150%) - what recorders hear. Unlike
-/// `set_channel_volume`, this accepts mix nodes (including the master mix,
-/// whose reserved name `set_channel_volume` rejects) and persists the level.
+/// `set_channel_volume`, this accepts mix nodes, including the master mix.
 #[tauri::command]
 pub fn set_bus_volume(state: State<'_, AppState>, name: String, volume: u8) -> Result<(), String> {
     if !is_bus_name(&name) {
@@ -460,9 +450,8 @@ mod tests {
         (state, name)
     }
 
-    /// Parks the first rebuild between its destroy and its create, and lets
-    /// the test know once it is parked, so a second rebuild can be started
-    /// while the first is still open.
+    /// Parks the first rebuild between its destroy and its create, and signals
+    /// once parked, so a second rebuild can start while the first is open.
     fn park_first_rebuild(backend: &MockBackend) -> Arc<Barrier> {
         let inside = Arc::new(Barrier::new(2));
         let signal = inside.clone();
@@ -527,9 +516,8 @@ mod tests {
         );
     }
 
-    // A hotkey or tray profile switch runs off the IPC thread, so it can
-    // land while the UI is mid-rebuild; this is the interleaving that
-    // actually happens in use.
+    // Bug shape: a profile switch landing mid-rebuild must not interleave with
+    // it.
     #[test]
     fn a_profile_switch_waits_for_a_rename_to_finish() {
         let cfg = TempConfig::new("bus-rebuild-profile");

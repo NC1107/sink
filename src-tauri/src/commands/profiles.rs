@@ -5,8 +5,7 @@ use crate::persistence::profiles::{self, Profile, ProfileInfo};
 use crate::state::AppState;
 
 /// Persist the current mixer state into the active profile, if any.
-/// Profiles are live-bound: every profile-relevant mutation calls this so
-/// switching away and back never loses changes.
+/// Profiles are live-bound, so switching away and back never loses changes.
 pub fn autosave_active(mixer: &crate::mixer::state::MixerState) {
     let Some(name) = &mixer.active_profile else {
         return;
@@ -74,10 +73,8 @@ pub fn set_profile_trigger(
     Ok(())
 }
 
-/// Apply a saved profile: reconcile the channel **layout** (create missing
-/// channels, remove extras - streams evacuate to the default first), then
-/// apply volumes/mutes/outputs, replace the assignment set, and clear the
-/// auto-route ledger so the new routing is enforced within the next poll.
+/// Apply a saved profile: reconcile channels, then clear the auto-route
+/// ledger so routing re-enforces on the next poll.
 #[tauri::command]
 pub fn load_profile(
     app: tauri::AppHandle,
@@ -229,9 +226,8 @@ pub fn load_profile_on(state: &AppState, name: String) -> Result<(), String> {
                     label: c.label.clone(),
                     icon: c.icon.clone(),
                     stream_mix: c.stream_mix,
-                    // Carry the profile's levels into the persisted defs,
-                    // so channels.json stays the single source of truth
-                    // for what a channel comes back at.
+                    // Carry levels into the persisted defs so channels.json
+                    // stays the single source of truth.
                     volume_percent: c.volume_percent,
                     muted: c.muted,
                 })
@@ -261,8 +257,7 @@ pub fn load_profile_on(state: &AppState, name: String) -> Result<(), String> {
 }
 
 /// Create a profile with a clean slate: the classic four channels at
-/// 100%/unmuted, no assignments, all outputs following the default. It is
-/// saved but not applied - load it to start fresh.
+/// 100%/unmuted. Saved but not applied - load it to start fresh.
 #[tauri::command]
 pub fn create_blank_profile(app: tauri::AppHandle, name: String) -> Result<(), String> {
     let name = profiles::sanitize_name(&name).map_err(|e| e.to_string())?;

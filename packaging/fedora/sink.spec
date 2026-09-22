@@ -7,9 +7,8 @@ Summary:        SteelSeries Sonar for Linux - per-app audio routing, mixing, and
 
 License:        GPL-3.0-only
 URL:            https://github.com/NC1107/sink
-# The prebuilt release .deb: same FHS payload as the .rpm, linked against
-# system libraries. Repackaged rather than built from source - a Tauri build
-# needs network for npm/cargo, which a COPR/mock buildroot does not have.
+# Repackaged rather than built from source: a Tauri build needs network for
+# npm/cargo, which a COPR/mock buildroot does not have.
 Source0:        https://github.com/NC1107/sink/releases/download/v%{version}/sink_%{version}_amd64.deb
 
 ExclusiveArch:  x86_64
@@ -18,10 +17,8 @@ BuildRequires:  binutils
 BuildRequires:  tar
 BuildRequires:  gzip
 
-# Runtime services and the dlopen'd tray library (the app aborts on startup
-# without libayatana-appindicator, so it is a hard dep). Linked libraries
-# (webkit2gtk4.1, libsoup3, gtk3, pipewire-libs, ...) are added automatically
-# from the binary's NEEDED sonames.
+# Runtime services and the dlopen'd tray lib (aborts without
+# libayatana-appindicator, a hard dep); linked libs are added automatically.
 Requires:       wireplumber
 Requires:       pipewire-pulseaudio
 Requires:       pulseaudio-utils

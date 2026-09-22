@@ -34,9 +34,8 @@ pub struct BusDef {
     /// Exclude mode (false): channels carried by this mix.
     /// Exclude mode (true): channels kept OUT of this mix.
     pub channels: Vec<String>,
-    /// True = the mix carries every channel except `channels`, so new
-    /// channels join automatically ("everything but music"). False = the
-    /// mix carries exactly `channels` (manual selection).
+    /// True = the mix carries every channel except `channels` ("everything but
+    /// music"). False = the mix carries exactly `channels` (manual selection).
     #[serde(default)]
     pub exclude: bool,
     /// Playback level recorders hear (0-150%). Persisted so a mix keeps its
@@ -286,9 +285,8 @@ impl Buses {
             name = format!("{base}_{counter}");
             counter += 1;
         }
-        // New mixes start in auto-include mode carrying everything -
-        // uncheck what you don't want ("everything but music") and future
-        // channels keep joining automatically.
+        // New mixes start in auto-include mode carrying everything - uncheck
+        // what you don't want and future channels keep joining automatically.
         let def = BusDef {
             name,
             label: label.to_string(),

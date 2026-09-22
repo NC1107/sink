@@ -1,11 +1,6 @@
-//! Per-mix send gain: a lazy insert on one (member, mix) pair, alive only
-//! while that pair's level is off unity - at 100% the member links straight
-//! into the bus and this module costs nothing.
-//!
-//! source ──▶ capture ──gain──▶ ring ──▶ playback ──▶ bus
-//!
-//! Both ends are unmanaged (no autoconnect, no target); the loop in
-//! thread.rs owns and polices every link, same as the EQ insert.
+//! Per-mix send gain: a lazy insert on one (member, mix) pair, alive only while
+//! that pair's level is off unity - at 100% the member links straight into the
+//! bus and this module costs nothing.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -123,9 +118,8 @@ impl SendGainHandle {
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
-                // Clamp to the scratch buffer's preallocated capacity: an
-                // oversized quantum must drop samples, never reallocate on
-                // the RT thread.
+                // Clamp to the scratch buffer's capacity: an oversized quantum
+                // must drop samples, never reallocate on the RT thread.
                 let n = ((valid.min(bytes.len())) / 4).min(ctx.scratch.capacity());
                 let gain = f32::from_bits(ctx.gain_bits.load(Ordering::Relaxed));
                 ctx.scratch.clear();

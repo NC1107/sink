@@ -5,10 +5,8 @@ use std::sync::Mutex;
 /// Maximum concurrent meters (channels + mic, with headroom).
 pub const MAX_METERS: usize = 12;
 
-/// Lock-free per-meter peak store with a dynamic name→slot registry
-/// (channels are user-defined since the dynamic-channels work). Peaks are
-/// written by realtime meter/DSP callbacks and drained by the level
-/// emitter; values are f32 amplitudes bit-cast into AtomicU32.
+/// Lock-free per-meter peak store with a name->slot registry. Peaks are written
+/// by realtime callbacks as f32 amplitudes bit-cast into AtomicU32.
 pub struct LevelStore {
     peaks: [[AtomicU32; 2]; MAX_METERS],
     slots: Mutex<SlotRegistry>,

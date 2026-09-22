@@ -22,9 +22,8 @@ export function Fader({ value, max, onChange }: Readonly<FaderProps>) {
     [onChange, max],
   );
 
-  // Listeners read the latest handler through a ref so they're attached
-  // once, not re-registered every parent re-render (faders re-render on
-  // each volume tick mid-drag).
+  // Read via ref so listeners attach once, not re-registered on every
+  // re-render (faders re-render on each volume tick mid-drag).
   const setFromEventRef = useRef(setFromEvent);
   setFromEventRef.current = setFromEvent;
 

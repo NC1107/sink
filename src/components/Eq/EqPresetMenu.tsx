@@ -127,9 +127,8 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   const bundled = presets.filter((p) => p.source === "bundled");
   const user = presets.filter((p) => p.source === "user");
 
-  // The button names whichever preset the current curve matches exactly; any
-  // manual edit breaks the match and it falls back to the generic label.
-  // Both sides come through the same f32 pipeline, so equality is safe.
+  // The button names whichever preset the current curve matches exactly;
+  // any manual edit breaks the match and falls back to the generic label.
   const sameBands = (a: EqConfig["bands"], b: EqConfig["bands"]) =>
     a.length === b.length &&
     a.every(

@@ -54,8 +54,7 @@ fn parse_bundled(stem: &str, raw: &str) -> Result<EqPreset, String> {
 }
 
 /// All bundled presets, sorted by name. Malformed entries are logged and
-/// skipped - defense in depth even though these ship inside the binary
-/// (a bad community PR must degrade one preset, not the whole menu).
+/// skipped, so a bad community preset degrades one entry, not the whole menu.
 pub fn bundled_presets() -> Vec<EqPreset> {
     let mut presets: Vec<EqPreset> = BUNDLED_EQ_PRESET_SOURCES
         .iter()

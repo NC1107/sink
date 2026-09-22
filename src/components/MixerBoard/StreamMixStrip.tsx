@@ -13,14 +13,7 @@ import { MixRoleSelect } from "./MixRoleSelect";
 import { StripName } from "./StripName";
 import { VuMeter } from "./VuMeter";
 
-/**
- * A mix (record bus): aggregates the chosen channels into a capturable
- * source. The label is exactly the device name recorders display - rename
- * it and OBS sees the new name. Volume/mute shape what recorders hear,
- * not what you hear.
- */
-/** Compact "what this mix carries" label for the membership button. The
- *  mic rides along as an icon: spelling it out wraps a narrow strip. */
+/** The mic rides along as an icon: spelling it out wraps a narrow strip. */
 export function memberLabel(carried: number, all: number): string {
   return carried === all && all > 0
     ? "all channels"

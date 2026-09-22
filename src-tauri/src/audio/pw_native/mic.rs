@@ -1,9 +1,6 @@
-//! Phase 3 mic engine: captures the selected (or default) microphone,
-//! runs the native DSP chain (gate → gain → compressor → limiter), and
-//! plays the processed signal into a `Audio/Source/Virtual` node - a
-//! virtual microphone that Discord/OBS can capture.
-//!
-//! Topology:  hw mic ──capture stream──▶ DSP ──ring──▶ playback stream ──▶ sink_mic (virtual source)
+//! Native mic engine: captures the selected microphone, runs the DSP chain
+//! (gate → gain → compressor → limiter), and plays the processed signal into a
+//! virtual `Audio/Source/Virtual` node that Discord/OBS can capture.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -109,9 +106,8 @@ pub struct MicStreams {
 }
 
 impl MicStreams {
-    /// Node id of the playback stream - the loop links its output ports to
-    /// the virtual mic itself (WirePlumber 0.5 does not reliably honor
-    /// target.object for playback→virtual-source routing).
+    /// Node id of the playback stream - the loop links it to the virtual mic
+    /// itself; WirePlumber 0.5 doesn't honor target.object for this routing.
     pub fn playback_node_id(&self) -> u32 {
         self.playback.node_id()
     }
@@ -136,10 +132,8 @@ fn mono_f32_format() -> Result<Vec<u8>, SinkError> {
 }
 
 impl MicStreams {
-    /// Build both streams. `mic_target` is the node.name of the hardware
-    /// mic to capture (None = system default source). Targets are set via
-    /// the `target.object` property - the connect-id parameter is
-    /// deprecated and WirePlumber 0.5 ignores it.
+    /// Build both streams. `mic_target` is the hardware mic to capture (None =
+    /// default), set via `target.object` - connect-id is deprecated.
     pub fn new(
         core: &pw::core::CoreRc,
         config: &MicConfig,
@@ -154,20 +148,14 @@ impl MicStreams {
         // ~85 ms of headroom at 48 kHz; actual added latency is one quantum.
         let ring = Arc::new(Ring::new(4096));
 
-        // ---- capture: hardware mic -> DSP -> ring ----
-        // NOT passive: this stream must hold the hardware mic running for
-        // as long as the chain is enabled. With passive links the source
-        // suspends the moment its last real consumer leaves (e.g. Discord
-        // switching from the raw mic to the virtual one) - and the chain
-        // starves exactly when someone starts using it.
+        // Capture stage, NOT passive: it must hold the mic running while the
+        // chain is enabled, or the source suspends and starves it when needed.
         let mut capture_props = pw::properties::properties! {
             "media.type" => "Audio",
             "media.category" => "Capture",
             "node.name" => MIC_CAPTURE_NAME,
-            // Never let the session manager migrate this stream (e.g. when
-            // the default source changes - it could land on sink_mic and
-            // feed the chain its own output). Default-follow is handled by
-            // rebuilding with a resolved hardware target instead.
+            // Never let the session manager migrate this stream - it could land
+            // on sink_mic and feed the chain its own output.
             "node.dont-reconnect" => "true",
         };
         if let Some(target) = mic_target {
@@ -244,16 +232,13 @@ impl MicStreams {
             )
             .map_err(|e| err("capture connect", e))?;
 
-        // ---- playback: ring -> virtual source ----
-        // node.autoconnect=false keeps WirePlumber's hands off this stream
-        // (it routes playback streams to the default *sink*, i.e. the
-        // speakers - observed live); the loop links it to sink_mic itself.
+        // Playback stage: node.autoconnect=false keeps WirePlumber from routing
+        // this to the default sink; the loop links it to sink_mic itself.
         let playback = pw::stream::StreamRc::new(
             core.clone(),
             MIC_PLAYBACK_NAME,
-            // NOT passive (see capture): the processed signal must reach
-            // sink_mic whenever the chain is up, regardless of who is -
-            // or isn't - capturing at this instant.
+            // NOT passive: the processed signal must reach sink_mic whenever
+            // the chain is up, regardless of who is capturing.
             pw::properties::properties! {
                 "media.type" => "Audio",
                 "media.category" => "Playback",
@@ -270,9 +255,8 @@ impl MicStreams {
                 let Some(mut buffer) = stream.dequeue_buffer() else {
                     return;
                 };
-                // Fill only what the graph asked for this cycle - filling
-                // the whole mmap'd buffer (8k+ frames vs ~1k produced per
-                // quantum) starves the ring and chops the audio.
+                // Fill only what the graph asked for this cycle - filling the
+                // whole mmap'd buffer starves the ring and chops the audio.
                 let requested = buffer.requested() as usize;
                 let datas = buffer.datas_mut();
                 let Some(data) = datas.first_mut() else {

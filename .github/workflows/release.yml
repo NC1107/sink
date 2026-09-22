@@ -55,9 +55,8 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # A stalled runner mirror can hang apt for the job's full 6h
-          # limit (two Release runs on 2026-08-19); bound each attempt
-          # and retry so a transient mirror outage costs minutes.
+          # Bound each attempt and retry, so a transient mirror outage costs
+          # minutes instead of hanging apt for the job's full timeout.
           apt_try() {
             sudo timeout 300 apt-get update &&
               sudo timeout 600 apt-get install -y -o Acquire::Retries=3 \
@@ -79,9 +78,8 @@ jobs:
           apt_try || { sleep 30; apt_try; } || { sleep 120; apt_try; }
 
       - name: Determine release
-        # A version input (manual dispatch) cuts a stable vX.Y.Z; anything
-        # else (every push to main) refreshes the rolling `dev` prerelease,
-        # versioned as the next patch so it previews the upcoming release.
+        # A version input (manual dispatch) cuts a stable vX.Y.Z; every other
+        # push refreshes the rolling `dev` prerelease.
         id: ver
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
@@ -89,10 +87,8 @@ jobs:
           set -euo pipefail
           input="$INPUT_VERSION"
           if [ -n "$input" ]; then
-            # Stable release: validate the input rather than trusting it. An
-            # unchecked value yields tags like `vv0.1.20` and unfindable
-            # artifacts, and a dispatch from a feature branch would tag
-            # unreviewed code.
+            # Validate rather than trust the input: unchecked it yields bad
+            # tags, and a feature-branch dispatch would tag unreviewed code.
             if [ "$GITHUB_REF" != "refs/heads/main" ]; then
               echo "::error::stable releases must be dispatched from main (got $GITHUB_REF)"
               exit 1
@@ -197,9 +193,8 @@ jobs:
           gh attestation verify sink_${{ steps.ver.outputs.version }}_amd64.deb --owner NC1107
           \`\`\`"
           fi
-          # Checksums over what this job builds, by basename, so users can
-          # verify downloads. The Arch package is built later and appends its
-          # own line (see the archpkg job).
+          # Checksums by basename so users can verify downloads; the archpkg job
+          # appends its own line.
           ( cd target/release/bundle
             sha256sum appimage/sink_*.AppImage deb/*.deb rpm/*.rpm \
               | awk '{ n=$2; sub(/.*\//, "", n); print $1"  "n }' \
@@ -251,10 +246,8 @@ jobs:
           pacman -S --noconfirm --needed xorg-server-xvfb mesa >/dev/null
           packaging/smoke-test.sh
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber "$pkg"
-          # Append the Arch package checksum to the release SHA256SUMS. The
-          # download must succeed: with --clobber below, a missing file
-          # would replace the manifest for the other three artifacts with
-          # this one line.
+          # The download must succeed: with --clobber below, a missing file
+          # would replace the manifest with just this one line.
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir /tmp
           if [ "$(wc -l < /tmp/SHA256SUMS)" -lt 3 ]; then
             echo "::error::downloaded SHA256SUMS has fewer than 3 entries; refusing to republish it"
@@ -270,10 +263,8 @@ jobs:
           subject-path: ${{ steps.pkg.outputs.pkg }}
 
       - name: Publish sink-bin to the AUR
-        # Stable releases only - never the rolling dev prerelease. Best effort:
-        # the .pkg.tar.zst is already on the release, so an AUR failure must
-        # not fail the run - but the step itself fails, so it shows as such
-        # in the run summary rather than as a warning inside a green job.
+        # Stable only, best effort: the .pkg.tar.zst is already on the release,
+        # so this step may fail without failing the run.
         if: needs.build.outputs.prerelease == 'false'
         continue-on-error: true
         env:
@@ -285,9 +276,8 @@ jobs:
             echo "::warning::AUR_SSH_KEY secret is not set - skipping AUR publish"
             exit 0
           fi
-          # Reuse the stamped, smoke-tested PKGBUILD from the step above; it is
-          # exactly what should land on the AUR. Push as the builder user so
-          # makepkg (root-averse) can regenerate .SRCINFO in the same tree.
+          # Push as the builder user: makepkg refuses to regenerate .SRCINFO as
+          # root.
           install -d -m 700 /home/builder/.ssh
           printf '%s\n' "$AUR_SSH_KEY" > /home/builder/.ssh/id_aur
           chmod 600 /home/builder/.ssh/id_aur
@@ -350,9 +340,8 @@ jobs:
           printf '%s\n' "$COPR_CONFIG" > ~/.config/copr
           chmod 600 ~/.config/copr
           rpmdev-setuptree
-          # Stamp the release version into the repo spec, then embed the release
-          # .deb into the SRPM here (COPR's build root has no network, so the
-          # source must travel inside the SRPM).
+          # The .deb travels inside the SRPM because COPR's build root has no
+          # network.
           cp packaging/fedora/sink.spec ~/rpmbuild/SPECS/sink.spec
           sed -i "s/^Version:.*/Version:        ${VER}/" ~/rpmbuild/SPECS/sink.spec
           spectool -g -R ~/rpmbuild/SPECS/sink.spec

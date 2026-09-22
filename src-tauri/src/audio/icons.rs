@@ -1,8 +1,6 @@
 //! Desktop-entry based icon and name resolution - the same mechanism app
-//! launchers use. Parses .desktop files once (Name/Icon/Exec/
-//! StartupWMClass), matches streams against them, and resolves icon names
-//! to actual files across the freedesktop icon dirs (user, system,
-//! Flatpak exports). Results are cached per identity.
+//! launchers use. Parses .desktop files, matches streams against them, and
+//! resolves icon names to files across the freedesktop icon dirs.
 
 use std::collections::HashMap;
 use std::fs;
@@ -48,8 +46,7 @@ struct Resolver {
 }
 
 /// A miss rescans the desktop entries, throttled so an unknown stream can't
-/// walk the applications dirs every poll; an app installed while Sink runs
-/// shows up within a minute.
+/// walk the applications dirs on every poll.
 const RESCAN_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 static RESOLVER: OnceLock<Mutex<Resolver>> = OnceLock::new();
@@ -65,13 +62,11 @@ fn desktop_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Every installed icon theme directory (hicolor first, then whatever
-/// themes the distro/user installed - Papirus, Adwaita, breeze, …).
-/// Many apps only ship icons inside a theme, so hicolor alone misses them.
+/// Every installed icon theme directory, hicolor first - many apps only ship
+/// icons inside a theme, so hicolor alone would miss them.
 fn icon_theme_dirs() -> &'static [PathBuf] {
-    // The theme set is stable for the process lifetime; scanning the icon
-    // roots once avoids re-walking them for every resolve cache miss
-    // (icon_name_to_path tries several candidate names per stream).
+    // The theme set is stable for the process lifetime; scanning the icon roots
+    // once avoids re-walking them on every resolve cache miss.
     static THEMES: OnceLock<Vec<PathBuf>> = OnceLock::new();
     THEMES.get_or_init(|| {
         let mut roots = Vec::new();
@@ -181,9 +176,8 @@ fn exec_tokens(exec: &str) -> Vec<String> {
     tokens
 }
 
-/// The program an Exec line runs, past the wrappers that only set it up
-/// (env FOO=1, sh -c, flatpak-spawn --host, gamescope -W 1920 -- game) and
-/// the field codes after it. A `--` ends the wrapper's own arguments.
+/// The program an Exec line runs, past setup wrappers (env, sh -c, flatpak-
+/// spawn, gamescope) and field codes; `--` ends the wrapper's args.
 fn exec_program(exec: &str) -> Option<String> {
     const WRAPPERS: [&str; 10] = [
         "env",
@@ -221,15 +215,12 @@ fn exec_program(exec: &str) -> Option<String> {
 }
 
 /// Desktop-id candidates for a live process, most reliable first. Linux
-/// binaries don't embed icons - the icon belongs to the app's .desktop
-/// entry, so identifying a stream's icon means mapping PID → desktop id
-/// through the fingerprints the system leaves on the process.
+/// binaries carry no icon, so it comes from mapping PID to desktop id.
 pub fn desktop_id_candidates(pid: u32) -> Vec<String> {
     let mut out = Vec::new();
 
     // 1. systemd app units: desktop launchers run apps in cgroups named
-    //    app[-<launcher>]-<DesktopID>-<rand>.scope or
-    //    app-<DesktopID>@<uuid>.service (e.g. app-discord@1a2b….service).
+    // app[-<launcher>]-<DesktopID>.scope or app-<DesktopID>@<uuid>.service.
     if let Ok(cgroup) = fs::read_to_string(format!("/proc/{pid}/cgroup")) {
         if let Some(unit) = cgroup
             .lines()
@@ -271,9 +262,8 @@ pub fn desktop_id_candidates(pid: u32) -> Vec<String> {
         }
     }
 
-    // 3. GIO stamps processes launched from a menu/dock with the exact
-    //    .desktop file (inherited by children - which is what we want for
-    //    audio helper processes).
+    // 3. GIO stamps processes launched from a menu/dock with the exact .desktop
+    // file, inherited by children - which is what we want.
     if let Ok(environ) = fs::read(format!("/proc/{pid}/environ")) {
         for var in environ.split(|b| *b == 0) {
             if let Some(value) = var.strip_prefix(b"GIO_LAUNCHED_DESKTOP_FILE=".as_slice()) {
@@ -307,8 +297,7 @@ fn load_desktops() -> Vec<DesktopEntry> {
 }
 
 /// The asset protocol resolves a symlink with `read_link`, so a theme's
-/// relative link (`foo.svg -> bar.svg`) is checked against the working
-/// directory and denied; hand out canonical paths instead.
+/// relative link would be checked against the wrong directory and denied.
 pub fn real_path(path: impl AsRef<Path>) -> Option<String> {
     std::fs::canonicalize(path)
         .ok()
@@ -399,13 +388,8 @@ impl DesktopDb for Desktops {
     }
 }
 
-/// Resolve the best icon path + display name for a stream.
-///
-/// `binary` is the process binary when the identity came from it;
-/// `icon_hint` is the stream's application.icon-name property.
-/// An Exec match is only trusted when it is the only entry running that
-/// executable: launcher shortcuts (`steam steam://rungameid/..`,
-/// `wezterm start -- claude`) all share their launcher's exec.
+/// An Exec match is only trusted when it is the only desktop entry running that
+/// executable - launcher shortcuts all share one exec.
 fn only_by_exec<'a>(desktops: &'a [DesktopEntry], exe: &str) -> Option<&'a DesktopEntry> {
     let mut hits = desktops
         .iter()
@@ -426,9 +410,8 @@ fn desktop_by_name<'a>(
         .or_else(|| only_by_exec(desktops, app_lower))
 }
 
-/// A scope is inherited from the launcher (a terminal, Steam), so a
-/// candidate from the process only counts when its Exec runs this
-/// executable; the name-based match is the fallback.
+/// A scope is inherited from the launcher (terminal, Steam), so a process
+/// candidate only counts when its Exec runs this executable.
 fn pick_desktop<'a>(
     desktops: &'a [DesktopEntry],
     pid: Option<u32>,
@@ -448,7 +431,8 @@ fn pick_desktop<'a>(
                         .is_none_or(|e| d.exec_base.as_deref() == Some(e))
             })
             .or_else(|| {
-                // A runtime's entry (python3, java) would claim every app on it.
+                // A runtime's entry (python3, java) would claim every app on
+                // it.
                 let exe = exe
                     .as_deref()
                     .filter(|e| !crate::audio::types::is_wrapper_exe(e))?;
@@ -468,9 +452,8 @@ pub fn resolve(
         return Resolved::default();
     };
 
-    // PID presence is part of the key (not the PID itself - it changes per
-    // run): a name-only resolution from history must not shadow the more
-    // accurate /proc-based one for a live stream, or vice versa.
+    // PID presence is part of the cache key: a name-only resolution from
+    // history must not shadow the more accurate /proc-based one, or vice versa.
     let key = format!("{app_name}\0{binary:?}\0{icon_hint:?}\0{}", pid.is_some());
     if let Some(hit) = resolver.cache.get(&key) {
         return hit.clone();
@@ -487,9 +470,8 @@ pub fn resolve(
         desktop = pick_desktop(&resolver.desktops, pid, &app_lower, binary_lower.as_deref());
     }
 
-    // Icon candidates in priority order: the desktop entry's icon, the
-    // stream's hint (Electron apps all say "chromium-browser"), the binary
-    // name, a slug of the display name.
+    // Icon candidates in priority order: desktop entry icon, the stream's hint,
+    // the binary name, a slug of the display name.
     let slug = app_lower.replace(' ', "-");
     let (desktop_icon, desktop_name) = match desktop {
         Some(d) => (d.icon.clone(), Some(d.name.clone())),

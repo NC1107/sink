@@ -7,8 +7,7 @@ import { Fader } from "./Fader";
 import { VolumeReadout } from "./VolumeReadout";
 import { VuMeter } from "./VuMeter";
 
-/** Mic channel strip (Phase 3): fader = chain gain, meters = processed
- * signal. Only rendered while the mic chain is enabled. */
+/** Fader is the chain gain and the meters show the processed signal. */
 export function MicStrip() {
   const micConfig = useMixerStore((s) => s.micConfig);
   const setMicConfig = useMixerStore((s) => s.setMicConfig);

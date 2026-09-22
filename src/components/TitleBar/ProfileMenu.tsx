@@ -53,9 +53,8 @@ export function ProfileMenu() {
           const trigger = triggerLabel(profile.trigger_device);
           return (
             <div key={profile.name}>
-              {/* The actions are siblings of the load button, never children:
-                  a button inside a button is invalid, and the old nesting
-                  needed stopPropagation on every action to stay usable. */}
+              {/* Siblings of the load button, not children: a button inside
+                  a button is invalid HTML. */}
               <div className="profile-row">
                 <MenuItem
                   className="profile-row-btn"

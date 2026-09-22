@@ -46,10 +46,8 @@ impl MeterHandle {
             "node.name" => format!("{METER_PREFIX}{sink_name}"),
             // For sinks: capture the monitor, don't keep the sink busy.
             "stream.capture.sink" => if capture_sink { "true" } else { "false" },
-            // Pin the meter to the channel it represents. Without an
-            // explicit target WirePlumber may move the first-created meter
-            // to a newly selected default device, making (for example) Game
-            // display the combined speaker output instead of Game itself.
+            // Pin the meter to its channel - without an explicit target,
+            // WirePlumber may move it to a newly selected default device.
             "target.object" => sink_name,
             "node.dont-reconnect" => "true",
             "node.passive" => "true",

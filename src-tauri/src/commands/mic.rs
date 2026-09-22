@@ -11,8 +11,7 @@ pub fn get_mic_config(state: State<'_, AppState>) -> Result<MicConfig, String> {
 }
 
 /// Apply and persist the mic chain configuration. The published label is
-/// decorated per the device-naming preference at the backend boundary;
-/// the stored config stays raw.
+/// decorated per the device-naming preference; the stored config stays raw.
 #[tauri::command]
 pub fn set_mic_config(state: State<'_, AppState>, mut config: MicConfig) -> Result<(), String> {
     config.clamp_ranges();

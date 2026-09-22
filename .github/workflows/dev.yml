@@ -3,9 +3,8 @@ name: Dev
 on:
   pull_request:
     branches: [main]
-    # `labeled` so adding a ci:<distro> label to an open pr starts the run
-    # that installs it there; without it a label changes nothing until the
-    # next push.
+    # `labeled` so adding a ci:<distro> label to an open PR starts the run;
+    # without it, a label changes nothing until the next push.
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
@@ -23,8 +22,7 @@ concurrency:
 
 jobs:
   # Which distros to install-test. Packaging changes test everywhere;
-  # otherwise a pr opts in with a `ci:<distro>` label (or `ci:distros` for
-  # all), and a manual dispatch can name them.
+  # otherwise a PR opts in with a `ci:<distro>` label (or `ci:distros`).
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -71,10 +69,8 @@ jobs:
           echo "install-testing: ${picked:-nothing}"
           jq -nc --arg picked "$picked" '
             {
-              # The appimage has no image: it runs on the runner itself,
-              # which carries the libraries a real desktop has. A bare
-              # container carries none, so the test would only prove that an
-              # appimage does not bundle all of gtk, which is by design.
+              # Runs on the runner itself (real desktop libs) - a bare container
+              # would only prove it doesn't bundle gtk, by design.
               arch:     "archlinux:latest",
               fedora:   "fedora:latest",
               opensuse: "opensuse/tumbleweed:latest",
@@ -87,7 +83,7 @@ jobs:
 
   check:
     runs-on: ubuntu-24.04
-    # Observed max ~5 min; the cap only catches a wedged step.
+    # The cap only catches a wedged step, not normal runtime.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -112,9 +108,8 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # A stalled runner mirror can hang apt for the job's full 6h
-          # limit (two Release runs on 2026-08-19); bound each attempt
-          # and retry so a transient mirror outage costs minutes.
+          # Bound each attempt and retry, so a transient mirror outage costs
+          # minutes instead of hanging apt for the job's full timeout.
           apt_try() {
             sudo timeout 300 apt-get update &&
               sudo timeout 600 apt-get install -y -o Acquire::Retries=3 \
@@ -137,9 +132,8 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      # actionlint also shellchecks every `run:` block in these workflows.
-      # Pinned by checksum: it is a Go binary, not a crate, so the install
-      # action cannot fetch it.
+      # actionlint also shellchecks every `run:` block. Pinned by checksum:
+      # it's a Go binary, not a crate, so the install action can't fetch it.
       - name: Lint the workflows
         env:
           ACTIONLINT_VERSION: "1.7.7"
@@ -184,9 +178,8 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # A stalled runner mirror can hang apt for the job's full 6h
-          # limit (two Release runs on 2026-08-19); bound each attempt
-          # and retry so a transient mirror outage costs minutes.
+          # Bound each attempt and retry, so a transient mirror outage costs
+          # minutes instead of hanging apt for the job's full timeout.
           apt_try() {
             sudo timeout 300 apt-get update &&
               sudo timeout 600 apt-get install -y -o Acquire::Retries=3 \
@@ -234,9 +227,8 @@ jobs:
             echo "Each installs the build on that distro and launches it."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Install what `bundles` built on each distro and launch it, which is what
-  # catches a missing runtime dependency or a packaging mistake. Not required
-  # to merge: release.yml runs the same gate before it publishes anything.
+  # Install what `bundles` built and launch it, catching a missing runtime
+  # dependency; not required to merge since release.yml runs the same gate.
   distros:
     needs: [bundles, changes]
     if: needs.changes.outputs.distros != '[]'
@@ -270,9 +262,8 @@ jobs:
               DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb file
               ;;
             appimage)
-              # The runner is headless: give it the graphics stack any
-              # desktop has, since an appimage is not expected to ship the
-              # drivers. Everything else it needs, it must bring itself.
+              # Headless runner: give it the graphics stack a desktop has, since
+              # an appimage isn't expected to ship drivers.
               sudo apt-get update
               sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
                 xvfb libegl1 libgl1 libgles2
@@ -318,9 +309,8 @@ jobs:
               DEBIAN_FRONTEND=noninteractive apt-get install -y "./$deb"
               ;;
             appimage)
-              # Nothing to install: the point of an AppImage is that it runs
-              # anywhere. Extract rather than mount, since a container has no
-              # /dev/fuse.
+              # The point of an AppImage is that it runs anywhere; extract
+              # rather than mount since a container has no /dev/fuse.
               chmod +x "$(find bundles -name '*.AppImage' | head -1)"
               ;;
           esac

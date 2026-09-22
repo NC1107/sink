@@ -21,9 +21,8 @@ use audio::pw_native::PipeWireBackend;
 use state::AppState;
 
 pub fn run() {
-    // Prefer the native PipeWire backend (Phase 2); fall back to pactl
-    // subprocess calls if the native loop can't come up. Levels (real VU
-    // metering) are native-only.
+    // Fall back to pactl subprocess calls if the native PipeWire loop can't
+    // come up; real VU metering only works with the native backend.
     let (backend, levels): (Arc<dyn AudioBackend>, Option<Arc<LevelStore>>) =
         match PipeWireBackend::new() {
             Ok(backend) => {
@@ -39,10 +38,8 @@ pub fn run() {
     let app_state = AppState::new(backend, backend_native);
 
     let result = tauri::Builder::default()
-        // Single-instance guard (must be the first plugin). A second launch
-        // focuses the running window instead of spawning a duplicate - two
-        // instances would create clashing virtual sinks and fight over the
-        // audio graph. Sink hides to tray, so unhide + focus the existing one.
+        // Must stay first: a second launch would spawn a duplicate fighting
+        // over the same virtual sinks.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -166,8 +163,8 @@ pub fn run() {
     }
 }
 
-/// The gap before a new stream lands on its channel is audible; a native
-/// check costs ~150us.
+/// The gap before a new stream lands on its channel is audible, and a
+/// native check is cheap enough to run this often.
 const ROUTE_ENFORCE_INTERVAL: Duration = Duration::from_millis(200);
 
 /// pactl forks two processes per check.
@@ -176,7 +173,7 @@ const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
 /// Longer than the UI's 2s poll; clock-based so a stalled webview is covered.
 const UI_POLL_GRACE: Duration = Duration::from_secs(5);
 
-/// Enforces assignments from the backend; the UI poll pauses in the tray (TD-009).
+/// Enforces assignments from the backend; the UI poll pauses in the tray.
 fn spawn_route_enforcer(handle: tauri::AppHandle) {
     std::thread::spawn(move || {
         let native = handle.state::<AppState>().backend_native;
@@ -222,9 +219,8 @@ fn spawn_level_emitter(handle: tauri::AppHandle, levels: Arc<LevelStore>) {
         let mut prev_all_zero = false;
         loop {
             std::thread::sleep(Duration::from_millis(100));
-            // The app's dominant state is sitting in the tray during a game.
-            // Don't lock the registry, serialize a map and wake the webview
-            // for a window nobody can see (TD-008).
+            // The app's dominant state is sitting in the tray; don't lock the
+            // registry, serialize a map, and wake a webview nobody can see.
             let onscreen = handle
                 .get_webview_window("main")
                 .map(|w| w.is_visible().unwrap_or(true) && !w.is_minimized().unwrap_or(false))

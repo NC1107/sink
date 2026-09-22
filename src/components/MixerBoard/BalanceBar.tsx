@@ -6,11 +6,8 @@ import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 
 /**
- * ChatMix-style balance between two user-picked channels. Stateless: the
- * slider is a macro over the two faders - center = both at 100%, sliding
- * toward a side ducks the OTHER one (silent at the extreme). Position is
- * always derived from the two volumes, so hand-moving a fader moves the
- * balance too, and profiles capture it for free.
+ * ChatMix-style balance between two user-picked channels. Stateless: it's a
+ * macro over the two faders, so hand-moving a fader moves the balance too.
  */
 export function BalanceBar() {
   const channels = useMixerStore((s) => s.channels);

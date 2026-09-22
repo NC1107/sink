@@ -11,8 +11,7 @@ interface OutputSelectProps {
   value: string | null;
   /**
    * When following the system default, the device this channel actually
-   * resolves to right now (node name). Shown on the strip so the user sees
-   * where audio really goes, and so failover to another device is visible.
+   * resolves to right now. Shown so failover to another device is visible.
    */
   resolved?: string | null;
   /** Whether this channel fails over to another device (default true). */

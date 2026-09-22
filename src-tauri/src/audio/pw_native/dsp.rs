@@ -1,9 +1,6 @@
-//! Native mic DSP chain (Phase 3): noise gate → gain → compressor →
-//! limiter. Pure Rust, no LV2/LADSPA. Runs per-sample inside the mic
-//! capture stream's process callback (mono).
-//!
-//! All stages use one-pole envelope followers with attack/release smoothing
-//! so gain changes never click.
+//! Native mic DSP chain: noise gate → gain → compressor → limiter. Pure Rust,
+//! no LV2/LADSPA, running per-sample inside the mic capture stream's process
+//! callback, with one-pole envelope followers so gain changes never click.
 
 use super::eq::flush_denormal;
 
@@ -114,9 +111,8 @@ impl DspChain {
             // ---- noise gate ----
             if s.gate_enabled {
                 let mag = x.abs();
-                // envelope follower (fast attack, slower release)
-                // Both followers decay toward zero over silence, which is
-                // most of a gate's life; see flush_denormal.
+                // envelope follower (fast attack, slower release); both decay
+                // toward zero over silence - see flush_denormal.
                 self.gate_env = flush_denormal(if mag > self.gate_env {
                     mag + gate_att * (self.gate_env - mag)
                 } else {

@@ -1,9 +1,6 @@
-//! Native PipeWire backend (Phase 2): replaces pactl subprocess calls with
-//! pipewire-rs. All PipeWire objects live on a dedicated loop thread (see
-//! `thread.rs`); this facade sends commands over a pipewire channel and
-//! blocks on an mpsc reply with a timeout.
-//!
-//! Extras over the pactl backend: real per-sink level metering (`levels`).
+//! Native PipeWire backend: replaces pactl subprocess calls with pipewire-rs.
+//! All PipeWire objects live on a dedicated loop thread; this facade sends
+//! commands over a channel and blocks on an mpsc reply with a timeout.
 
 mod dsp;
 mod eq;

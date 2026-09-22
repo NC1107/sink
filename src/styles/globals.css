@@ -1,9 +1,6 @@
 @import "tailwindcss";
 
-/* ============================================================
-   Sink - design system ported from the Sink.zip prototype
-   (Echo tokens, dark theme) on top of a frameless Tauri window.
-   ============================================================ */
+/* Sink design system: dark theme, frameless Tauri window. */
 
 /* Brand font - Fira Code (self-hosted) */
 @font-face {
@@ -775,10 +772,8 @@ body,
 .meter-fill {
   position: absolute;
   inset: 0;
-  /* The zone colors are fixed to the TRACK (not the fill) and revealed by
-   * a clip-path, so green/amber/red are calibrated positions: green below
-   * −6 dBFS (70.8%), amber to −3 dBFS (84.1%), red above. Red genuinely
-   * means "about to clip" - it can't appear at the tip of a quiet bar. */
+  /* Zone colors are fixed to the TRACK and revealed by a clip-path, so
+   * they're calibrated dBFS positions - red can't appear on a quiet bar. */
   background: linear-gradient(
     to top,
     var(--online) 0%,
@@ -1718,9 +1713,8 @@ body,
   white-space: normal;
 }
 
-/* DSP tuning sliders (mic processing card): inset under their stage's
- * toggle row with a guide line, so parameters read as controls rather
- * than blending into the stage descriptions. */
+/* DSP tuning sliders: inset under their stage's toggle row with a guide
+ * line, so parameters read as controls, not descriptions. */
 .dsp-row {
   display: flex;
   align-items: center;
@@ -2497,12 +2491,7 @@ body,
   }
 }
 
-/* ============================================================
-   Themes (opt-in via <html data-theme="...">)
-   Original stays the default under :root. A theme is these 20
-   colour tokens and nothing else; the EQ band palette is
-   deliberately shared so a curve reads the same everywhere.
-   ============================================================ */
+/* Themes (opt-in via <html data-theme="...">); the EQ band palette stays shared across all of them. */
 :root[data-theme="tokyo-night"] {
   --bg-main: #1a1b26;
   --bg-sidebar: #16161e;

@@ -83,12 +83,8 @@ impl Assignments {
         }
     }
 
-    /// Adopt the legacy rules an app's stream matches (`matchers`, most
-    /// specific first) into its process identity; `Some(sink)` when a rule
-    /// was created. Every matching rule is marked in that same pass, or the
-    /// second one would bring a removed rule back. Nothing is marked while
-    /// the identity carries a rule of its own, so a legacy rule still
-    /// applies once the user clears that one.
+    /// Adopt legacy rules an app's stream matches into its process identity;
+    /// marks all matches in one pass, or a second pass could resurrect one.
     pub fn adopt_all(
         &mut self,
         matchers: &[(String, String)],

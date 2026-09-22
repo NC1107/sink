@@ -34,19 +34,14 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut streams = live_streams(state)?;
-    // A stream whose client facts are still arriving may yet resolve to a
-    // different identity; recording, adopting or auto-routing it now would
-    // stick (the ledger and history key on what it looked like first).
+    // A stream whose client facts are arriving may yet resolve to a different
+    // identity, so recording/adopting/auto-routing it would stick.
     streams.retain(|s| s.settled);
 
     let now = crate::persistence::unix_now();
 
-    // Phase 1: under the lock, update history and *plan* auto-routing - but do
-    // no blocking work. Holding the mixer mutex across the disk save or the
-    // backend move calls (each up to the native backend's 3s request timeout)
-    // would stall every other command - including tray-menu building - behind
-    // this 2s poll, and slow-loop polls would stack up (TD-004). So we snapshot
-    // the decisions here and release the guard before touching disk or PipeWire.
+    // Plan auto-routing under the lock but do no blocking work - holding the
+    // mutex across a disk save or backend call would stall other commands.
     let (seen_to_save, planned, rules_to_save) = {
         let mut mixer = state.lock_mixer()?;
         let mut structural_change = false;
@@ -63,12 +58,8 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
 
         let (rules_changed, merged) = adopt_legacy(&mut mixer, &streams);
         structural_change |= merged;
-        // A pure last_seen bump never reports a structural change, so without
-        // this the freshest timestamps only reach disk on a clean tray-quit -
-        // and an unclean exit would leave a daily-used app looking stale
-        // enough for the prune to forget it. Flushing on a slow cadence
-        // bounds that drift, and re-runs the prune for sessions that outlive
-        // the window.
+        // A pure last_seen bump isn't structural, so without this flush an
+        // unclean exit could make a daily-used app look stale enough to prune.
         if now.saturating_sub(mixer.seen_saved_at) >= SEEN_FLUSH_SECS {
             mixer.prune_stale_apps(now);
             mixer.seen_saved_at = now;
@@ -80,7 +71,8 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
 
         let planned = mixer.plan_auto_routes(&streams);
 
-        // User-chosen display names (in-memory read, cheap enough to keep here).
+        // User-chosen display names (in-memory read, cheap enough to keep
+        // here).
         for stream in &mut streams {
             stream.alias = mixer
                 .aliases
@@ -96,7 +88,7 @@ pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
         )
     };
 
-    // Phase 2: the blocking work, with the lock released.
+    // The blocking work, with the lock released.
     if let Some(seen) = seen_to_save {
         if let Err(e) = seen.save() {
             eprintln!("sink: saving app history failed: {e}");
@@ -139,9 +131,8 @@ pub fn live_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
 /// serial so `/proc` is read once per stream, not per tick.
 fn resolve_identities(state: &AppState, streams: &mut [AppStream]) {
     let live: HashSet<u64> = streams.iter().map(|s| s.serial).collect();
-    // The cache lock is not held over the `/proc` and Steam-library walk:
-    // a user command resolving a single stream would otherwise queue
-    // behind the whole tick.
+    // The cache lock is not held over the `/proc` and Steam-library walk, or a
+    // user command resolving a single stream would queue behind the whole tick.
     let known: Vec<Option<Identity>> = {
         let mut cache = state
             .identity_cache
@@ -303,9 +294,8 @@ pub fn init_virtual_devices(
             .backend
             .create_virtual_sink(&def.name, &prefs.decorate(&def.label))
             .map_err(|e| e.to_string())?;
-        // Restore the saved level explicitly - an adopted sink from a
-        // previous run may carry a stale volume/mute, so this is a set,
-        // not a "leave it alone".
+        // Restore the saved level - an adopted sink from a previous run may
+        // carry a stale volume/mute, so this is a set, not a "leave it alone".
         state
             .backend
             .set_sink_volume(&def.name, def.volume_percent)
@@ -388,18 +378,16 @@ pub fn init_virtual_devices(
         applied.output_label = prefs.decorate(&mic.output_label);
         if let Err(e) = state.backend.set_mic_config(&applied) {
             eprintln!("sink: mic chain init failed: {e}");
-            // Keep the UI honest: no chain is running, so don't show the
-            // mic as enabled. In-memory only - the on-disk config keeps
-            // enabled=true so the next native-backend session restores it.
+            // Keep the UI honest: no chain is running, don't show the mic as
+            // enabled. In-memory only - the on-disk config restores it later.
             if let Ok(mut mixer) = state.lock_mixer() {
                 mixer.mic.enabled = false;
             }
         }
     }
 
-    // First run: capture the current layout as the "Default" profile so
-    // there's always a known-good state to come back to. It also becomes
-    // the active (autosaving) profile.
+    // First run: capture the current layout as the "Default" profile, a
+    // known-good state to come back to, and make it the active profile.
     if matches!(crate::persistence::profiles::list(), Ok(list) if list.is_empty()) {
         let mut mixer = state.lock_mixer()?;
         let default = crate::persistence::profiles::Profile {
@@ -445,9 +433,7 @@ pub fn get_channel_outputs(
 }
 
 /// Per-channel resolved output: the device node.name each channel is actually
-/// routed to right now (after explicit/default/fallback resolution). The UI
-/// shows this under "System default" so failover is visible. Empty on the
-/// pactl fallback, which can't report it.
+/// routed to right now. Empty on the pactl fallback, which can't report it.
 #[tauri::command]
 pub fn get_resolved_outputs(
     state: State<'_, AppState>,
@@ -502,7 +488,6 @@ pub fn set_channel_output(
 
 /// Turn a channel's auto-failover on or off. Off = the channel plays only on
 /// its chosen device (or exact default) and stays silent when that's gone.
-/// Persisted across restarts.
 #[tauri::command]
 pub fn set_channel_failover(
     state: State<'_, AppState>,
@@ -559,9 +544,8 @@ mod tests {
         refresh_streams(&state).expect("first pass");
         assert_eq!(backend.moves(), vec![(7, "sink_game".to_string())]);
 
-        // The user drags it elsewhere in pavucontrol. The ticker runs five
-        // times a second; it must leave that alone rather than dragging the
-        // stream back on the next pass.
+        // The user drags it elsewhere in pavucontrol; the ticker must leave
+        // that alone rather than dragging the stream back on the next pass.
         backend.set_assigned(7, Some("sink_chat"));
         refresh_streams(&state).expect("second pass");
         assert_eq!(

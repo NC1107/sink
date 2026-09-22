@@ -11,8 +11,7 @@ interface Step {
 }
 
 /** The signal-flow picture: apps → channels → ears, with mixes tapping
- * channels for recorders. Styled like the mixer itself (channel = indigo,
- * mix = amber). */
+ * channels for recorders. Styled like the mixer itself. */
 function FlowDiagram() {
   return (
     <div className="ob-flow">

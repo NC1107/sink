@@ -1,9 +1,6 @@
 //! A recording [`AudioBackend`] for tests. Nothing here is compiled into a
-//! release build.
-//!
-//! Commands only ever reach the audio system through the trait, so a mock is
-//! enough to exercise a whole command path - including the order it does
-//! things in, which is what the routing races turned on.
+//! release build. Recording calls (and their order) is what the routing
+//! races turned on.
 
 use std::sync::Mutex;
 

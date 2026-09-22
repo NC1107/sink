@@ -8,9 +8,8 @@ import "./styles/globals.css";
 // Apply the saved theme before first paint to avoid a flash of the default.
 bootTheme();
 
-// A mix's popout window (see `open_mix_fader_window`) loads the same
-// bundle with `?mixFader=<bus name>` - the query param decides which tree
-// mounts.
+// The mix popout window (open_mix_fader_window) loads this same bundle;
+// ?mixFader=<bus name> picks which tree mounts.
 const mixFader = new URLSearchParams(window.location.search).get("mixFader");
 
 const root = document.getElementById("root");

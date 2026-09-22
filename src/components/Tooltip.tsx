@@ -10,12 +10,8 @@ const GAP = 6;
 const MARGIN = 8;
 
 /**
- * One global tooltip that stands in for WebKitGTK's native `title` popups,
- * which appear instantly and can spill off-screen. It reads the same `title`
- * attributes already on elements, waits {@link TOOLTIP_DELAY_MS}, and clamps
- * itself inside the window. The title is stashed while hovered (and restored
- * on leave) so the native tooltip stays suppressed without losing the
- * accessible name assistive tech reads from it.
+ * Stands in for WebKitGTK's native `title` popups, which appear instantly and
+ * can spill off-screen. The title attribute is stashed while hovered so the native tooltip stays suppressed.
  */
 export function Tooltip() {
   const [text, setText] = useState<string | null>(null);

@@ -18,8 +18,7 @@ interface Entry {
 
 /**
  * Channel membership editor: every known app (live and not running) with a
- * checkbox. Checking moves/assigns the app to this channel; unchecking
- * sends it back to the default output.
+ * checkbox. Unchecking sends the app back to the default output.
  */
 export function ChannelApps({
   channel,
