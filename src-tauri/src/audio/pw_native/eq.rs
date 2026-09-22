@@ -138,11 +138,28 @@ impl BiquadState {
     #[inline]
     fn process(&mut self, x: f32, c: &BiquadCoeffs) -> f32 {
         let y = c.b0 * x + self.z1;
-        self.z1 = c.b1 * x - c.a1 * y + self.z2;
-        self.z2 = c.b2 * x - c.a2 * y;
+        self.z1 = flush_denormal(c.b1 * x - c.a1 * y + self.z2);
+        self.z2 = flush_denormal(c.b2 * x - c.a2 * y);
         y
     }
 }
+
+/// Feedback state decays toward zero during silence but never reaches it;
+/// once subnormal, every multiply on it takes a microcode assist on Intel
+/// cores, and this runs per band per channel per sample on the RT thread.
+/// Nothing in the tree sets FTZ/DAZ, so the state is zeroed by hand.
+#[inline]
+pub(crate) fn flush_denormal(v: f32) -> f32 {
+    if v.abs() < DENORMAL_FLOOR {
+        0.0
+    } else {
+        v
+    }
+}
+
+/// Far above f32's smallest normal (1.2e-38) and far below anything
+/// audible (-400 dB).
+pub(crate) const DENORMAL_FLOOR: f32 = 1e-20;
 
 const KIND_PEAKING: u8 = 0;
 const KIND_LOW_SHELF: u8 = 1;
@@ -335,6 +352,34 @@ impl EqEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Before the flush, z1/z2 sat at a subnormal for as long as the input
+    // stayed silent (measured: all bands still subnormal after 30 s).
+    #[test]
+    fn filter_state_settles_to_exact_zero_over_silence() {
+        let c = BiquadCoeffs::design(EqBandKind::Peaking, 1000.0, 6.0, 1.0, SR);
+        let mut st = BiquadState::default();
+        for i in 0..4_800 {
+            st.process(0.5 * ((i as f32) * 0.13).sin(), &c);
+        }
+        assert!(
+            st.z1 != 0.0 || st.z2 != 0.0,
+            "state should carry after signal"
+        );
+        for _ in 0..(5 * SR as usize) {
+            st.process(0.0, &c);
+        }
+        assert_eq!((st.z1, st.z2), (0.0, 0.0));
+    }
+
+    #[test]
+    fn flush_leaves_any_audible_value_alone() {
+        for v in [1.0f32, -1.0, 1e-3, -1e-6, 1e-12, DENORMAL_FLOOR] {
+            assert_eq!(flush_denormal(v), v);
+        }
+        assert_eq!(flush_denormal(1e-30), 0.0);
+        assert_eq!(flush_denormal(-f32::MIN_POSITIVE / 4.0), 0.0);
+    }
 
     /// Analytic magnitude response |H(e^jw)| in dB - exact, no time-domain
     /// sampling artifacts. This is the same formula the UI curve uses

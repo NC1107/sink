@@ -5,6 +5,8 @@
 //! All stages use one-pole envelope followers with attack/release smoothing
 //! so gain changes never click.
 
+use super::eq::flush_denormal;
+
 /// Tunable parameters, updated from the UI thread via atomics in `mic.rs`.
 #[derive(Debug, Clone, Copy)]
 pub struct DspSettings {
@@ -113,11 +115,13 @@ impl DspChain {
             if s.gate_enabled {
                 let mag = x.abs();
                 // envelope follower (fast attack, slower release)
-                self.gate_env = if mag > self.gate_env {
+                // Both followers decay toward zero over silence, which is
+                // most of a gate's life; see flush_denormal.
+                self.gate_env = flush_denormal(if mag > self.gate_env {
                     mag + gate_att * (self.gate_env - mag)
                 } else {
                     mag + gate_rel * (self.gate_env - mag)
-                };
+                });
                 let open = self.gate_env > gate_thresh;
                 if open {
                     self.gate_hold = hold_samples;
@@ -130,7 +134,7 @@ impl DspChain {
                 } else {
                     gate_rel
                 };
-                self.gate_gain = target + c * (self.gate_gain - target);
+                self.gate_gain = flush_denormal(target + c * (self.gate_gain - target));
                 x *= self.gate_gain;
             }
 

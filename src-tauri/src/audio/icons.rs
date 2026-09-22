@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use crate::audio::identity::DesktopDb;
+use crate::audio::identity::{DesktopDb, ProcReader};
 
 #[derive(Debug, Clone)]
 struct DesktopEntry {
@@ -288,15 +288,6 @@ pub fn desktop_id_candidates(pid: u32) -> Vec<String> {
     out
 }
 
-/// The real executable basename - resolves wrapper scripts and symlinks
-/// (an "electron" stream whose exe is /opt/Slack/slack, say).
-fn exe_basename(pid: u32) -> Option<String> {
-    fs::read_link(format!("/proc/{pid}/exe"))
-        .ok()?
-        .file_name()
-        .map(|f| f.to_string_lossy().to_lowercase())
-}
-
 fn load_desktops() -> Vec<DesktopEntry> {
     let mut entries = Vec::new();
     for dir in desktop_dirs() {
@@ -446,7 +437,7 @@ fn pick_desktop<'a>(
 ) -> Option<&'a DesktopEntry> {
     let pid_desktop = pid.and_then(|p| {
         let candidates = desktop_id_candidates(p);
-        let exe = exe_basename(p);
+        let exe = crate::audio::identity::Proc.exe_basename(p);
         desktops
             .iter()
             .find(|d| {

@@ -401,18 +401,21 @@ pub struct MicConfig {
     pub limiter_ceiling_db: f32,
 }
 
+/// A config value clamped to its range, or the default when it is not a
+/// number at all - the shape both clamp_ranges share.
+fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        fallback
+    }
+}
+
 impl MicConfig {
     /// Clamp numeric fields to their documented, DSP-safe ranges and replace
     /// non-finite values, so a malformed or hostile IPC payload can't push
     /// the mic chain out of range (TD-050).
     pub fn clamp_ranges(&mut self) {
-        fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
-            if v.is_finite() {
-                v.clamp(lo, hi)
-            } else {
-                fallback
-            }
-        }
         self.gain_percent = self.gain_percent.min(200);
         self.gate_threshold_db = finite(
             self.gate_threshold_db,
@@ -545,13 +548,6 @@ impl EqBand {
     /// TD-050: clamp to DSP-safe ranges, replacing non-finite values, so a
     /// hostile IPC payload or preset file can't blow up the filter design.
     pub fn clamp_ranges(&mut self) {
-        fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
-            if v.is_finite() {
-                v.clamp(lo, hi)
-            } else {
-                fallback
-            }
-        }
         self.freq_hz = finite(self.freq_hz, 1000.0, 20.0, 20000.0);
         self.gain_db = finite(self.gain_db, 0.0, -24.0, 24.0);
         self.q = finite(self.q, default_band_q(), 0.1, 10.0);
