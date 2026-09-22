@@ -37,7 +37,7 @@ function MicLevel() {
   );
 }
 
-function micStatusLabel(enabled: boolean, muted: boolean, waiting: boolean): string {
+export function micStatusLabel(enabled: boolean, muted: boolean, waiting: boolean): string {
   if (!enabled) return "Off";
   // A device that is not here yet (plugged in later, or installed by a tool
   // that starts after us) is the one case where the chain is on but silent.
