@@ -339,20 +339,25 @@ pub fn open_mix_fader_window(
         let _ = existing.set_focus();
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(
+    // Match the main window: opaque on WebKitGTK 2.54+, transparent otherwise.
+    let opaque = crate::webkit::needs_opaque_window();
+    let query = if opaque { "&opaque=1" } else { "" };
+    let mut builder = tauri::WebviewWindowBuilder::new(
         &app,
         &window_label,
-        tauri::WebviewUrl::App(format!("index.html?mixFader={bus}").into()),
+        tauri::WebviewUrl::App(format!("index.html?mixFader={bus}{query}").into()),
     )
     .title(label)
     // Frameless like the main window; the popout draws its own bar.
     .decorations(false)
-    .transparent(true)
+    .transparent(!opaque)
     .inner_size(340.0, 300.0)
     .min_inner_size(280.0, 200.0)
-    .resizable(true)
-    .build()
-    .map_err(|e| e.to_string())?;
+    .resizable(true);
+    if opaque {
+        builder = builder.background_color(tauri::utils::config::Color(10, 10, 11, 255));
+    }
+    builder.build().map_err(|e| e.to_string())?;
     Ok(())
 }
 
