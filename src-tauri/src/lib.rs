@@ -5,6 +5,7 @@ mod hotkeys;
 mod mixer;
 mod persistence;
 mod state;
+mod webkit;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,6 +37,17 @@ pub fn run() {
         };
     let backend_native = levels.is_some();
     let app_state = AppState::new(backend, backend_native);
+
+    // WebKitGTK 2.54 won't paint a transparent window on some GPUs; make it
+    // opaque there. The `opaque=1` flag lets the UI square the filled corners.
+    let mut context = tauri::generate_context!();
+    if webkit::needs_opaque_window() {
+        for window in context.config_mut().app.windows.iter_mut() {
+            window.transparent = false;
+            window.background_color = Some(tauri::utils::config::Color(10, 10, 11, 255));
+            window.url = tauri::utils::config::WebviewUrl::App("index.html?opaque=1".into());
+        }
+    }
 
     let result = tauri::Builder::default()
         // Must stay first: a second launch would spawn a duplicate fighting
@@ -155,7 +167,7 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!());
+        .run(context);
 
     if let Err(e) = result {
         eprintln!("sink: fatal error while running tauri application: {e}");

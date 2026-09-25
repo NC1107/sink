@@ -156,6 +156,12 @@ body,
   border-radius: var(--r-xl);
   overflow: hidden;
 }
+/* Opaque window (WebKitGTK 2.54+): no see-through corners to round, so square
+   it and drop the border for an edge-to-edge fill. */
+:root[data-opaque] .window {
+  border: none;
+  border-radius: 0;
+}
 
 /* ---------- Headerbar ---------- */
 .headerbar {
