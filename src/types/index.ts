@@ -50,7 +50,6 @@ export interface NoiseEngineStatus {
   supported: boolean;
   installed: "system" | "downloaded" | null;
   download_bytes: number;
-  /** The DeepFilterNet release the download is pinned to. */
   version: string;
   state: "idle" | "running" | "missing" | "failed";
 }

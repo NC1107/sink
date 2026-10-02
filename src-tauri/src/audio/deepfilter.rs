@@ -24,7 +24,6 @@ pub const CAPTURE_NAME: &str = "sink-internal-df-capture";
 pub const OUTPUT_NAME: &str = "sink-internal-df-output";
 
 const PLUGIN_FILE: &str = "libdeep_filter_ladspa.so";
-/// Upstream release the download is pinned to.
 pub const VERSION: &str = "0.5.6";
 const DOWNLOAD_PREFIX: &str = "libdeep_filter_ladspa-";
 
@@ -53,20 +52,15 @@ const ASSET: Option<Asset> = None;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EngineState {
-    /// Not requested.
     Idle,
     Running,
-    /// Requested, but the plugin is neither installed nor downloaded.
     Missing,
-    /// The process died or would not start; the chain fell back to Light
-    /// until the user picks Strong again.
     Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallKind {
-    /// Packaged by the distro or installed by the user (e.g. for EasyEffects).
     System,
     Downloaded,
 }
@@ -198,8 +192,6 @@ fn spawn_fetch(url: &str, dest: &Path) -> Result<Child, SinkError> {
 
 static DOWNLOADING: AtomicBool = AtomicBool::new(false);
 
-/// Fetch and verify the plugin, reporting (bytes so far, total) as it goes.
-/// Only a file matching the pinned size and hash is ever moved into place.
 pub fn download(progress: impl Fn(u64, u64)) -> Result<PathBuf, SinkError> {
     let asset = ASSET
         .as_ref()
@@ -244,8 +236,7 @@ fn fetch_verified(
     Ok(())
 }
 
-/// Move a finished download into place only if it is byte for byte the
-/// pinned file; anything else is deleted, never left where it could load.
+/// Anything but the pinned file is deleted, never left where it could load.
 fn install_verified(part: &Path, dest: &Path, asset: &Asset) -> Result<(), SinkError> {
     let matches = fs::metadata(part)?.len() == asset.size && sha256_hex(part)? == asset.sha256;
     if !matches {
@@ -280,7 +271,6 @@ fn remove_other_versions(dir: &Path, keep: &Path) {
     }
 }
 
-/// Delete the downloaded plugin. A system install is never touched.
 pub fn remove_download() -> Result<(), SinkError> {
     match download_path().map(fs::remove_file) {
         Some(Err(e)) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
@@ -288,14 +278,12 @@ pub fn remove_download() -> Result<(), SinkError> {
     }
 }
 
-/// A string literal in PipeWire's SPA-JSON config syntax.
 fn spa_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Minimal standalone config: just enough modules to host one filter-chain.
-/// The output stream never autoconnects; Sink links it into the mic chain
-/// and polices anything else, exactly like its own playback streams.
+/// The output never autoconnects: Sink links it into the mic chain and
+/// polices anything else, like its own playback streams.
 fn filter_chain_conf(plugin: &Path, target: Option<&str>) -> String {
     let target = target
         .map(|t| format!("target.object = {}", spa_str(t)))
@@ -384,8 +372,8 @@ pub struct EngineProcess {
 }
 
 impl EngineProcess {
-    /// Start the filter-chain on `target` (the hardware mic). `on_exit` runs
-    /// on a watcher thread if the process dies without being stopped.
+    /// `on_exit` runs on a watcher thread, and only if the process dies
+    /// without being stopped.
     pub fn spawn(
         plugin: &Path,
         target: Option<&str>,

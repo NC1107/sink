@@ -92,13 +92,11 @@ pub trait AudioBackend: Send + Sync {
     /// fallback reports it as unsupported.
     fn set_mic_config(&self, config: &MicConfig) -> Result<(), SinkError>;
 
-    /// Restart the Strong noise suppression engine after it failed. Only the
-    /// native backend runs one.
+    /// A no-op by default: only the native backend runs the Strong engine.
     fn retry_noise_engine(&self) -> Result<(), SinkError> {
         Ok(())
     }
 
-    /// Where the Strong engine stands. Only the native backend runs one.
     fn noise_engine_state(&self) -> Result<crate::audio::deepfilter::EngineState, SinkError> {
         Ok(crate::audio::deepfilter::EngineState::Idle)
     }

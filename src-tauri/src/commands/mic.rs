@@ -38,7 +38,6 @@ pub fn get_input_devices(state: State<'_, AppState>) -> Result<Vec<OutputDevice>
         .map_err(|e| e.to_string())
 }
 
-/// Whether Strong noise suppression can run, is installed, and is running.
 #[tauri::command]
 pub fn get_noise_engine(state: State<'_, AppState>) -> Result<deepfilter::EngineStatus, String> {
     let engine = state
@@ -48,8 +47,7 @@ pub fn get_noise_engine(state: State<'_, AppState>) -> Result<deepfilter::Engine
     Ok(deepfilter::status(engine))
 }
 
-/// Download the Strong engine's plugin, emitting `noise-engine-progress`
-/// as `[done, total]` bytes.
+/// Emits `noise-engine-progress` as `[done, total]` bytes.
 #[tauri::command]
 pub async fn download_noise_engine(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -63,7 +61,6 @@ pub async fn download_noise_engine(app: AppHandle) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-/// Start the Strong engine again after it stopped.
 #[tauri::command]
 pub fn retry_noise_engine(state: State<'_, AppState>) -> Result<(), String> {
     state
@@ -72,13 +69,13 @@ pub fn retry_noise_engine(state: State<'_, AppState>) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Delete the downloaded plugin (a system install is left alone).
+/// Only Sink's own download: a system install belongs to the distro.
 #[tauri::command]
 pub fn remove_noise_engine() -> Result<(), String> {
     deepfilter::remove_download().map_err(|e| e.to_string())
 }
 
-/// Open the project page of the engine behind a mode in the browser.
+/// Takes a mode, not a URL, so the frontend can't open arbitrary pages.
 #[tauri::command]
 pub fn open_noise_engine_page(mode: NoiseSuppression) -> Result<(), String> {
     let url = match mode {

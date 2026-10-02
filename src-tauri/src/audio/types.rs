@@ -367,8 +367,7 @@ pub enum NoiseSuppression {
     #[default]
     Off,
     Light,
-    /// DeepFilterNet, an opt-in download run out of process
-    /// (`audio::deepfilter`). Falls back to Light while unavailable.
+    /// Falls back to Light while unavailable (see `audio::deepfilter`).
     Strong,
 }
 

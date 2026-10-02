@@ -122,7 +122,6 @@ pub struct MicStreams {
 }
 
 impl MicStreams {
-    /// Node id of the capture stream, which the loop links the engine into.
     pub fn capture_node_id(&self) -> u32 {
         self.capture.node_id()
     }

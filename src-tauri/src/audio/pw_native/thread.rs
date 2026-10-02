@@ -44,7 +44,7 @@ type Reply<T> = mpsc::Sender<Result<T, SinkError>>;
 type LinkSet = Vec<(u32, u32, pw::link::Link)>;
 
 pub enum Cmd {
-    /// The Strong noise suppression engine with this pid died on its own.
+    /// The pid lets the loop ignore an exit from an engine it already replaced.
     EngineExited {
         pid: u32,
     },
@@ -139,11 +139,9 @@ pub enum Cmd {
         config: MicConfig,
         reply: Reply<()>,
     },
-    /// Clear an engine failure and rebuild the chain to start it again.
     RetryEngine {
         reply: Reply<()>,
     },
-    /// Where the Strong engine stands, for the Mic screen.
     EngineState {
         reply: Reply<EngineState>,
     },
@@ -269,9 +267,8 @@ struct State {
     monitor_links: HashMap<String, LinkSet>,
     /// Links from the mic playback stream into the virtual mic.
     mic_links: LinkSet,
-    /// Node id of the Strong engine's output stream (another process).
+    /// Kept apart from `nodes`, which never mirrors internal streams.
     engine_output: Option<u32>,
-    /// Links from the engine's output into the mic capture stream.
     engine_links: LinkSet,
     /// The engine died; the chain stays on Light until the user re-picks
     /// Strong, so a plugin that can't keep up doesn't crash-loop.
@@ -563,7 +560,6 @@ fn on_global(
                     let send_stray = (s.send_gains.values().any(|h| h.playback_node_id() == out)
                         || s.send_gains.values().any(|h| h.capture_node_id() == inp))
                         && !allowed(out, inp);
-                    // The engine's output may only feed the mic capture.
                     let engine_stray = engine_link_stray(
                         s.engine_output,
                         s.mic_streams.as_ref().map(MicStreams::capture_node_id),
@@ -905,10 +901,8 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
     ensure_mic_links(state);
 }
 
-/// What a chain (re)build does about the Strong engine.
 #[derive(Debug, PartialEq)]
 enum EnginePlan {
-    /// Strong isn't selected.
     Skip,
     /// It failed earlier: Light stands in until the user retries, so a plugin
     /// that can't keep up never crash-loops.
@@ -932,8 +926,6 @@ fn plan_engine(
     }
 }
 
-/// Start the Strong engine when it is asked for and can run; otherwise the
-/// chain stands in with Light (`MicStreams::light_fallback`).
 fn start_engine(s: &mut State, mic_target: Option<&str>) -> Option<EngineProcess> {
     let EnginePlan::Spawn(plugin) =
         plan_engine(s.mic_config.noise_suppression, s.engine_failed, || {
@@ -992,7 +984,6 @@ fn noise_needs_rebuild(
         || (next == strong && !engine_failed && light_fallback && plugin_present())
 }
 
-/// A link out of the Strong engine that goes anywhere but the mic capture.
 fn engine_link_stray(engine_output: Option<u32>, capture: Option<u32>, out: u32, inp: u32) -> bool {
     engine_output == Some(out) && capture != Some(inp)
 }
@@ -1020,7 +1011,6 @@ fn ensure_mic_links(state: &Rc<RefCell<State>>) {
     s.mic_links = create_links(&core, "mic", playback_id, mic_node, &pairs);
 }
 
-/// Link the Strong engine's output into the mic capture stream.
 fn ensure_engine_links(s: &mut State, core: &CoreRc) {
     let capture = s
         .mic_streams

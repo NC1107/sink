@@ -11,7 +11,6 @@ const megabytes = (bytes: number) => Math.round(bytes / 1_000_000);
 const LIGHT_COST = "~0.3% of a core and 10 ms of delay";
 const STRONG_COST = "~10% of a core and 150 MB of RAM";
 
-/** What the subtitle says: plain text, or "Using <engine link>". */
 export interface Subtitle {
   text: string;
   warn?: boolean;
@@ -52,7 +51,6 @@ export function noiseSubtitle(
   return { text: "Removes fans, hum and room noise behind your voice" };
 }
 
-/** Hover text for each mode button. */
 export function modeTooltip(mode: NoiseSuppression, status: NoiseEngineStatus | null): string {
   if (mode === "light") return `RNNoise, built in. Depending on your specs, ${LIGHT_COST}.`;
   if (mode === "strong") {
@@ -66,7 +64,6 @@ export function modeTooltip(mode: NoiseSuppression, status: NoiseEngineStatus | 
   return "No noise suppression";
 }
 
-/** What clicking a mode button does. */
 export function pickAction(
   next: NoiseSuppression,
   mode: NoiseSuppression,
