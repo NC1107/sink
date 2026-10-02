@@ -42,6 +42,9 @@ export interface OutputDevice {
   description: string;
 }
 
+/** Mirrors Rust NoiseSuppression. */
+export type NoiseSuppression = "off" | "light";
+
 /** Mirrors Rust MicConfig. */
 export interface MicConfig {
   enabled: boolean;
@@ -59,6 +62,7 @@ export interface MicConfig {
   comp_threshold_db: number;
   comp_ratio: number;
   limiter_ceiling_db: number;
+  noise_suppression: NoiseSuppression;
 }
 
 /** Default DSP values (markers on the tuning sliders). */

@@ -2,6 +2,7 @@
 //! All PipeWire objects live on a dedicated loop thread; this facade sends
 //! commands over a channel and blocks on an mpsc reply with a timeout.
 
+mod denoise;
 mod dsp;
 mod eq;
 mod eq_chain;

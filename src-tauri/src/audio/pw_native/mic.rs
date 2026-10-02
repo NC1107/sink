@@ -1,5 +1,5 @@
 //! Native mic engine: captures the selected microphone, runs the DSP chain
-//! (gate → gain → compressor → limiter), and plays the processed signal into a
+//! (noise suppression → gate → gain → compressor → limiter), and plays the processed signal into a
 //! virtual `Audio/Source/Virtual` node that Discord/OBS can capture.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -9,10 +9,11 @@ use pipewire as pw;
 use pw::spa;
 use spa::pod::Pod;
 
+use crate::audio::pw_native::denoise::Denoiser;
 use crate::audio::pw_native::dsp::{DspChain, DspSettings};
 use crate::audio::pw_native::levels::LevelStore;
 use crate::audio::pw_native::ring::Ring;
-use crate::audio::types::MicConfig;
+use crate::audio::types::{MicConfig, NoiseSuppression};
 use crate::error::SinkError;
 
 /// node.name of the virtual microphone.
@@ -32,6 +33,7 @@ pub struct MicParams {
     comp_threshold_bits: AtomicU32,
     comp_ratio_bits: AtomicU32,
     limiter_ceiling_bits: AtomicU32,
+    denoise: AtomicBool,
 }
 
 impl MicParams {
@@ -46,6 +48,7 @@ impl MicParams {
             comp_threshold_bits: AtomicU32::new((-18.0f32).to_bits()),
             comp_ratio_bits: AtomicU32::new(3.0f32.to_bits()),
             limiter_ceiling_bits: AtomicU32::new((-1.0f32).to_bits()),
+            denoise: AtomicBool::new(false),
         };
         p.apply(config);
         p
@@ -67,6 +70,10 @@ impl MicParams {
             .store(config.comp_ratio.to_bits(), Ordering::Relaxed);
         self.limiter_ceiling_bits
             .store(config.limiter_ceiling_db.to_bits(), Ordering::Relaxed);
+        self.denoise.store(
+            config.noise_suppression == NoiseSuppression::Light,
+            Ordering::Relaxed,
+        );
     }
 
     fn settings(&self) -> DspSettings {
@@ -85,6 +92,8 @@ impl MicParams {
 }
 
 struct CaptureCtx {
+    denoiser: Denoiser,
+    denoising: bool,
     chain: DspChain,
     params: Arc<MicParams>,
     ring: Arc<Ring>,
@@ -113,10 +122,12 @@ impl MicStreams {
     }
 }
 
-/// Mono F32 format pod for stream negotiation.
+/// Mono F32 format pod for stream negotiation. The rate is pinned because
+/// noise suppression only works at 48 kHz; PipeWire resamples other graphs.
 fn mono_f32_format() -> Result<Vec<u8>, SinkError> {
     let mut info = spa::param::audio::AudioInfoRaw::new();
     info.set_format(spa::param::audio::AudioFormat::F32LE);
+    info.set_rate(48000);
     info.set_channels(1);
     let object = spa::pod::Object {
         type_: spa::sys::SPA_TYPE_OBJECT_Format,
@@ -166,6 +177,8 @@ impl MicStreams {
 
         let capture_listener = capture
             .add_local_listener_with_user_data(CaptureCtx {
+                denoiser: Denoiser::new(),
+                denoising: false,
                 chain: DspChain::new(48000.0),
                 params: params.clone(),
                 ring: ring.clone(),
@@ -204,6 +217,15 @@ impl MicStreams {
                         .iter()
                         .map(|b| f32::from_ne_bytes(*b)),
                 );
+
+                let denoise = ctx.params.denoise.load(Ordering::Relaxed);
+                if denoise && !ctx.denoising {
+                    ctx.denoiser.clear();
+                }
+                ctx.denoising = denoise;
+                if denoise {
+                    ctx.denoiser.process(&mut ctx.scratch);
+                }
 
                 let settings = ctx.params.settings();
                 ctx.chain.process(&mut ctx.scratch, &settings);
