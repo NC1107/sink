@@ -43,7 +43,15 @@ export interface OutputDevice {
 }
 
 /** Mirrors Rust NoiseSuppression. */
-export type NoiseSuppression = "off" | "light";
+export type NoiseSuppression = "off" | "light" | "strong";
+
+/** Mirrors Rust deepfilter::EngineStatus (the opt-in Strong engine). */
+export interface NoiseEngineStatus {
+  supported: boolean;
+  installed: "system" | "downloaded" | null;
+  download_bytes: number;
+  state: "idle" | "running" | "missing" | "failed";
+}
 
 /** Mirrors Rust MicConfig. */
 export interface MicConfig {

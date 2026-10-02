@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import { MAX_MIC_GAIN, MIC_LEVEL_KEY, MIC_DSP_DEFAULTS } from "../../types";
 import { DspSlider } from "./DspSlider";
+import { NoiseSuppressionRow } from "./NoiseSuppression";
 import { perceptual } from "../../lib/audio";
 import { HSlider } from "../AppList/HSlider";
 import { Ms } from "../Icons";
@@ -185,16 +186,9 @@ export function MicScreen() {
 
           <div className="section-label">Processing</div>
           <div className="card" style={{ padding: "var(--sp-2)" }}>
-            <ToggleRow
-              icon="noise_aware"
-              title="Noise suppression"
-              sub="Removes fans, hum and room noise behind your voice"
-              on={micConfig.noise_suppression !== "off"}
-              onToggle={() =>
-                void setMicConfig({
-                  noise_suppression: micConfig.noise_suppression === "off" ? "light" : "off",
-                })
-              }
+            <NoiseSuppressionRow
+              mode={micConfig.noise_suppression}
+              onMode={(m) => void setMicConfig({ noise_suppression: m })}
             />
             <ToggleRow
               icon="noise_control_off"

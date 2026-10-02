@@ -1930,6 +1930,59 @@ body,
   user-select: text;
 }
 
+/* noise suppression mode row and the Strong download panel */
+.ns-hint {
+  margin-left: auto;
+  font-size: var(--fs-caption);
+  color: var(--fg-muted);
+  text-align: right;
+}
+.ns-panel {
+  padding-top: var(--sp-1);
+  padding-bottom: var(--sp-3);
+}
+.ns-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--fg-secondary);
+}
+.ns-warn {
+  color: var(--warning);
+}
+/* Inline with caption text, so smaller than a dialog's buttons. */
+.ns-btn {
+  padding: 4px var(--sp-3);
+  font-size: var(--fs-caption);
+  border-radius: var(--r-sm);
+}
+.ns-progress {
+  flex: 1;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.ns-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+.ns-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-caption);
+  color: var(--fg-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ns-link:hover {
+  color: var(--fg-secondary);
+}
+
 /* ---------- balance pill (ChatMix, lives in the title bar) ---------- */
 .balance-bar {
   display: flex;

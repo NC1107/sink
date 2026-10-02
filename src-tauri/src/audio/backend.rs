@@ -91,4 +91,10 @@ pub trait AudioBackend: Send + Sync {
     /// Apply the mic chain configuration. Native-backend only; the pactl
     /// fallback reports it as unsupported.
     fn set_mic_config(&self, config: &MicConfig) -> Result<(), SinkError>;
+
+    /// Restart the Strong noise suppression engine after it failed. Only the
+    /// native backend runs one.
+    fn retry_noise_engine(&self) -> Result<(), SinkError> {
+        Ok(())
+    }
 }
