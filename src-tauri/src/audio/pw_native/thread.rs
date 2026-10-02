@@ -143,6 +143,10 @@ pub enum Cmd {
     RetryEngine {
         reply: Reply<()>,
     },
+    /// Where the Strong engine stands, for the Mic screen.
+    EngineState {
+        reply: Reply<EngineState>,
+    },
     /// Apply a channel's parametric EQ (create/destroy/re-tune the insert).
     SetChannelEq {
         sink_name: String,
@@ -560,8 +564,12 @@ fn on_global(
                         || s.send_gains.values().any(|h| h.capture_node_id() == inp))
                         && !allowed(out, inp);
                     // The engine's output may only feed the mic capture.
-                    let engine_stray = s.engine_output == Some(out)
-                        && s.mic_streams.as_ref().map(MicStreams::capture_node_id) != Some(inp);
+                    let engine_stray = engine_link_stray(
+                        s.engine_output,
+                        s.mic_streams.as_ref().map(MicStreams::capture_node_id),
+                        out,
+                        inp,
+                    );
                     mic_stray || eq_stray || send_stray || engine_stray
                 };
                 if police {
@@ -897,36 +905,96 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
     ensure_mic_links(state);
 }
 
-/// Start the Strong engine when it is asked for and can run, recording why
-/// not otherwise; the chain then stands in with Light.
+/// What a chain (re)build does about the Strong engine.
+#[derive(Debug, PartialEq)]
+enum EnginePlan {
+    /// Strong isn't selected.
+    Skip,
+    /// It failed earlier: Light stands in until the user retries, so a plugin
+    /// that can't keep up never crash-loops.
+    Failed,
+    /// Selected but not installed: Light stands in.
+    Missing,
+    Spawn(std::path::PathBuf),
+}
+
+fn plan_engine(
+    mode: NoiseSuppression,
+    failed: bool,
+    find: impl FnOnce() -> Option<std::path::PathBuf>,
+) -> EnginePlan {
+    if mode != NoiseSuppression::Strong {
+        EnginePlan::Skip
+    } else if failed {
+        EnginePlan::Failed
+    } else {
+        find().map_or(EnginePlan::Missing, EnginePlan::Spawn)
+    }
+}
+
+/// Start the Strong engine when it is asked for and can run; otherwise the
+/// chain stands in with Light (`MicStreams::light_fallback`).
 fn start_engine(s: &mut State, mic_target: Option<&str>) -> Option<EngineProcess> {
-    if s.mic_config.noise_suppression != NoiseSuppression::Strong {
-        deepfilter::set_state(EngineState::Idle);
-        return None;
-    }
-    if s.engine_failed {
-        deepfilter::set_state(EngineState::Failed);
-        return None;
-    }
-    let Some((_, plugin)) = deepfilter::find() else {
-        deepfilter::set_state(EngineState::Missing);
+    let EnginePlan::Spawn(plugin) =
+        plan_engine(s.mic_config.noise_suppression, s.engine_failed, || {
+            deepfilter::find().map(|(_, path)| path)
+        })
+    else {
         return None;
     };
     let tx = s.self_tx.clone()?;
     match EngineProcess::spawn(&plugin, mic_target, move |pid| {
         let _ = tx.send(Cmd::EngineExited { pid });
     }) {
-        Ok(engine) => {
-            deepfilter::set_state(EngineState::Running);
-            Some(engine)
-        }
+        Ok(engine) => Some(engine),
         Err(e) => {
             eprintln!("sink: {e}");
             s.engine_failed = true;
-            deepfilter::set_state(EngineState::Failed);
             None
         }
     }
+}
+
+/// Derived from the loop's own state on every query, so it can't go stale.
+fn engine_state(s: &State) -> EngineState {
+    if s.mic_config.noise_suppression != NoiseSuppression::Strong {
+        EngineState::Idle
+    } else if s
+        .mic_streams
+        .as_ref()
+        .and_then(MicStreams::engine_pid)
+        .is_some()
+    {
+        EngineState::Running
+    } else if s.engine_failed {
+        EngineState::Failed
+    } else if deepfilter::find().is_none() {
+        EngineState::Missing
+    } else {
+        // Picked and installed, but no chain to run it in (mic off, or
+        // waiting for its device).
+        EngineState::Idle
+    }
+}
+
+/// A noise suppression change that needs the chain rebuilt: Strong rewires
+/// the capture through another process, and a Strong that was standing in
+/// with Light starts for real once its plugin is installed.
+fn noise_needs_rebuild(
+    prev: NoiseSuppression,
+    next: NoiseSuppression,
+    engine_failed: bool,
+    light_fallback: bool,
+    plugin_present: impl FnOnce() -> bool,
+) -> bool {
+    let strong = NoiseSuppression::Strong;
+    (prev == strong) != (next == strong)
+        || (next == strong && !engine_failed && light_fallback && plugin_present())
+}
+
+/// A link out of the Strong engine that goes anywhere but the mic capture.
+fn engine_link_stray(engine_output: Option<u32>, capture: Option<u32>, out: u32, inp: u32) -> bool {
+    engine_output == Some(out) && capture != Some(inp)
 }
 
 /// Link the mic playback stream's output ports into the virtual mic.
@@ -1478,6 +1546,9 @@ fn create_node_object(
 
 fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
     match cmd {
+        Cmd::EngineState { reply } => {
+            let _ = reply.send(Ok(engine_state(&state.borrow())));
+        }
         Cmd::RetryEngine { reply } => {
             let rebuild = {
                 let mut s = state.borrow_mut();
@@ -1925,19 +1996,17 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
 
                 let needs_create = config.enabled && s.mic_source.is_none();
                 let needs_destroy = !config.enabled && s.mic_source.is_some();
-                let strong = NoiseSuppression::Strong;
-                // Strong rewires the capture through another process. It also
-                // rebuilds when it was waiting on a plugin that is here now.
-                let engine_waiting = config.noise_suppression == strong
-                    && !s.engine_failed
-                    && s.mic_streams.as_ref().is_some_and(|m| m.light_fallback)
-                    && deepfilter::find().is_some();
                 let needs_rebuild = config.enabled
-                    && s.mic_streams.is_some()
-                    && (prev.input_device != config.input_device
-                        || (prev.noise_suppression == strong)
-                            != (config.noise_suppression == strong)
-                        || engine_waiting);
+                    && s.mic_streams.as_ref().is_some_and(|m| {
+                        prev.input_device != config.input_device
+                            || noise_needs_rebuild(
+                                prev.noise_suppression,
+                                config.noise_suppression,
+                                s.engine_failed,
+                                m.light_fallback,
+                                || deepfilter::find().is_some(),
+                            )
+                    });
                 let source_exists = s.node_by_name(MIC_NODE).is_some();
                 (
                     needs_create,
@@ -1953,7 +2022,6 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     let mut s = state.borrow_mut();
                     s.desired.remove(MIC_NODE);
                     s.mic_streams = None;
-                    deepfilter::set_state(EngineState::Idle);
                     s.mic_links.clear();
                     s.bus_links
                         .retain(|(_, member), _| member.as_str() != MIC_NODE);
@@ -2213,6 +2281,64 @@ mod tests {
     #[test]
     fn resolve_source_prefers_live_eq_playback() {
         assert_eq!(resolve_source(Some(77), 10), 77);
+    }
+
+    #[test]
+    fn engine_plan_spawns_only_for_an_installed_unfailed_strong() {
+        let found = || Some(std::path::PathBuf::from("/p.so"));
+        assert_eq!(
+            plan_engine(NoiseSuppression::Light, false, found),
+            EnginePlan::Skip
+        );
+        assert_eq!(
+            plan_engine(NoiseSuppression::Off, false, found),
+            EnginePlan::Skip
+        );
+        assert_eq!(
+            plan_engine(NoiseSuppression::Strong, false, found),
+            EnginePlan::Spawn("/p.so".into())
+        );
+        assert_eq!(
+            plan_engine(NoiseSuppression::Strong, false, || None),
+            EnginePlan::Missing
+        );
+    }
+
+    #[test]
+    fn a_failed_engine_is_not_respawned_or_even_looked_up() {
+        let plan = plan_engine(NoiseSuppression::Strong, true, || {
+            panic!("a failed engine must not be looked up again")
+        });
+        assert_eq!(plan, EnginePlan::Failed);
+    }
+
+    #[test]
+    fn only_strong_transitions_and_a_newly_installed_plugin_rebuild() {
+        use NoiseSuppression::{Light, Off, Strong};
+        let never = || panic!("plugin lookup not needed");
+        assert!(noise_needs_rebuild(Light, Strong, false, false, never));
+        assert!(noise_needs_rebuild(Strong, Light, false, false, never));
+        assert!(noise_needs_rebuild(Strong, Off, false, false, never));
+        // Light and Off are a live parameter, no rebuild.
+        assert!(!noise_needs_rebuild(Light, Off, false, false, never));
+        assert!(!noise_needs_rebuild(Off, Light, false, false, never));
+        // Other mic settings changing under a running Strong.
+        assert!(!noise_needs_rebuild(Strong, Strong, false, false, never));
+        // Standing in with Light: start for real once installed, not after a failure.
+        assert!(noise_needs_rebuild(Strong, Strong, false, true, || true));
+        assert!(!noise_needs_rebuild(Strong, Strong, false, true, || false));
+        assert!(!noise_needs_rebuild(Strong, Strong, true, true, never));
+    }
+
+    #[test]
+    fn the_engine_may_only_feed_the_mic_capture() {
+        assert!(!engine_link_stray(Some(7), Some(9), 7, 9));
+        assert!(engine_link_stray(Some(7), Some(9), 7, 4));
+        // No capture yet: anything out of the engine is stray.
+        assert!(engine_link_stray(Some(7), None, 7, 9));
+        // Links between other nodes are not this rule's business.
+        assert!(!engine_link_stray(Some(7), Some(9), 3, 4));
+        assert!(!engine_link_stray(None, Some(9), 7, 4));
     }
 
     #[test]

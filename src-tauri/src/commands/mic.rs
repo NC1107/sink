@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::audio::deepfilter;
-use crate::audio::types::{MicConfig, OutputDevice};
+use crate::audio::types::{MicConfig, NoiseSuppression, OutputDevice};
 use crate::persistence::mic;
 use crate::state::AppState;
 
@@ -40,8 +40,12 @@ pub fn get_input_devices(state: State<'_, AppState>) -> Result<Vec<OutputDevice>
 
 /// Whether Strong noise suppression can run, is installed, and is running.
 #[tauri::command]
-pub fn get_noise_engine() -> deepfilter::EngineStatus {
-    deepfilter::status()
+pub fn get_noise_engine(state: State<'_, AppState>) -> Result<deepfilter::EngineStatus, String> {
+    let engine = state
+        .backend
+        .noise_engine_state()
+        .map_err(|e| e.to_string())?;
+    Ok(deepfilter::status(engine))
 }
 
 /// Download the Strong engine's plugin, emitting `noise-engine-progress`
@@ -72,4 +76,26 @@ pub fn retry_noise_engine(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn remove_noise_engine() -> Result<(), String> {
     deepfilter::remove_download().map_err(|e| e.to_string())
+}
+
+/// Open the project page of the engine behind a mode in the browser.
+#[tauri::command]
+pub fn open_noise_engine_page(mode: NoiseSuppression) -> Result<(), String> {
+    let url = match mode {
+        NoiseSuppression::Off => return Ok(()),
+        NoiseSuppression::Light => deepfilter::LIGHT_URL,
+        NoiseSuppression::Strong => deepfilter::STRONG_URL,
+    };
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|mut child| {
+            // Reap it off-thread: some desktops' openers block until the
+            // browser exits, and an unwaited child lingers as a zombie.
+            std::thread::spawn(move || child.wait());
+        })
+        .map_err(|e| format!("open {url}: {e}"))
 }

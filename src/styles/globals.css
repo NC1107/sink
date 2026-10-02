@@ -370,7 +370,10 @@ body,
 }
 .screen-scroll {
   flex: 1;
-  overflow-y: auto;
+  /* Always keep the (invisible when idle) scrollbar track, so content never
+     shifts sideways when a screen grows past the window. WebKitGTK ignores
+     scrollbar-gutter. */
+  overflow-y: scroll;
   overflow-x: hidden;
   padding: var(--sp-6) var(--sp-7);
   /* Matches .screen-head so rows line up under the title. The mixer opts out
@@ -1234,6 +1237,11 @@ body,
   flex-direction: column;
   gap: var(--sp-4);
 }
+.mic-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
 .mic-device-row {
   display: flex;
   align-items: center;
@@ -1762,14 +1770,6 @@ body,
   pointer-events: none;
 }
 
-/* greyed status tag (e.g. mic muted) */
-.tag.tag-off {
-  opacity: 0.55;
-}
-.tag.tag-off .ms {
-  color: var(--fg-muted);
-}
-
 /* mic screen body while the chain is switched off: visible but inert */
 .mic-disabled {
   opacity: 0.45;
@@ -1930,57 +1930,32 @@ body,
   user-select: text;
 }
 
-/* noise suppression mode row and the Strong download panel */
-.ns-hint {
-  margin-left: auto;
-  font-size: var(--fs-caption);
-  color: var(--fg-muted);
-  text-align: right;
-}
-.ns-panel {
-  padding-top: var(--sp-1);
-  padding-bottom: var(--sp-3);
-}
-.ns-text {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-caption);
-  color: var(--fg-secondary);
-}
-.ns-warn {
+/* noise suppression: the subtitle is also the status line */
+.rsub.ns-warn {
   color: var(--warning);
-}
-/* Inline with caption text, so smaller than a dialog's buttons. */
-.ns-btn {
-  padding: 4px var(--sp-3);
-  font-size: var(--fs-caption);
-  border-radius: var(--r-sm);
-}
-.ns-progress {
-  flex: 1;
-  height: 6px;
-  border-radius: var(--r-pill);
-  background: var(--bg-main);
-  border: 1px solid var(--border);
-  overflow: hidden;
-}
-.ns-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.15s linear;
 }
 .ns-link {
   border: 0;
   padding: 0;
   background: none;
   font: inherit;
-  font-size: var(--fs-caption);
-  color: var(--fg-muted);
-  text-decoration: underline;
+  color: var(--accent-hover);
   cursor: pointer;
 }
 .ns-link:hover {
-  color: var(--fg-secondary);
+  text-decoration: underline;
+}
+.ns-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* A secondary action beside the engine link: muted until hovered. */
+.ns-link-quiet {
+  color: var(--fg-muted);
+}
+.ns-link-quiet:hover {
+  color: var(--danger);
 }
 
 /* ---------- balance pill (ChatMix, lives in the title bar) ---------- */
@@ -2730,6 +2705,10 @@ body,
 }
 .seg-btn:hover {
   color: var(--fg-primary);
+}
+.seg-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 .seg-btn.active {
   background: var(--bg-surface);

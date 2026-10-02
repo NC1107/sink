@@ -9,7 +9,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -24,6 +24,14 @@ pub const CAPTURE_NAME: &str = "sink-internal-df-capture";
 pub const OUTPUT_NAME: &str = "sink-internal-df-output";
 
 const PLUGIN_FILE: &str = "libdeep_filter_ladspa.so";
+/// Upstream release the download is pinned to.
+pub const VERSION: &str = "0.5.6";
+const DOWNLOAD_PREFIX: &str = "libdeep_filter_ladspa-";
+
+/// Project pages the Mic screen links to. Fixed here so the frontend can
+/// only ever ask to open these, never an arbitrary URL.
+pub const LIGHT_URL: &str = "https://github.com/jneem/nnnoiseless";
+pub const STRONG_URL: &str = "https://github.com/Rikorose/DeepFilterNet/releases/tag/v0.5.6";
 
 /// The upstream release asset, pinned by hash: a download that doesn't match
 /// byte for byte is never loaded.
@@ -55,21 +63,6 @@ pub enum EngineState {
     Failed,
 }
 
-static STATE: AtomicU8 = AtomicU8::new(0);
-
-pub fn set_state(state: EngineState) {
-    STATE.store(state as u8, Ordering::Relaxed);
-}
-
-fn state() -> EngineState {
-    match STATE.load(Ordering::Relaxed) {
-        1 => EngineState::Running,
-        2 => EngineState::Missing,
-        3 => EngineState::Failed,
-        _ => EngineState::Idle,
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallKind {
@@ -84,15 +77,18 @@ pub struct EngineStatus {
     pub supported: bool,
     pub installed: Option<InstallKind>,
     pub download_bytes: u64,
+    pub version: &'static str,
     pub state: EngineState,
 }
 
-pub fn status() -> EngineStatus {
+/// `state` comes from the PipeWire loop, which owns the engine.
+pub fn status(state: EngineState) -> EngineStatus {
     EngineStatus {
         supported: ASSET.is_some() || find_system().is_some(),
         installed: find().map(|(kind, _)| kind),
         download_bytes: ASSET.as_ref().map_or(0, |a| a.size),
-        state: state(),
+        version: VERSION,
+        state,
     }
 }
 
@@ -129,7 +125,7 @@ fn download_path() -> Option<PathBuf> {
         dirs::data_dir()?
             .join("sink")
             .join("plugins")
-            .join("libdeep_filter_ladspa-0.5.6.so"),
+            .join(format!("{DOWNLOAD_PREFIX}{VERSION}.so")),
     )
 }
 
@@ -239,31 +235,56 @@ fn fetch_verified(
         progress(done.min(asset.size), asset.size);
         std::thread::sleep(Duration::from_millis(150));
     };
-    let cleanup = |msg: String| {
-        let _ = fs::remove_file(&part);
-        SinkError::Config(msg)
-    };
     if !status.success() {
-        return Err(cleanup(format!("download failed ({status})")));
+        let _ = fs::remove_file(&part);
+        return Err(SinkError::Config(format!("download failed ({status})")));
     }
-    let size = fs::metadata(&part)?.len();
-    if size != asset.size || sha256_hex(&part)? != asset.sha256 {
-        return Err(cleanup(
-            "the download didn't match the expected file, so it was discarded".into(),
-        ));
-    }
+    install_verified(&part, dest, asset)?;
     progress(asset.size, asset.size);
-    fs::rename(&part, dest)?;
     Ok(())
 }
 
+/// Move a finished download into place only if it is byte for byte the
+/// pinned file; anything else is deleted, never left where it could load.
+fn install_verified(part: &Path, dest: &Path, asset: &Asset) -> Result<(), SinkError> {
+    let matches = fs::metadata(part)?.len() == asset.size && sha256_hex(part)? == asset.sha256;
+    if !matches {
+        let _ = fs::remove_file(part);
+        return Err(SinkError::Config(
+            "the download didn't match the expected file, so it was discarded".into(),
+        ));
+    }
+    fs::rename(part, dest)?;
+    if let Some(dir) = dest.parent() {
+        remove_other_versions(dir, dest);
+    }
+    Ok(())
+}
+
+/// Downloads live outside the package, so they survive Sink updates; a
+/// release that pins a newer plugin cleans up the one it replaced.
+fn remove_other_versions(dir: &Path, keep: &Path) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let stale = path != keep
+            && path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(DOWNLOAD_PREFIX) && n.ends_with(".so"));
+        if stale {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// Delete the downloaded plugin. A system install is never touched.
 pub fn remove_download() -> Result<(), SinkError> {
-    match download_path() {
-        Some(p) => match fs::remove_file(p) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
-            _ => Ok(()),
-        },
-        None => Ok(()),
+    match download_path().map(fs::remove_file) {
+        Some(Err(e)) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
     }
 }
 
@@ -324,16 +345,35 @@ context.modules = [
 /// before `pipewire` reads it. The first start clears what a crashed Sink
 /// left behind (single-instance, so nothing else is using them).
 fn next_conf_path() -> Result<PathBuf, SinkError> {
+    use std::os::unix::fs::DirBuilderExt;
     static SERIAL: AtomicU32 = AtomicU32::new(0);
+    // Only the per-user runtime dir: a shared /tmp fallback would let another
+    // user plant the config `pipewire` loads. PipeWire needs it anyway.
     let dir = dirs::runtime_dir()
-        .unwrap_or_else(std::env::temp_dir)
+        .ok_or_else(|| SinkError::Config("XDG_RUNTIME_DIR is not set".into()))?
         .join("sink");
     let n = SERIAL.fetch_add(1, Ordering::Relaxed);
     if n == 0 {
         let _ = fs::remove_dir_all(&dir);
     }
-    fs::create_dir_all(&dir)?;
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)?;
     Ok(dir.join(format!("noise-suppression-{n}.conf")))
+}
+
+fn write_private(path: &Path, contents: &str) -> Result<(), SinkError> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?
+        .write_all(contents.as_bytes())?;
+    Ok(())
 }
 
 /// The running filter-chain. Dropping it stops the process.
@@ -352,7 +392,7 @@ impl EngineProcess {
         on_exit: impl FnOnce(u32) + Send + 'static,
     ) -> Result<Self, SinkError> {
         let conf = next_conf_path()?;
-        fs::write(&conf, filter_chain_conf(plugin, target))?;
+        write_private(&conf, &filter_chain_conf(plugin, target))?;
 
         let mut cmd = Command::new("pipewire");
         cmd.arg("-c")
@@ -442,6 +482,85 @@ mod tests {
     fn conf_without_a_target_follows_the_default() {
         let conf = filter_chain_conf(Path::new("/p/lib.so"), None);
         assert!(!conf.contains("target.object"));
+    }
+
+    #[test]
+    fn a_new_download_removes_older_versions_only() {
+        let dir = std::env::temp_dir().join(format!("sink-df-versions-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let old = dir.join("libdeep_filter_ladspa-0.5.5.so");
+        let new = dir.join("libdeep_filter_ladspa-0.5.6.so");
+        let other = dir.join("notes.txt");
+        for p in [&old, &new, &other] {
+            fs::write(p, b"x").unwrap();
+        }
+        remove_other_versions(&dir, &new);
+        let (old_gone, new_kept, other_kept) = (!old.exists(), new.exists(), other.exists());
+        let _ = fs::remove_dir_all(&dir);
+        assert!(old_gone && new_kept && other_kept);
+    }
+
+    #[test]
+    fn download_name_carries_the_pinned_version() {
+        let p = download_path().unwrap();
+        assert!(p.ends_with(format!("libdeep_filter_ladspa-{VERSION}.so")));
+        assert!(STRONG_URL.ends_with(VERSION));
+    }
+
+    /// A stand-in for the pinned asset: the 3 bytes "abc".
+    const ABC: Asset = Asset {
+        url: "",
+        sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        size: 3,
+    };
+
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("sink-df-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_matching_download_is_installed_and_replaces_older_versions() {
+        let dir = scratch("install-ok");
+        let (part, dest) = (
+            dir.join(".download.part"),
+            dir.join("libdeep_filter_ladspa-0.5.6.so"),
+        );
+        let old = dir.join("libdeep_filter_ladspa-0.5.5.so");
+        fs::write(&part, b"abc").unwrap();
+        fs::write(&old, b"x").unwrap();
+        let result = install_verified(&part, &dest, &ABC);
+        let state = (dest.exists(), part.exists(), old.exists());
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.is_ok());
+        assert_eq!(state, (true, false, false));
+    }
+
+    #[test]
+    fn a_tampered_download_of_the_right_size_is_discarded() {
+        let dir = scratch("install-hash");
+        let (part, dest) = (dir.join(".download.part"), dir.join("plugin.so"));
+        fs::write(&part, b"abd").unwrap();
+        let result = install_verified(&part, &dest, &ABC);
+        let state = (dest.exists(), part.exists());
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+        assert_eq!(state, (false, false));
+    }
+
+    #[test]
+    fn a_truncated_download_is_discarded() {
+        let dir = scratch("install-size");
+        let (part, dest) = (dir.join(".download.part"), dir.join("plugin.so"));
+        fs::write(&part, b"ab").unwrap();
+        let result = install_verified(&part, &dest, &ABC);
+        let state = (dest.exists(), part.exists());
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+        assert_eq!(state, (false, false));
     }
 
     #[test]

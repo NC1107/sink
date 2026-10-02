@@ -97,4 +97,9 @@ pub trait AudioBackend: Send + Sync {
     fn retry_noise_engine(&self) -> Result<(), SinkError> {
         Ok(())
     }
+
+    /// Where the Strong engine stands. Only the native backend runs one.
+    fn noise_engine_state(&self) -> Result<crate::audio::deepfilter::EngineState, SinkError> {
+        Ok(crate::audio::deepfilter::EngineState::Idle)
+    }
 }

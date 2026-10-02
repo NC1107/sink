@@ -38,15 +38,6 @@ function MicLevel() {
   );
 }
 
-export function micStatusLabel(enabled: boolean, muted: boolean, waiting: boolean): string {
-  if (!enabled) return "Off";
-  // A device that is not here yet (plugged in later, or installed by a tool
-  // that starts after us) is the one case where the chain is on but silent.
-  if (waiting) return "Waiting";
-  if (muted) return "Muted";
-  return "Live";
-}
-
 export function MicScreen() {
   const micConfig = useMixerStore((s) => s.micConfig);
   const inputDevices = useMixerStore((s) => s.inputDevices);
@@ -76,42 +67,32 @@ export function MicScreen() {
     <div className="content">
       <div className="screen-head">
         <h1>Microphone</h1>
-        <div className="screen-head-actions">
-          <span
-            className={
-              "tag" + (!micConfig.enabled || micConfig.muted || waiting ? " tag-off" : " live")
-            }
-            title={waiting ? `Waiting for ${micConfig.input_device}` : undefined}
-          >
-            <Ms name="fiber_manual_record" style={{ fontSize: 11 }} />
-            {micStatusLabel(micConfig.enabled, micConfig.muted, waiting)}
-          </span>
-          <Toggle
-            on={micConfig.enabled}
-            onClick={() => void setMicConfig({ enabled: !micConfig.enabled })}
-          />
-        </div>
       </div>
       <div className="screen-scroll">
-        <div className={micConfig.enabled ? undefined : "mic-disabled"}>
-          <div className="section-label">Input</div>
-          <div className="card mic-card">
-            <div className="mic-gain-row">
-              <span className="mic-gain-label">Name</span>
-              <input
-                className="menu-input"
-                style={{ flex: 1 }}
-                value={micConfig.output_label}
-                maxLength={32}
-                title="How other apps list your processed mic"
-                onChange={(e) => void setMicConfig({ output_label: e.target.value })}
-              />
-            </div>
-
+        <div className="section-label">Input</div>
+        <div className="card mic-card">
+          <div className="mic-gain-row">
+            <span className="mic-gain-label">Name</span>
+            <input
+              className="menu-input"
+              style={{ flex: 1 }}
+              value={micConfig.output_label}
+              maxLength={32}
+              title="How other apps list your processed mic"
+              onChange={(e) => void setMicConfig({ output_label: e.target.value })}
+            />
+            <Toggle
+              on={micConfig.enabled}
+              label="Microphone"
+              title={waiting ? `Waiting for ${micConfig.input_device}` : undefined}
+              onClick={() => void setMicConfig({ enabled: !micConfig.enabled })}
+            />
+          </div>
+          <div className={"mic-card-body" + (micConfig.enabled ? "" : " mic-disabled")}>
             <div className="mic-device-row">
-              <div className="ricon">
-                <Ms name="settings_voice" />
-              </div>
+              <span className="mic-gain-label" title="The microphone this chain listens to">
+                Input
+              </span>
               <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
                 <button
                   type="button"
@@ -183,8 +164,10 @@ export function MicScreen() {
               />
             </div>
           </div>
+        </div>
 
-          <div className="section-label">Processing</div>
+        <div className="section-label">Processing</div>
+        <div className={micConfig.enabled ? undefined : "mic-disabled"}>
           <div className="card" style={{ padding: "var(--sp-2)" }}>
             <NoiseSuppressionRow
               mode={micConfig.noise_suppression}

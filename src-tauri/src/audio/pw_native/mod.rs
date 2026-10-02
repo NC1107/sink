@@ -232,6 +232,10 @@ impl AudioBackend for PipeWireBackend {
         self.request(|reply| Cmd::RetryEngine { reply })
     }
 
+    fn noise_engine_state(&self) -> Result<crate::audio::deepfilter::EngineState, SinkError> {
+        self.request(|reply| Cmd::EngineState { reply })
+    }
+
     fn set_channel_eq(
         &self,
         sink_name: &str,
