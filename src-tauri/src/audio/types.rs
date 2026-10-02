@@ -361,13 +361,11 @@ fn default_limiter_ceiling() -> f32 {
     -1.0
 }
 
-/// Noise suppression ahead of the gate.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NoiseSuppression {
     #[default]
     Off,
-    /// Built-in RNNoise.
     Light,
 }
 
