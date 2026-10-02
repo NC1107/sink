@@ -117,7 +117,9 @@ export function MixerBoard() {
 
   return (
     <div className="content">
-      <div className="screen-scroll" style={{ padding: 0 }}>
+      {/* The board centres itself and zooms to fit, so it skips the reserved
+          scrollbar track the other screens keep. */}
+      <div className="screen-scroll" style={{ padding: 0, overflowY: "auto" }}>
         <div className="mix-scroll">
           {micConfig?.enabled && (
             <>

@@ -1,6 +1,7 @@
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
-use crate::audio::types::{MicConfig, OutputDevice};
+use crate::audio::deepfilter;
+use crate::audio::types::{MicConfig, NoiseSuppression, OutputDevice};
 use crate::persistence::mic;
 use crate::state::AppState;
 
@@ -35,4 +36,63 @@ pub fn get_input_devices(state: State<'_, AppState>) -> Result<Vec<OutputDevice>
         .backend
         .list_input_devices()
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_noise_engine(state: State<'_, AppState>) -> Result<deepfilter::EngineStatus, String> {
+    let engine = state
+        .backend
+        .noise_engine_state()
+        .map_err(|e| e.to_string())?;
+    Ok(deepfilter::status(engine))
+}
+
+/// Emits `noise-engine-progress` as `[done, total]` bytes.
+#[tauri::command]
+pub async fn download_noise_engine(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        deepfilter::download(|done, total| {
+            let _ = app.emit("noise-engine-progress", (done, total));
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn retry_noise_engine(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .backend
+        .retry_noise_engine()
+        .map_err(|e| e.to_string())
+}
+
+/// Only Sink's own download: a system install belongs to the distro.
+#[tauri::command]
+pub fn remove_noise_engine() -> Result<(), String> {
+    deepfilter::remove_download().map_err(|e| e.to_string())
+}
+
+/// Takes a mode, not a URL, so the frontend can't open arbitrary pages.
+#[tauri::command]
+pub fn open_noise_engine_page(mode: NoiseSuppression) -> Result<(), String> {
+    let url = match mode {
+        NoiseSuppression::Off => return Ok(()),
+        NoiseSuppression::Light => deepfilter::LIGHT_URL,
+        NoiseSuppression::Strong => deepfilter::STRONG_URL,
+    };
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|mut child| {
+            // Reap it off-thread: some desktops' openers block until the
+            // browser exits, and an unwaited child lingers as a zombie.
+            std::thread::spawn(move || child.wait());
+        })
+        .map_err(|e| format!("open {url}: {e}"))
 }
