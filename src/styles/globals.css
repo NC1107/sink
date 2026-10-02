@@ -1930,27 +1930,6 @@ body,
   user-select: text;
 }
 
-/* mic screen tip line */
-.mic-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-2);
-  margin-top: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-lg);
-  border: 1px dashed var(--border);
-  font-size: var(--fs-caption);
-  color: var(--fg-muted);
-}
-.mic-tip .ms {
-  font-size: 16px;
-  color: var(--warning);
-  flex: 0 0 auto;
-}
-.mic-tip a {
-  color: var(--accent-hover);
-}
-
 /* ---------- balance pill (ChatMix, lives in the title bar) ---------- */
 .balance-bar {
   display: flex;

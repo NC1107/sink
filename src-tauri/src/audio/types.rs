@@ -361,6 +361,25 @@ fn default_limiter_ceiling() -> f32 {
     -1.0
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoiseSuppression {
+    #[default]
+    Off,
+    Light,
+}
+
+/// An unknown value (an engine from a newer Sink) reads as Off, so a
+/// downgrade keeps the rest of the mic config instead of failing the file.
+impl<'de> Deserialize<'de> for NoiseSuppression {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(match String::deserialize(d)?.as_str() {
+            "light" => Self::Light,
+            _ => Self::Off,
+        })
+    }
+}
+
 /// Mic chain configuration, persisted and applied live.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MicConfig {
@@ -388,6 +407,8 @@ pub struct MicConfig {
     /// Hard ceiling (dBFS).
     #[serde(default = "default_limiter_ceiling")]
     pub limiter_ceiling_db: f32,
+    #[serde(default)]
+    pub noise_suppression: NoiseSuppression,
 }
 
 /// A config value clamped to its range, or the default when it is not a
@@ -442,6 +463,7 @@ impl Default for MicConfig {
             comp_threshold_db: default_comp_threshold(),
             comp_ratio: default_comp_ratio(),
             limiter_ceiling_db: default_limiter_ceiling(),
+            noise_suppression: NoiseSuppression::Off,
         }
     }
 }
@@ -495,6 +517,38 @@ mod mic_clamp_tests {
         let before = c.clone();
         c.clamp_ranges();
         assert_eq!(c, before);
+    }
+
+    #[test]
+    fn config_from_before_noise_suppression_loads_with_it_off() {
+        let mut v = serde_json::to_value(MicConfig::default()).unwrap();
+        v.as_object_mut().unwrap().remove("noise_suppression");
+        let c: MicConfig = serde_json::from_value(v).unwrap();
+        assert_eq!(c.noise_suppression, NoiseSuppression::Off);
+    }
+
+    #[test]
+    fn unknown_noise_suppression_reads_as_off_without_losing_the_rest() {
+        let mut v = serde_json::to_value(MicConfig {
+            gain_percent: 140,
+            ..MicConfig::default()
+        })
+        .unwrap();
+        v["noise_suppression"] = "some_future_engine".into();
+        let c: MicConfig = serde_json::from_value(v).unwrap();
+        assert_eq!(c.noise_suppression, NoiseSuppression::Off);
+        assert_eq!(c.gain_percent, 140);
+    }
+
+    #[test]
+    fn noise_suppression_round_trips_as_snake_case() {
+        let c = MicConfig {
+            noise_suppression: NoiseSuppression::Light,
+            ..MicConfig::default()
+        };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["noise_suppression"], "light");
+        assert_eq!(serde_json::from_value::<MicConfig>(v).unwrap(), c);
     }
 }
 

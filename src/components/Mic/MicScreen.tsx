@@ -186,6 +186,17 @@ export function MicScreen() {
           <div className="section-label">Processing</div>
           <div className="card" style={{ padding: "var(--sp-2)" }}>
             <ToggleRow
+              icon="noise_aware"
+              title="Noise suppression"
+              sub="Removes fans, hum and room noise behind your voice"
+              on={micConfig.noise_suppression !== "off"}
+              onToggle={() =>
+                void setMicConfig({
+                  noise_suppression: micConfig.noise_suppression === "off" ? "light" : "off",
+                })
+              }
+            />
+            <ToggleRow
               icon="noise_control_off"
               title="Noise gate"
               sub="Cuts the noise floor between words"
@@ -254,18 +265,6 @@ export function MicScreen() {
                 onChange={(v) => void setMicConfig({ limiter_ceiling_db: v })}
               />
             )}
-          </div>
-
-          <div className="mic-tip">
-            <Ms name="lightbulb" />
-            <span>
-              Tip: running{" "}
-              <a href="https://github.com/noisetorch/NoiseTorch" target="_blank" rel="noreferrer">
-                NoiseTorch
-              </a>{" "}
-              in front of Sink removes background noise before this chain - pick its virtual mic as
-              the Input above and the gate gets a much cleaner signal to work with.
-            </span>
           </div>
         </div>
       </div>

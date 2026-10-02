@@ -31,10 +31,8 @@ processed virtual microphone for voice chat.
 - **Equalizer** - per-channel parametric EQ (up to 10 bands) with a
   draggable response curve, bundled community presets, and import/export
   including AutoEq text blocks
-- **Microphone** - noise gate, compressor and limiter into a virtual mic
-  you select in Discord or OBS. Pairs well with
-  [NoiseTorch](https://github.com/noisetorch/NoiseTorch) on the input for
-  noise suppression before the chain.
+- **Microphone** - noise suppression, noise gate, compressor and limiter
+  into a virtual mic you select in Discord or OBS
 - **Profiles** - save and switch full layouts from the tray
 - **Themes** - Original, Tokyo Night, or Gruvbox Dark, to match
   the rest of your desktop
