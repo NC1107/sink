@@ -91,4 +91,13 @@ pub trait AudioBackend: Send + Sync {
     /// Apply the mic chain configuration. Native-backend only; the pactl
     /// fallback reports it as unsupported.
     fn set_mic_config(&self, config: &MicConfig) -> Result<(), SinkError>;
+
+    /// A no-op by default: only the native backend runs the Strong engine.
+    fn retry_noise_engine(&self) -> Result<(), SinkError> {
+        Ok(())
+    }
+
+    fn noise_engine_state(&self) -> Result<crate::audio::deepfilter::EngineState, SinkError> {
+        Ok(crate::audio::deepfilter::EngineState::Idle)
+    }
 }

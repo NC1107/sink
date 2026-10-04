@@ -367,6 +367,8 @@ pub enum NoiseSuppression {
     #[default]
     Off,
     Light,
+    /// Falls back to Light while unavailable (see `audio::deepfilter`).
+    Strong,
 }
 
 /// An unknown value (an engine from a newer Sink) reads as Off, so a
@@ -375,6 +377,7 @@ impl<'de> Deserialize<'de> for NoiseSuppression {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         Ok(match String::deserialize(d)?.as_str() {
             "light" => Self::Light,
+            "strong" => Self::Strong,
             _ => Self::Off,
         })
     }
@@ -548,6 +551,17 @@ mod mic_clamp_tests {
         };
         let v = serde_json::to_value(&c).unwrap();
         assert_eq!(v["noise_suppression"], "light");
+        assert_eq!(serde_json::from_value::<MicConfig>(v).unwrap(), c);
+    }
+
+    #[test]
+    fn strong_round_trips() {
+        let c = MicConfig {
+            noise_suppression: NoiseSuppression::Strong,
+            ..MicConfig::default()
+        };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["noise_suppression"], "strong");
         assert_eq!(serde_json::from_value::<MicConfig>(v).unwrap(), c);
     }
 }

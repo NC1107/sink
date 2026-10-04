@@ -29,6 +29,10 @@ pipewire = { git = "https://gitlab.freedesktop.org/pipewire/pipewire-rs", rev = 
 # Built-in mic noise suppression (RNNoise in pure Rust, ~1.5 MB, no allocations
 # per frame). The heavier DeepFilterNet model stays an opt-in download.
 nnnoiseless = { version = "0.5", default-features = false }
+# The opt-in DeepFilterNet download is checked against a pinned SHA-256, and
+# its engine process gets PR_SET_PDEATHSIG so it never outlives Sink.
+sha2 = "0.10"
+libc = "0.2"
 # Global hotkeys: the XDG portal on Wayland, direct X11 grabs as the fallback.
 ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts"] }
 global-hotkey = "0.8"
