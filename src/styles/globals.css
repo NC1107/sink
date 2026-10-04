@@ -976,6 +976,11 @@ body,
 .section-label:first-child {
   margin-top: 0;
 }
+/* Each group wraps its own label, which is then a first child with no top
+   margin, so the groups need their gap from the wrapper instead. */
+.app-group + .app-group {
+  margin-top: var(--sp-6);
+}
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
