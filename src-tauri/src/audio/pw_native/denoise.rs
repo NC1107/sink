@@ -1,6 +1,6 @@
 //! RNNoise only works on fixed 10 ms frames at 48 kHz, so samples are
-//! re-blocked through one frame of delay - that frame is all the latency it
-//! adds. Safe on the RT thread: per frame it neither allocates nor locks; its
+//! re-blocked through one frame of delay, and RNNoise's own overlap adds a
+//! second: about 20 ms in all (measured end to end). Safe on the RT thread: per frame it neither allocates nor locks; its
 //! FFT plans are cached thread-locally, built once on the first frame.
 
 use nnnoiseless::DenoiseState;
@@ -34,7 +34,7 @@ impl Denoiser {
         self.pos = 0;
     }
 
-    /// The output trails the input by exactly one frame.
+    /// Re-blocking alone trails the input by one frame.
     pub fn process(&mut self, buf: &mut [f32]) {
         for s in buf.iter_mut() {
             self.input[self.pos] = *s * PCM_SCALE;

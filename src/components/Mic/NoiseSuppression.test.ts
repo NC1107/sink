@@ -48,6 +48,8 @@ describe("modeTooltip", () => {
   it("gives rough per-core costs that depend on the machine", () => {
     expect(modeTooltip("light", status())).toContain("~0.3% of a core");
     expect(modeTooltip("strong", status())).toContain("~10% of a core and 150 MB of RAM");
+    expect(modeTooltip("light", status())).toContain("~20 ms of delay");
+    expect(modeTooltip("strong", status())).toContain("~40 ms of delay");
     expect(modeTooltip("strong", status())).toContain("Depending on your specs");
   });
   it("mentions the download only until it's installed", () => {

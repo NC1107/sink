@@ -8,8 +8,10 @@ import { Ms } from "../Icons";
 const megabytes = (bytes: number) => Math.round(bytes / 1_000_000);
 
 // Measured on a fast desktop CPU (Ryzen 9 9950X3D); slower machines use more.
-const LIGHT_COST = "~0.3% of a core and 10 ms of delay";
+// The delay is what a mode adds over having suppression off.
+const LIGHT_COST = "~0.3% of a core and ~20 ms of delay";
 const STRONG_COST = "~10% of a core and 150 MB of RAM";
+const STRONG_DELAY = "~40 ms of delay";
 
 export interface Subtitle {
   text: string;
@@ -59,7 +61,7 @@ export function modeTooltip(mode: NoiseSuppression, status: NoiseEngineStatus | 
       status && !status.installed
         ? ` ${megabytes(status.download_bytes)} MB download on first use.`
         : "";
-    return `DeepFilterNet. Depending on your specs, ${STRONG_COST}.${first}`;
+    return `DeepFilterNet. Depending on your specs, ${STRONG_COST}, and ${STRONG_DELAY}.${first}`;
   }
   return "No noise suppression";
 }
