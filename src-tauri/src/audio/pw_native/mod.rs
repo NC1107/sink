@@ -35,23 +35,29 @@ pub struct PipeWireBackend {
 }
 
 impl PipeWireBackend {
-    pub fn new() -> Result<Self, SinkError> {
+    /// Also returns a wake that fires when a new stream is ready to route.
+    pub fn new() -> Result<(Self, mpsc::Receiver<()>), SinkError> {
         let levels = Arc::new(LevelStore::new());
         let (sender, receiver) = pw::channel::channel();
         let (init_tx, init_rx) = mpsc::channel();
+        // One slot, so a burst of wakes collapses into one pass.
+        let (wake_tx, wake_rx) = mpsc::sync_channel(1);
 
         let thread_levels = levels.clone();
         let self_tx = sender.clone();
         std::thread::Builder::new()
             .name("pipewire-loop".into())
-            .spawn(move || thread::run(receiver, self_tx, init_tx, thread_levels))
+            .spawn(move || thread::run(receiver, self_tx, init_tx, thread_levels, wake_tx))
             .map_err(|e| SinkError::Config(format!("spawn pipewire thread: {e}")))?;
 
         match init_rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(Ok(())) => Ok(Self {
-                sender: Mutex::new(sender),
-                levels,
-            }),
+            Ok(Ok(())) => Ok((
+                Self {
+                    sender: Mutex::new(sender),
+                    levels,
+                },
+                wake_rx,
+            )),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(SinkError::Config(
                 "pipewire loop did not come up within 5s".into(),

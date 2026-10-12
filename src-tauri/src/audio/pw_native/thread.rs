@@ -188,6 +188,8 @@ struct NodeEntry {
     muted: bool,
     /// True while the node is in the Running state (actively streaming).
     active: bool,
+    /// Set once the info event delivered the full property dict.
+    described: bool,
 }
 
 /// Nodes through pipewire-pulse carry few props; pid and sandbox facts live
@@ -244,6 +246,8 @@ struct State {
     mic_expected_removals: u32,
     mic_streams: Option<MicStreams>,
     levels: Option<Arc<LevelStore>>,
+    /// Wakes the route enforcer when a stream's facts complete.
+    stream_wake: Option<mpsc::SyncSender<()>>,
     /// Mix buses we own: node name -> proxy.
     bus_sources: HashMap<String, Node>,
     /// Bus node name -> member channel sink names.
@@ -303,6 +307,13 @@ impl State {
             .map(|h| h.playback_node_id())
             .filter(|id| *id != u32::MAX)
     }
+
+    /// Request a routing pass; a pending wake already covers this one.
+    fn wake_router(&self) {
+        if let Some(wake) = &self.stream_wake {
+            let _ = wake.try_send(());
+        }
+    }
 }
 
 /// Node whose ports feed a channel's downstream links: the EQ insert's
@@ -340,8 +351,9 @@ pub fn run(
     self_tx: pw::channel::Sender<Cmd>,
     init_tx: mpsc::Sender<Result<(), SinkError>>,
     levels: Arc<LevelStore>,
+    stream_wake: mpsc::SyncSender<()>,
 ) {
-    if let Err(e) = setup_and_run(receiver, self_tx, &init_tx, levels) {
+    if let Err(e) = setup_and_run(receiver, self_tx, &init_tx, levels, stream_wake) {
         let _ = init_tx.send(Err(e));
     }
 }
@@ -351,6 +363,7 @@ fn setup_and_run(
     self_tx: pw::channel::Sender<Cmd>,
     init_tx: &mpsc::Sender<Result<(), SinkError>>,
     levels: Arc<LevelStore>,
+    stream_wake: mpsc::SyncSender<()>,
 ) -> Result<(), SinkError> {
     pw::init();
     let err = |stage: &str, e: pw::Error| SinkError::Config(format!("pipewire {stage}: {e}"));
@@ -365,6 +378,7 @@ fn setup_and_run(
     let state = Rc::new(RefCell::new(State {
         levels: Some(levels.clone()),
         self_tx: Some(self_tx),
+        stream_wake: Some(stream_wake),
         ..State::default()
     }));
 
@@ -660,7 +674,10 @@ fn on_client(state: &Rc<RefCell<State>>, registry: &RegistryRc, global: &GlobalO
                 for (k, v) in props.iter() {
                     entry.props.insert(k.to_string(), v.to_string());
                 }
-                entry.settled = true;
+                if !entry.settled {
+                    entry.settled = true;
+                    s.wake_router();
+                }
             }
         })
         .register();
@@ -720,14 +737,21 @@ fn on_node(
         .info(move |info| {
             let running = matches!(info.state(), pw::node::NodeState::Running);
             let mut s = state_i.borrow_mut();
-            if let Some(entry) = s.nodes.get_mut(&node_id) {
-                entry.active = running;
-                // Registry globals carry only an abbreviated prop set; the info
-                // event has the full dict.
-                if let Some(props) = info.props() {
-                    for (k, v) in props.iter() {
-                        entry.props.insert(k.to_string(), v.to_string());
-                    }
+            let Some(entry) = s.nodes.get_mut(&node_id) else {
+                return;
+            };
+            entry.active = running;
+            // Registry globals carry only an abbreviated prop set; the info
+            // event has the full dict.
+            if let Some(props) = info.props() {
+                for (k, v) in props.iter() {
+                    entry.props.insert(k.to_string(), v.to_string());
+                }
+            }
+            if !entry.described {
+                entry.described = true;
+                if entry.media_class == STREAM_CLASS {
+                    s.wake_router();
                 }
             }
         })
@@ -764,6 +788,7 @@ fn on_node(
         channels: 2,
         muted: false,
         active: false,
+        described: false,
     };
 
     let mut s = state.borrow_mut();
@@ -1656,7 +1681,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     let (props, settled) = stream_facts(&n.props, client);
                     AppStream {
                         props,
-                        settled,
+                        settled: settled && n.described,
                         index: n.id,
                         serial: n.serial.unwrap_or_else(|| u64::from(n.id)),
                         app_name,

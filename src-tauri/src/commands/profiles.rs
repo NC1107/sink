@@ -74,7 +74,7 @@ pub fn set_profile_trigger(
 }
 
 /// Apply a saved profile: reconcile channels, then clear the auto-route
-/// ledger so routing re-enforces on the next poll.
+/// ledger and enforce the new routing right away.
 #[tauri::command]
 pub fn load_profile(
     app: tauri::AppHandle,
@@ -251,6 +251,10 @@ pub fn load_profile_on(state: &AppState, name: String) -> Result<(), String> {
     outputs.save().map_err(|e| e.to_string())?;
     eq.save().map_err(|e| e.to_string())?;
     target_buses.save().map_err(|e| e.to_string())?;
+    // Re-route running apps now; the enforcer only wakes for new streams.
+    if let Err(e) = crate::commands::devices::refresh_streams(state) {
+        eprintln!("sink: routing for profile {name} failed: {e}");
+    }
     // The loaded profile becomes the live-bound (autosaving) one.
     set_active(state, Some(name))?;
     Ok(())
