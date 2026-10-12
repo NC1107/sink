@@ -6,6 +6,7 @@ import { NoiseSuppressionRow } from "./NoiseSuppression";
 import { perceptual } from "../../lib/audio";
 import { HSlider } from "../AppList/HSlider";
 import { Ms } from "../Icons";
+import { ATTACK, METER_FRAME_MS, RELEASE, SETTLED } from "../MixerBoard/VuMeter";
 import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Toggle, ToggleRow } from "../Toggle";
@@ -17,19 +18,37 @@ function MicLevel() {
   const target = perceptual(level?.[0] ?? 0);
   const targetRef = useRef(0);
   targetRef.current = target;
+  const wakeRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let raf = 0;
+    let last = 0;
     let smooth = 0;
-    const tick = () => {
-      const t = targetRef.current;
-      smooth += (t - smooth) * (t > smooth ? 0.5 : 0.12);
-      if (fillRef.current) fillRef.current.style.width = (smooth * 100).toFixed(1) + "%";
+    const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
+      if (now - last < METER_FRAME_MS) return;
+      last = now;
+      const t = targetRef.current;
+      smooth += (t - smooth) * (t > smooth ? ATTACK : RELEASE);
+      if (t < SETTLED && smooth < SETTLED) {
+        smooth = 0;
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      if (fillRef.current) fillRef.current.style.width = (smooth * 100).toFixed(1) + "%";
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    wakeRef.current = () => {
+      if (raf === 0) raf = requestAnimationFrame(tick);
+    };
+    return () => {
+      cancelAnimationFrame(raf);
+      wakeRef.current = () => {};
+    };
   }, []);
+
+  useEffect(() => {
+    if (target >= SETTLED) wakeRef.current();
+  }, [target]);
 
   return (
     <div className="mini-meter">
