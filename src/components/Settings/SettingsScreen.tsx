@@ -90,6 +90,7 @@ export function SettingsScreen() {
   const { theme, setTheme } = useTheme();
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [startMinimized, setStartMinimized] = useState(false);
+  const [gpuRendering, setGpuRendering] = useState(false);
   const [backendNative, setBackendNative] = useState<boolean | null>(null);
   const [version, setVersion] = useState("");
   const [defaults, setDefaults] = useState<DefaultDevices>({ output: null, input: null });
@@ -109,10 +110,15 @@ export function SettingsScreen() {
     void invoke<DefaultDevices>("get_default_devices")
       .then(setDefaults)
       .catch(() => {});
-    void invoke<{ device_label_style: LabelStyle; start_minimized: boolean }>("get_prefs")
+    void invoke<{
+      device_label_style: LabelStyle;
+      start_minimized: boolean;
+      gpu_rendering: boolean;
+    }>("get_prefs")
       .then((p) => {
         setLabelStyle(p.device_label_style);
         setStartMinimized(p.start_minimized);
+        setGpuRendering(p.gpu_rendering);
       })
       .catch(() => {});
     void getVersion().then(setVersion);
@@ -157,6 +163,18 @@ export function SettingsScreen() {
       setError(null);
     } catch (e) {
       setStartMinimized(!next);
+      setError(String(e));
+    }
+  };
+
+  const toggleGpuRendering = async () => {
+    const next = !gpuRendering;
+    setGpuRendering(next);
+    try {
+      await invoke("set_gpu_rendering", { enabled: next });
+      setError(null);
+    } catch (e) {
+      setGpuRendering(!next);
       setError(String(e));
     }
   };
@@ -289,6 +307,18 @@ export function SettingsScreen() {
               <Toggle on={startMinimized} onClick={() => void toggleStartMinimized()} />
             </div>
           )}
+          <div className="row">
+            <div className="ricon">
+              <Ms name="memory" />
+            </div>
+            <div className="rmain">
+              <div className="rtitle">GPU rendering</div>
+              <div className="rsub">
+                Lighter on the CPU with a working GPU driver. Applies on restart
+              </div>
+            </div>
+            <Toggle on={gpuRendering} onClick={() => void toggleGpuRendering()} />
+          </div>
         </div>
 
         <HotkeysSection onError={setError} />

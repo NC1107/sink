@@ -71,6 +71,18 @@ pub fn set_start_minimized(state: State<'_, AppState>, minimized: bool) -> Resul
     Ok(())
 }
 
+/// Opt in or out of GPU rendering; it applies on the next launch, since the
+/// renderer is chosen before the webview starts.
+#[tauri::command]
+pub fn set_gpu_rendering(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let prefs = {
+        let mut mixer = state.lock_mixer()?;
+        mixer.prefs.gpu_rendering = enabled;
+        mixer.prefs.clone()
+    };
+    prefs.save().map_err(|e| e.to_string())
+}
+
 /// Show or hide the title-bar balance slider.
 #[tauri::command]
 pub fn set_balance_visible(state: State<'_, AppState>, visible: bool) -> Result<(), String> {

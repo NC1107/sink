@@ -22,6 +22,12 @@ use audio::pw_native::levels::LevelStore;
 use audio::pw_native::PipeWireBackend;
 use state::AppState;
 
+/// Whether the user opted into GPU rendering; main reads it before WebKit
+/// loads, because the renderer can't change under a running webview.
+pub fn gpu_rendering_enabled() -> bool {
+    persistence::prefs::Prefs::load().gpu_rendering
+}
+
 pub fn run() {
     // Fall back to pactl subprocess calls if the native PipeWire loop can't
     // come up; real VU metering and event-driven routing are native-only.
@@ -135,6 +141,7 @@ pub fn run() {
             commands::settings::set_balance_channels,
             commands::settings::set_balance_visible,
             commands::settings::set_start_minimized,
+            commands::settings::set_gpu_rendering,
             commands::settings::reset_app,
             commands::hotkeys::get_hotkeys,
             commands::hotkeys::configure_hotkeys,
