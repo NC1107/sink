@@ -56,8 +56,9 @@ fn wayland_session() -> bool {
     }
 }
 
-/// `drm` is normally /sys/class/drm and `dev` /dev/dri. The device node has
-/// to open too: sandboxes show the host's sysfs without its device files.
+/// `drm` is normally /sys/class/drm and `dev` /dev/dri. The device node must
+/// exist too, since sandboxes show the host's sysfs without its device files,
+/// but it is never opened: that can wake a sleeping laptop dGPU.
 fn has_hardware_gpu(drm: &Path, dev: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(drm) else {
         return false;
@@ -68,11 +69,7 @@ fn has_hardware_gpu(drm: &Path, dev: &Path) -> bool {
             std::fs::read_to_string(entry.path().join("device/vendor")).unwrap_or_default();
         name.to_string_lossy().starts_with("renderD")
             && GPU_VENDORS.contains(&vendor.trim())
-            && std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(dev.join(&name))
-                .is_ok()
+            && dev.join(&name).exists()
     })
 }
 
@@ -138,9 +135,11 @@ pub fn configure() {
         return;
     }
     let mut prefs = Prefs::load();
+    // Most users never opt in, so they skip the hardware check entirely.
+    let supported = prefs.gpu_rendering && gpu_available();
     let decision = decide(
         prefs.gpu_rendering,
-        gpu_available(),
+        supported,
         probe_owner(),
         is_sink_process,
     );
