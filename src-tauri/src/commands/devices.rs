@@ -292,6 +292,8 @@ pub fn init_virtual_devices(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    // The frontend's first call: a GPU launch got far enough to run it.
+    crate::renderer::confirm_started();
     let (defs, prefs) = {
         let mixer = state.lock_mixer()?;
         (mixer.channel_defs.clone(), mixer.prefs.clone())

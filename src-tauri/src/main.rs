@@ -2,15 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // WebKitGTK's DMABUF renderer crashes with a Wayland protocol error on some
-    // GPU/driver combinations, so it stays off unless the user opted into GPU
-    // rendering in Settings; an explicit environment value always wins.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none()
-        && !sink_lib::gpu_rendering_enabled()
-    {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
+    sink_lib::configure_renderer();
 
     sink_lib::run()
 }

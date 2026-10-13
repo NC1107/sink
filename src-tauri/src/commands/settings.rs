@@ -78,9 +78,27 @@ pub fn set_gpu_rendering(state: State<'_, AppState>, enabled: bool) -> Result<()
     let prefs = {
         let mut mixer = state.lock_mixer()?;
         mixer.prefs.gpu_rendering = enabled;
+        // Choosing again is a fresh attempt.
+        mixer.prefs.gpu_rendering_failed = false;
         mixer.prefs.clone()
     };
     prefs.save().map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+pub struct RendererInfo {
+    /// GPU rendering can be offered in this session (Wayland only).
+    pub available: bool,
+    /// This launch is drawing with the GPU renderer.
+    pub active: bool,
+}
+
+#[tauri::command]
+pub fn get_renderer() -> RendererInfo {
+    RendererInfo {
+        available: crate::renderer::gpu_available(),
+        active: crate::renderer::gpu_active(),
+    }
 }
 
 /// Show or hide the title-bar balance slider.

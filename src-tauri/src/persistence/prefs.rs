@@ -39,12 +39,15 @@ pub struct Prefs {
     /// showing the window (only meaningful with autostart enabled).
     #[serde(default)]
     pub start_minimized: bool,
-    /// Let WebKit render on the GPU (its DMABUF renderer). Off by default:
-    /// that renderer crashed with a Wayland protocol error on some
-    /// GPU/driver combinations, so the CPU path stays the safe baseline.
+    /// Let WebKit render on the GPU (its DMABUF renderer). Off by default,
+    /// since the CPU path is the one every stack can draw; see `renderer`.
     /// Read once at launch, before the webview exists.
     #[serde(default)]
     pub gpu_rendering: bool,
+    /// GPU rendering was switched off because a launch with it never
+    /// started, so Settings can say why.
+    #[serde(default)]
+    pub gpu_rendering_failed: bool,
 }
 
 fn default_true() -> bool {
@@ -61,6 +64,7 @@ impl Default for Prefs {
             show_balance: true,
             start_minimized: false,
             gpu_rendering: false,
+            gpu_rendering_failed: false,
         }
     }
 }
