@@ -8,6 +8,7 @@ mod state;
 mod webkit;
 
 use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,18 +24,17 @@ use state::AppState;
 
 pub fn run() {
     // Fall back to pactl subprocess calls if the native PipeWire loop can't
-    // come up; real VU metering only works with the native backend.
-    let (backend, levels): (Arc<dyn AudioBackend>, Option<Arc<LevelStore>>) =
-        match PipeWireBackend::new() {
-            Ok(backend) => {
-                let levels = backend.levels.clone();
-                (Arc::new(backend), Some(levels))
-            }
-            Err(e) => {
-                eprintln!("sink: native PipeWire backend unavailable ({e}); using pactl fallback");
-                (Arc::new(PactlBackend::new()), None)
-            }
-        };
+    // come up; real VU metering and event-driven routing are native-only.
+    let native = PipeWireBackend::new()
+        .map_err(|e| {
+            eprintln!("sink: native PipeWire backend unavailable ({e}); using pactl fallback");
+        })
+        .ok();
+    let levels = native.as_ref().map(|(backend, _)| backend.levels.clone());
+    let (backend, stream_wake): (Arc<dyn AudioBackend>, _) = match native {
+        Some((backend, stream_wake)) => (Arc::new(backend), Some(stream_wake)),
+        None => (Arc::new(PactlBackend::new()), None),
+    };
     let backend_native = levels.is_some();
     let app_state = AppState::new(backend, backend_native);
 
@@ -156,7 +156,7 @@ pub fn run() {
                 spawn_level_emitter(app.handle().clone(), levels);
             }
             persistence::wireplumber::remove_stale();
-            spawn_route_enforcer(app.handle().clone());
+            spawn_route_enforcer(app.handle().clone(), stream_wake);
             Ok(())
         })
         // Close button hides to tray instead of quitting - main window
@@ -180,9 +180,8 @@ pub fn run() {
     }
 }
 
-/// The gap before a new stream lands on its channel is audible, and a
-/// native check is cheap enough to run this often.
-const ROUTE_ENFORCE_INTERVAL: Duration = Duration::from_millis(200);
+/// Backstop for the native backend, which routes on stream events.
+const ROUTE_ENFORCE_FALLBACK: Duration = Duration::from_secs(2);
 
 /// pactl forks two processes per check.
 const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
@@ -191,25 +190,29 @@ const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
 const UI_POLL_GRACE: Duration = Duration::from_secs(5);
 
 /// Enforces assignments from the backend; the UI poll pauses in the tray.
-fn spawn_route_enforcer(handle: tauri::AppHandle) {
+/// `stream_wake` (native only) triggers a pass as soon as a stream is ready.
+fn spawn_route_enforcer(handle: tauri::AppHandle, stream_wake: Option<Receiver<()>>) {
     std::thread::spawn(move || {
-        let native = handle.state::<AppState>().backend_native;
-        let interval = if native {
-            ROUTE_ENFORCE_INTERVAL
-        } else {
-            ROUTE_ENFORCE_INTERVAL_PACTL
-        };
         let mut last_error: Option<String> = None;
         let mut failures: u32 = 0;
         loop {
-            let pause = if failures >= 3 {
-                interval * 10
+            if let Some(wake) = &stream_wake {
+                // The fallback is already slow enough to double as a backoff,
+                // and a new stream should still route while the backend fails.
+                if let Err(RecvTimeoutError::Disconnected) =
+                    wake.recv_timeout(ROUTE_ENFORCE_FALLBACK)
+                {
+                    // The PipeWire loop exited.
+                    break;
+                }
+            } else if failures >= 3 {
+                // Back off while the backend keeps failing.
+                std::thread::sleep(ROUTE_ENFORCE_INTERVAL_PACTL * 10);
             } else {
-                interval
-            };
-            std::thread::sleep(pause);
+                std::thread::sleep(ROUTE_ENFORCE_INTERVAL_PACTL);
+            }
             let state = handle.state::<AppState>();
-            if !native && state.ui_polled_within(UI_POLL_GRACE) {
+            if !state.backend_native && state.ui_polled_within(UI_POLL_GRACE) {
                 continue;
             }
             match commands::devices::refresh_streams(state.inner()) {

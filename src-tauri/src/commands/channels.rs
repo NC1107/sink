@@ -196,6 +196,7 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
             .backend
             .set_bus_members(&bus.name, &bus.effective_members(&names));
     }
+    crate::commands::devices::route_now(state.inner());
 
     defs.save().map_err(|e| e.to_string())?;
     assignments.save().map_err(|e| e.to_string())?;

@@ -26,6 +26,14 @@ pub fn get_app_streams(state: State<'_, AppState>) -> Result<Vec<AppStream>, Str
     refresh_streams(state.inner())
 }
 
+/// For changes that re-arm routing for streams already running: the enforcer
+/// only wakes early for new streams.
+pub fn route_now(state: &AppState) {
+    if let Err(e) = refresh_streams(state) {
+        eprintln!("sink: routing pass failed: {e}");
+    }
+}
+
 /// List live streams, record history, and enforce saved assignments - each
 /// stream once, on first sight. Idempotent; the ticker and the UI both call it.
 pub fn refresh_streams(state: &AppState) -> Result<Vec<AppStream>, String> {
@@ -408,6 +416,8 @@ pub fn init_virtual_devices(
             Err(e) => eprintln!("sink: creating Default profile failed: {e}"),
         }
     }
+    // Apps already playing at launch never wake the enforcer.
+    route_now(state.inner());
     // Profiles/active state may have changed since the tray was built.
     crate::refresh_tray(&app);
     Ok(())
