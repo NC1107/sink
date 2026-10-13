@@ -193,24 +193,23 @@ const UI_POLL_GRACE: Duration = Duration::from_secs(5);
 /// `stream_wake` (native only) triggers a pass as soon as a stream is ready.
 fn spawn_route_enforcer(handle: tauri::AppHandle, stream_wake: Option<Receiver<()>>) {
     std::thread::spawn(move || {
-        let interval = if stream_wake.is_some() {
-            ROUTE_ENFORCE_FALLBACK
-        } else {
-            ROUTE_ENFORCE_INTERVAL_PACTL
-        };
         let mut last_error: Option<String> = None;
         let mut failures: u32 = 0;
         loop {
-            // Back off while the backend keeps failing.
-            if failures >= 3 {
-                std::thread::sleep(interval * 10);
-            } else if let Some(wake) = &stream_wake {
-                if let Err(RecvTimeoutError::Disconnected) = wake.recv_timeout(interval) {
+            if let Some(wake) = &stream_wake {
+                // The fallback is already slow enough to double as a backoff,
+                // and a new stream should still route while the backend fails.
+                if let Err(RecvTimeoutError::Disconnected) =
+                    wake.recv_timeout(ROUTE_ENFORCE_FALLBACK)
+                {
                     // The PipeWire loop exited.
                     break;
                 }
+            } else if failures >= 3 {
+                // Back off while the backend keeps failing.
+                std::thread::sleep(ROUTE_ENFORCE_INTERVAL_PACTL * 10);
             } else {
-                std::thread::sleep(interval);
+                std::thread::sleep(ROUTE_ENFORCE_INTERVAL_PACTL);
             }
             let state = handle.state::<AppState>();
             if !state.backend_native && state.ui_polled_within(UI_POLL_GRACE) {

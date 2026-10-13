@@ -251,10 +251,7 @@ pub fn load_profile_on(state: &AppState, name: String) -> Result<(), String> {
     outputs.save().map_err(|e| e.to_string())?;
     eq.save().map_err(|e| e.to_string())?;
     target_buses.save().map_err(|e| e.to_string())?;
-    // Re-route running apps now; the enforcer only wakes for new streams.
-    if let Err(e) = crate::commands::devices::refresh_streams(state) {
-        eprintln!("sink: routing for profile {name} failed: {e}");
-    }
+    crate::commands::devices::route_now(state);
     // The loaded profile becomes the live-bound (autosaving) one.
     set_active(state, Some(name))?;
     Ok(())
