@@ -5,9 +5,8 @@ use crate::commands::routing::MAX_VOLUME;
 use crate::persistence::buses::{is_bus_name, BusDef};
 use crate::state::AppState;
 
-/// Re-apply a mix's persisted volume/mute to its node. Bus nodes are born at
-/// unity/unmuted, so this restores the saved level after create/rename/load.
-/// Best-effort: a routing failure shouldn't abort bringing the mix up.
+/// Re-apply a mix's persisted volume/mute to its node: bus nodes are born at
+/// unity/unmuted, and a routing failure shouldn't abort bringing the mix up.
 pub(crate) fn apply_bus_level(backend: &dyn AudioBackend, def: &BusDef) {
     if def.volume_percent != 100 {
         let _ = backend.set_sink_volume(&def.name, def.volume_percent);
@@ -66,11 +65,15 @@ pub fn add_bus(state: State<'_, AppState>, label: String) -> Result<(), String> 
     Ok(())
 }
 
-/// Rename a mix. The node is recreated so recorders immediately see the
-/// new name (the node name stays stable, so OBS configs keep working -
-/// capture re-attaches automatically).
+/// Rename a mix by recreating its node - the node name itself stays stable,
+/// so OBS configs keep working and capture re-attaches automatically.
 #[tauri::command]
 pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Result<(), String> {
+    rename_bus_on(&state, name, label)
+}
+
+pub fn rename_bus_on(state: &AppState, name: String, label: String) -> Result<(), String> {
+    let _rebuild = state.lock_bus_rebuild();
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
         mixer
@@ -121,19 +124,23 @@ pub fn rename_bus(state: State<'_, AppState>, name: String, label: String) -> Re
     Ok(())
 }
 
-/// Which device list a mix shows up in. A node cannot change its
-/// `media.class`, so this recreates it and puts the members, mic, level
-/// and sends back.
+/// Which device list a mix shows up in. A node can't change its `media.class`,
+/// so this recreates it and restores members, mic, level and sends.
 #[tauri::command]
 pub fn set_bus_role(
     state: State<'_, AppState>,
     name: String,
     role: crate::persistence::buses::MixRole,
 ) -> Result<(), String> {
-    let _rebuild = state
-        .bus_rebuild
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    set_bus_role_on(&state, name, role)
+}
+
+pub fn set_bus_role_on(
+    state: &AppState,
+    name: String,
+    role: crate::persistence::buses::MixRole,
+) -> Result<(), String> {
+    let _rebuild = state.lock_bus_rebuild();
     let (def, defs, prefs, all) = {
         let mut mixer = state.lock_mixer()?;
         let def = mixer
@@ -177,9 +184,13 @@ pub fn set_bus_role(
 /// Delete a mix.
 #[tauri::command]
 pub fn remove_bus(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    // Validate before the node goes away. Rejecting afterwards (unknown
-    // name, or the master mix, which can't be deleted) would leave the mix
-    // torn down in PipeWire but still defined here.
+    remove_bus_on(&state, name)
+}
+
+pub fn remove_bus_on(state: &AppState, name: String) -> Result<(), String> {
+    let _rebuild = state.lock_bus_rebuild();
+    // Validate before the node goes away - rejecting afterwards would leave
+    // the mix torn down in PipeWire but still defined here.
     state
         .lock_mixer()?
         .buses
@@ -198,18 +209,16 @@ pub fn remove_bus(state: State<'_, AppState>, name: String) -> Result<(), String
     defs.save().map_err(|e| e.to_string())
 }
 
-/// Replace the channel set a mix carries. `channels` is what the user
-/// sees checked; for auto-include mixes the complement (the unchecked
-/// set) is what gets stored, so future channels keep flowing in.
+/// Replace the channel set a mix carries. For auto-include mixes the stored
+/// value is the complement (unchecked set), so future channels keep flowing in.
 #[tauri::command]
 pub fn set_bus_members(
     state: State<'_, AppState>,
     name: String,
     channels: Vec<String>,
 ) -> Result<(), String> {
-    // Validate against the definition set first, so a rejected request
-    // (master mix, unknown name) never reaches the backend - otherwise
-    // backend membership and the persisted definition could diverge.
+    // Validate against the definition set, so a rejected request never reaches
+    // the backend - membership and the persisted definition could diverge.
     let stored = {
         let mixer = state.lock_mixer()?;
         if crate::persistence::buses::is_master(&name) {
@@ -266,9 +275,8 @@ pub fn set_bus_mic(state: State<'_, AppState>, name: String, mic: bool) -> Resul
     defs.save().map_err(|e| e.to_string())
 }
 
-/// One member's send level within one mix (0-150%; 100 = no override) -
-/// only this mix's recorders/listeners hear the difference. `member` is a
-/// channel sink name or "sink_mic".
+/// `member` is a channel sink name or `sink_mic`; 100 means no override,
+/// and only this mix's listeners hear the difference.
 #[tauri::command]
 pub fn set_bus_member_gain(
     state: State<'_, AppState>,
@@ -276,9 +284,8 @@ pub fn set_bus_member_gain(
     member: String,
     percent: u8,
 ) -> Result<(), String> {
-    // Both names validate against the definition sets before the backend
-    // is touched (the `set_bus_members` rule) - a call racing a mix's
-    // deletion could otherwise plant a gain a recreated mix would inherit.
+    // Both names validate before the backend is touched - a call racing a
+    // mix's deletion could otherwise plant a gain a recreated mix inherits.
     {
         let mixer = state.lock_mixer()?;
         if mixer.buses.get(&bus).is_none() {
@@ -317,9 +324,8 @@ pub fn open_mix_fader_window(
 ) -> Result<(), String> {
     use tauri::Manager;
 
-    // The mix must exist before any window does (also what bounds the
-    // window count to the real bus count), and the title comes from the
-    // definition set rather than trusting a caller-supplied label.
+    // The mix must exist before any window does; the title comes from the
+    // definition set, not a caller-supplied label.
     let label = {
         let mixer = state.lock_mixer()?;
         let Some(def) = mixer.buses.get(&bus) else {
@@ -333,20 +339,25 @@ pub fn open_mix_fader_window(
         let _ = existing.set_focus();
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(
+    // Match the main window: opaque on WebKitGTK 2.54+, transparent otherwise.
+    let opaque = crate::webkit::needs_opaque_window();
+    let query = if opaque { "&opaque=1" } else { "" };
+    let mut builder = tauri::WebviewWindowBuilder::new(
         &app,
         &window_label,
-        tauri::WebviewUrl::App(format!("index.html?mixFader={bus}").into()),
+        tauri::WebviewUrl::App(format!("index.html?mixFader={bus}{query}").into()),
     )
     .title(label)
     // Frameless like the main window; the popout draws its own bar.
     .decorations(false)
-    .transparent(true)
+    .transparent(!opaque)
     .inner_size(340.0, 300.0)
     .min_inner_size(280.0, 200.0)
-    .resizable(true)
-    .build()
-    .map_err(|e| e.to_string())?;
+    .resizable(true);
+    if opaque {
+        builder = builder.background_color(tauri::utils::config::Color(10, 10, 11, 255));
+    }
+    builder.build().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -372,8 +383,7 @@ pub fn set_bus_exclude(
 }
 
 /// Set a mix's playback level (0-150%) - what recorders hear. Unlike
-/// `set_channel_volume`, this accepts mix nodes (including the master mix,
-/// whose reserved name `set_channel_volume` rejects) and persists the level.
+/// `set_channel_volume`, this accepts mix nodes, including the master mix.
 #[tauri::command]
 pub fn set_bus_volume(state: State<'_, AppState>, name: String, volume: u8) -> Result<(), String> {
     if !is_bus_name(&name) {
@@ -421,4 +431,140 @@ pub fn set_bus_mute(state: State<'_, AppState>, name: String, muted: bool) -> Re
 /// The current channel sink names (the "all channels" set for mixes).
 pub(crate) fn channel_names(mixer: &crate::mixer::state::MixerState) -> Vec<String> {
     mixer.channels.iter().map(|c| c.name.clone()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::mock::{Call, MockBackend};
+    use crate::persistence::buses::MixRole;
+    use crate::persistence::profiles::{self, Profile};
+    use crate::persistence::testing::TempConfig;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+    use std::time::Duration;
+
+    fn state_with_mix(backend: Arc<MockBackend>) -> (AppState, String) {
+        let state = AppState::new(backend, true);
+        let name = {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            mixer.init_defaults();
+            mixer.buses.add("Solo").expect("add mix").name
+        };
+        (state, name)
+    }
+
+    /// Parks the first rebuild between its destroy and its create, and signals
+    /// once parked, so a second rebuild can start while the first is open.
+    fn park_first_rebuild(backend: &MockBackend) -> Arc<Barrier> {
+        let inside = Arc::new(Barrier::new(2));
+        let signal = inside.clone();
+        let parked = AtomicBool::new(false);
+        backend.on_bus(move |call| {
+            if matches!(call, Call::DestroyBus(_)) && !parked.swap(true, Ordering::SeqCst) {
+                signal.wait();
+                thread::sleep(Duration::from_millis(150));
+            }
+        });
+        inside
+    }
+
+    fn assert_rebuilds_do_not_interleave(ops: &[Call], bus: &str) {
+        let mut open = false;
+        for op in ops {
+            match op {
+                Call::DestroyBus(n) if n == bus => {
+                    assert!(
+                        !open,
+                        "{bus} destroyed twice before it was recreated: {ops:?}"
+                    );
+                    open = true;
+                }
+                Call::CreateBus(n) if n == bus => {
+                    assert!(open, "{bus} created without a destroy first: {ops:?}");
+                    open = false;
+                }
+                _ => {}
+            }
+        }
+        assert!(!open, "{bus} left destroyed: {ops:?}");
+    }
+
+    #[test]
+    fn a_rename_waits_for_a_role_switch_to_finish() {
+        let cfg = TempConfig::new("bus-rebuild-rename");
+        let backend = Arc::new(MockBackend::default());
+        let (state, name) = state_with_mix(backend.clone());
+        let inside = park_first_rebuild(&backend);
+
+        thread::scope(|s| {
+            let switch = s.spawn(|| {
+                let _root = cfg.adopt();
+                set_bus_role_on(&state, name.clone(), MixRole::Playback)
+            });
+            inside.wait();
+            let rename = s.spawn(|| {
+                let _root = cfg.adopt();
+                rename_bus_on(&state, name.clone(), "Renamed".into())
+            });
+            switch.join().expect("switch thread").expect("role switch");
+            rename.join().expect("rename thread").expect("rename");
+        });
+
+        assert_rebuilds_do_not_interleave(&backend.bus_ops(), &name);
+        let mixer = state.lock_mixer().expect("mixer");
+        let def = mixer.buses.get(&name).expect("mix still defined");
+        assert_eq!(
+            (def.role, def.label.as_str()),
+            (MixRole::Playback, "Renamed")
+        );
+    }
+
+    // Bug shape: a profile switch landing mid-rebuild must not interleave with
+    // it.
+    #[test]
+    fn a_profile_switch_waits_for_a_rename_to_finish() {
+        let cfg = TempConfig::new("bus-rebuild-profile");
+        let backend = Arc::new(MockBackend::default());
+        let (state, name) = state_with_mix(backend.clone());
+        {
+            let mut mixer = state.lock_mixer().expect("mixer");
+            let mut buses = mixer.buses.clone();
+            buses.set_role(&name, MixRole::Playback).expect("role");
+            profiles::save(&Profile {
+                name: "Stream".into(),
+                channels: mixer.channels.clone(),
+                assignments: mixer.assignments.clone(),
+                outputs: mixer.outputs.clone(),
+                eq: mixer.eq.clone(),
+                trigger_device: None,
+                buses,
+            })
+            .expect("save profile");
+            mixer.active_profile = None;
+        }
+        let inside = park_first_rebuild(&backend);
+
+        thread::scope(|s| {
+            let rename = s.spawn(|| {
+                let _root = cfg.adopt();
+                rename_bus_on(&state, name.clone(), "Renamed".into())
+            });
+            inside.wait();
+            let switch = s.spawn(|| {
+                let _root = cfg.adopt();
+                crate::commands::profiles::load_profile_on(&state, "Stream".into())
+            });
+            rename.join().expect("rename thread").expect("rename");
+            switch.join().expect("switch thread").expect("profile load");
+        });
+
+        assert_rebuilds_do_not_interleave(&backend.bus_ops(), &name);
+        let mixer = state.lock_mixer().expect("mixer");
+        assert_eq!(
+            mixer.buses.get(&name).map(|b| b.role),
+            Some(MixRole::Playback)
+        );
+    }
 }

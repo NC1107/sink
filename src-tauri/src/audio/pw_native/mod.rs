@@ -1,10 +1,8 @@
-//! Native PipeWire backend (Phase 2): replaces pactl subprocess calls with
-//! pipewire-rs. All PipeWire objects live on a dedicated loop thread (see
-//! `thread.rs`); this facade sends commands over a pipewire channel and
-//! blocks on an mpsc reply with a timeout.
-//!
-//! Extras over the pactl backend: real per-sink level metering (`levels`).
+//! Native PipeWire backend: replaces pactl subprocess calls with pipewire-rs.
+//! All PipeWire objects live on a dedicated loop thread; this facade sends
+//! commands over a channel and blocks on an mpsc reply with a timeout.
 
+mod denoise;
 mod dsp;
 mod eq;
 mod eq_chain;
@@ -43,9 +41,10 @@ impl PipeWireBackend {
         let (init_tx, init_rx) = mpsc::channel();
 
         let thread_levels = levels.clone();
+        let self_tx = sender.clone();
         std::thread::Builder::new()
             .name("pipewire-loop".into())
-            .spawn(move || thread::run(receiver, init_tx, thread_levels))
+            .spawn(move || thread::run(receiver, self_tx, init_tx, thread_levels))
             .map_err(|e| SinkError::Config(format!("spawn pipewire thread: {e}")))?;
 
         match init_rx.recv_timeout(Duration::from_secs(5)) {
@@ -227,6 +226,14 @@ impl AudioBackend for PipeWireBackend {
     fn set_mic_config(&self, config: &crate::audio::types::MicConfig) -> Result<(), SinkError> {
         let config = config.clone();
         self.request(|reply| Cmd::SetMicConfig { config, reply })
+    }
+
+    fn retry_noise_engine(&self) -> Result<(), SinkError> {
+        self.request(|reply| Cmd::RetryEngine { reply })
+    }
+
+    fn noise_engine_state(&self) -> Result<crate::audio::deepfilter::EngineState, SinkError> {
+        self.request(|reply| Cmd::EngineState { reply })
     }
 
     fn set_channel_eq(

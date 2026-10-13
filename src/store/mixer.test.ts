@@ -7,7 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { useMixerStore } from "./mixer";
-import type { VirtualSink } from "../types";
+import type { BusDef, VirtualSink } from "../types";
 import { defaultEqConfig } from "../types";
 
 const channel = (name: string, volume = 100): VirtualSink => ({
@@ -91,6 +91,53 @@ describe("toggleMonitor", () => {
     const s = useMixerStore.getState();
     expect(s.monitors["sink_game"]).toBe(false);
     expect(s.error).toContain("native PipeWire");
+  });
+});
+
+describe("setBusRole", () => {
+  const mix = (role: BusDef["role"]): BusDef => ({
+    name: "sink_bus_solo",
+    label: "Solo",
+    channels: ["sink_game"],
+    exclude: false,
+    volume_percent: 100,
+    muted: false,
+    mic: false,
+    role,
+    member_gains: {},
+  });
+
+  it("applies the new role before the backend answers", async () => {
+    useMixerStore.setState({ buses: [mix("recording")] });
+    let settle: () => void = () => {};
+    invoke.mockReturnValueOnce(new Promise<void>((r) => (settle = r)));
+
+    const pending = useMixerStore.getState().setBusRole("sink_bus_solo", "playback");
+    expect(useMixerStore.getState().buses[0].role).toBe("playback");
+    settle();
+    await pending;
+    expect(invoke).toHaveBeenCalledWith("set_bus_role", {
+      name: "sink_bus_solo",
+      role: "playback",
+    });
+  });
+
+  // The backend rebuilds the node for a role change, so a failure is settled
+  // by asking it what the mix really is, not by flipping the flag back.
+  it("refetches the mix when the backend rejects, and keeps the real role", async () => {
+    useMixerStore.setState({ buses: [mix("recording")] });
+    invoke.mockImplementation((cmd: string) => {
+      if (cmd === "set_bus_role") return Promise.reject("node rebuild failed");
+      if (cmd === "list_buses") return Promise.resolve([mix("recording")]);
+      return Promise.resolve(undefined);
+    });
+
+    await useMixerStore.getState().setBusRole("sink_bus_solo", "playback");
+
+    const s = useMixerStore.getState();
+    expect(s.buses[0].role).toBe("recording");
+    expect(s.error).toContain("rebuild failed");
+    expect(invoke).toHaveBeenCalledWith("list_buses");
   });
 });
 

@@ -2,18 +2,14 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Any sink node Sink itself created: a channel, a service node, or a mix
-/// the user moved into the playback list. None of these is somewhere audio
-/// may be routed *to* as if it were an output - a mix already receives every
-/// channel, so sending a channel into one feeds it back into itself.
+/// Any sink node Sink itself created: a channel, service node, or a mix -
+/// sending a channel into a mix that already receives it would loop it back.
 pub fn is_own_sink(name: &str) -> bool {
     name.starts_with("sink_")
 }
 
-/// True if `sink_name` is one of our managed virtual channels. Channels
-/// are user-defined (see persistence::channels) but always carry the
-/// `sink_` prefix; Sink's own service nodes and mix buses are excluded,
-/// so channel-scoped commands can't reach into the bus namespace.
+/// True if `sink_name` is a managed virtual channel: `sink_`-prefixed but
+/// excluding service nodes and mix buses, so channel commands can't reach them.
 pub fn is_virtual_sink(sink_name: &str) -> bool {
     sink_name.starts_with("sink_")
         && !crate::persistence::channels::RESERVED_SINK_NAMES.contains(&sink_name)
@@ -43,10 +39,8 @@ const GENERIC_NAMES: [&str; 18] = [
     "Audio Source",
 ];
 
-/// Runtime/wrapper names that hide the real app - e.g. Spotify is a
-/// Chromium shell, so application.name says "Chromium" while the process
-/// binary says "spotify". A wrapper beats a generic, but a real name
-/// (usually the binary) beats both.
+/// Runtime/wrapper names that hide the real app (Spotify reports as Chromium);
+/// a wrapper beats a generic name, but a real name beats both.
 const WRAPPER_NAMES: [&str; 18] = [
     "Chromium",
     "wine",
@@ -68,9 +62,8 @@ const WRAPPER_NAMES: [&str; 18] = [
     "CEF",
 ];
 
-/// Keys only the daemon sets on a client; a stream declaring them itself
-/// would forge its own trust (`pipewire.sec.pid`) or hide its sandbox
-/// (`pipewire.access`).
+/// Keys only the daemon sets on a client; a stream declaring them itself would
+/// forge its own trust (`pipewire.sec.pid`) or hide its sandbox.
 pub(crate) fn daemon_owned(key: &str) -> bool {
     key.starts_with("pipewire.sec.") || key.starts_with("pipewire.access")
 }
@@ -84,8 +77,7 @@ pub(crate) fn is_wrapper_name(value: &str) -> bool {
 }
 
 /// Runtimes, not programs: an executable name that would merge every app
-/// running on it. The name list covers exact matches; version-suffixed
-/// interpreters and Wine's loaders need the prefix checks.
+/// running on it. Versioned interpreters and Wine's loaders need prefix checks.
 pub(crate) fn is_wrapper_exe(exe: &str) -> bool {
     let e = exe.to_ascii_lowercase();
     is_wrapper_name(&e)
@@ -108,9 +100,8 @@ fn name_quality(value: &str) -> u8 {
     }
 }
 
-/// Prettify a value for display: lone all-lowercase binary names get a
-/// capital ("spotify" → "Spotify"). Identity matching always uses the raw
-/// value, so this never affects routing rules.
+/// Prettify a value for display ("spotify" -> "Spotify"). Identity matching
+/// always uses the raw value, so this never affects routing rules.
 pub(crate) fn prettify(value: &str) -> String {
     if !value.contains(' ') && value.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
         let mut chars = value.chars();
@@ -123,9 +114,8 @@ pub(crate) fn prettify(value: &str) -> String {
     }
 }
 
-/// Resolve a stream's identity: returns (display name, match property,
-/// raw match value). The best-quality candidate along the chain wins:
-/// real app names beat runtime wrappers beat generic stream titles.
+/// Resolve a stream's identity: the best-quality candidate wins - real app
+/// names beat runtime wrappers beat generic stream titles.
 pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String, String) {
     // media.name is a stream title, not an app, so it never keys a rule.
     const CHAIN: [&str; 3] = [
@@ -141,8 +131,7 @@ pub fn resolve_identity(get: impl Fn(&str) -> Option<String>) -> (String, String
                 continue;
             }
             let quality = name_quality(&value);
-            // (map_or keeps MSRV 1.80 - Option::is_none_or is 1.82+.)
-            if best.as_ref().map_or(true, |(q, _, _)| quality > *q) {
+            if best.as_ref().is_none_or(|(q, _, _)| quality > *q) {
                 let stop = quality == 2;
                 best = Some((quality, key.to_string(), value));
                 if stop {
@@ -291,9 +280,8 @@ mod identity_tests {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppStream {
     pub index: u32,
-    /// Never-reused stream id (PipeWire's `object.serial`); `index` is a
-    /// node id and those recycle within seconds, so "this exact stream" is
-    /// remembered by serial.
+    /// Never-reused stream id (`object.serial`); `index` is a node id and those
+    /// recycle, so "this exact stream" is remembered by serial.
     #[serde(default)]
     pub serial: u64,
     /// Display name (possibly prettified - not for matching).
@@ -373,7 +361,29 @@ fn default_limiter_ceiling() -> f32 {
     -1.0
 }
 
-/// Phase 3 mic chain configuration (persisted; applied live).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoiseSuppression {
+    #[default]
+    Off,
+    Light,
+    /// Falls back to Light while unavailable (see `audio::deepfilter`).
+    Strong,
+}
+
+/// An unknown value (an engine from a newer Sink) reads as Off, so a
+/// downgrade keeps the rest of the mic config instead of failing the file.
+impl<'de> Deserialize<'de> for NoiseSuppression {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(match String::deserialize(d)?.as_str() {
+            "light" => Self::Light,
+            "strong" => Self::Strong,
+            _ => Self::Off,
+        })
+    }
+}
+
+/// Mic chain configuration, persisted and applied live.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MicConfig {
     pub enabled: bool,
@@ -400,20 +410,24 @@ pub struct MicConfig {
     /// Hard ceiling (dBFS).
     #[serde(default = "default_limiter_ceiling")]
     pub limiter_ceiling_db: f32,
+    #[serde(default)]
+    pub noise_suppression: NoiseSuppression,
+}
+
+/// A config value clamped to its range, or the default when it is not a
+/// number at all - the shape both clamp_ranges share.
+fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        fallback
+    }
 }
 
 impl MicConfig {
-    /// Clamp numeric fields to their documented, DSP-safe ranges and replace
-    /// non-finite values, so a malformed or hostile IPC payload can't push
-    /// the mic chain out of range (TD-050).
+    /// Clamp numeric fields to DSP-safe ranges and replace non-finite values,
+    /// so a malformed or hostile IPC payload can't push the chain out of range.
     pub fn clamp_ranges(&mut self) {
-        fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
-            if v.is_finite() {
-                v.clamp(lo, hi)
-            } else {
-                fallback
-            }
-        }
         self.gain_percent = self.gain_percent.min(200);
         self.gate_threshold_db = finite(
             self.gate_threshold_db,
@@ -452,6 +466,7 @@ impl Default for MicConfig {
             comp_threshold_db: default_comp_threshold(),
             comp_ratio: default_comp_ratio(),
             limiter_ceiling_db: default_limiter_ceiling(),
+            noise_suppression: NoiseSuppression::Off,
         }
     }
 }
@@ -506,11 +521,53 @@ mod mic_clamp_tests {
         c.clamp_ranges();
         assert_eq!(c, before);
     }
+
+    #[test]
+    fn config_from_before_noise_suppression_loads_with_it_off() {
+        let mut v = serde_json::to_value(MicConfig::default()).unwrap();
+        v.as_object_mut().unwrap().remove("noise_suppression");
+        let c: MicConfig = serde_json::from_value(v).unwrap();
+        assert_eq!(c.noise_suppression, NoiseSuppression::Off);
+    }
+
+    #[test]
+    fn unknown_noise_suppression_reads_as_off_without_losing_the_rest() {
+        let mut v = serde_json::to_value(MicConfig {
+            gain_percent: 140,
+            ..MicConfig::default()
+        })
+        .unwrap();
+        v["noise_suppression"] = "some_future_engine".into();
+        let c: MicConfig = serde_json::from_value(v).unwrap();
+        assert_eq!(c.noise_suppression, NoiseSuppression::Off);
+        assert_eq!(c.gain_percent, 140);
+    }
+
+    #[test]
+    fn noise_suppression_round_trips_as_snake_case() {
+        let c = MicConfig {
+            noise_suppression: NoiseSuppression::Light,
+            ..MicConfig::default()
+        };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["noise_suppression"], "light");
+        assert_eq!(serde_json::from_value::<MicConfig>(v).unwrap(), c);
+    }
+
+    #[test]
+    fn strong_round_trips() {
+        let c = MicConfig {
+            noise_suppression: NoiseSuppression::Strong,
+            ..MicConfig::default()
+        };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["noise_suppression"], "strong");
+        assert_eq!(serde_json::from_value::<MicConfig>(v).unwrap(), c);
+    }
 }
 
-/// Hard cap on parametric EQ bands per channel. Ten matches the Sonar EQ
-/// users already know, keeps preset validation simple, and bounds the RT
-/// cost per channel.
+/// Hard cap on parametric EQ bands per channel. Ten matches the Sonar EQ users
+/// know, keeps preset validation simple, and bounds the RT cost.
 pub const MAX_EQ_BANDS: usize = 10;
 
 /// Parametric EQ band shapes (RBJ Audio EQ Cookbook designs).
@@ -543,16 +600,9 @@ pub struct EqBand {
 }
 
 impl EqBand {
-    /// TD-050: clamp to DSP-safe ranges, replacing non-finite values, so a
-    /// hostile IPC payload or preset file can't blow up the filter design.
+    /// Clamp to DSP-safe ranges, replacing non-finite values, so a hostile
+    /// IPC payload or preset file can't blow up the filter design.
     pub fn clamp_ranges(&mut self) {
-        fn finite(v: f32, fallback: f32, lo: f32, hi: f32) -> f32 {
-            if v.is_finite() {
-                v.clamp(lo, hi)
-            } else {
-                fallback
-            }
-        }
         self.freq_hz = finite(self.freq_hz, 1000.0, 20.0, 20000.0);
         self.gain_db = finite(self.gain_db, 0.0, -24.0, 24.0);
         self.q = finite(self.q, default_band_q(), 0.1, 10.0);
@@ -593,7 +643,8 @@ pub struct EqConfig {
 }
 
 impl EqConfig {
-    /// TD-050-style sanitization for the whole config (see EqBand).
+    /// Same sanitization as `EqBand::clamp_ranges`, applied to the whole
+    /// config.
     pub fn clamp_ranges(&mut self) {
         if !self.preamp_db.is_finite() {
             self.preamp_db = 0.0;

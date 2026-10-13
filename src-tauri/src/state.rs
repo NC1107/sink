@@ -13,14 +13,15 @@ pub struct AppState {
     pub mixer: Mutex<MixerState>,
     /// Held for a whole profile load, which takes the mixer lock piecemeal.
     pub profile_switch: Mutex<()>,
-    /// Held while a mix node is torn down and built again, so two role
-    /// switches cannot interleave and leave the node in the other shape.
+    /// Held while a mix node is torn down and rebuilt, so a hotkey or tray
+    /// profile switch mid-rebuild can't see it half-built.
     pub bus_rebuild: Mutex<()>,
     /// Lets the pactl-backend ticker yield while an on-screen window is
     /// already polling (see `lib::spawn_route_enforcer`).
     ui_stream_poll: Mutex<Option<Instant>>,
     pub refresh_gate: Mutex<()>,
-    /// Per stream serial, dropped with the stream, so a recycled pid inherits nothing.
+    /// Per stream serial, dropped with the stream, so a recycled pid inherits
+    /// nothing.
     pub identity_cache: Mutex<HashMap<u64, crate::audio::identity::Identity>>,
     /// Icon and display name per identity key, evicted with the identities.
     pub icon_cache: Mutex<HashMap<String, crate::audio::icons::IconFacts>>,
@@ -51,6 +52,13 @@ impl AppState {
         self.mixer
             .lock()
             .map_err(|_| "mixer state lock poisoned".to_string())
+    }
+
+    /// Never taken while the mixer lock is held, so it cannot deadlock.
+    pub fn lock_bus_rebuild(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.bus_rebuild
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     pub fn new(backend: Arc<dyn AudioBackend>, backend_native: bool) -> Self {
@@ -100,9 +108,8 @@ impl AppState {
         }
     }
 
-    /// Best-effort teardown of all virtual sinks. Collects error messages
-    /// instead of aborting on the first failure so a single bad unload
-    /// doesn't leave the remaining sinks behind.
+    /// Best-effort teardown of all virtual sinks: collects errors instead of
+    /// aborting on first failure, so one bad unload doesn't strand the rest.
     pub fn teardown_virtual_sinks(&self) -> Vec<String> {
         let names: Vec<String> = self
             .mixer

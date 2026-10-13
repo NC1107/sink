@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::SinkError;
 
 /// How long an app the user never touched stays in the history before it is
-/// forgotten. Entries carrying user intent (an assignment, an alias, or the
-/// ignore flag) are exempt and kept indefinitely.
+/// forgotten. Entries with user intent (assignment, alias, ignore) are exempt.
 pub const MAX_SEEN_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// One app identity Sink has ever observed playing audio.
@@ -29,9 +28,8 @@ pub struct SeenEntry {
     pub ignored: bool,
 }
 
-/// Registry of every app identity ever seen, stored as JSON at
-/// `$XDG_CONFIG_HOME/sink/seen_apps.json`. Powers the inactive-apps list
-/// and the ignore feature.
+/// Registry of every app identity seen; powers the inactive-apps list and
+/// ignore feature. Stored as JSON at `$XDG_CONFIG_HOME/sink/seen_apps.json`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SeenApps {
     pub apps: Vec<SeenEntry>,
@@ -88,9 +86,8 @@ impl SeenApps {
             .find(|a| a.match_prop == match_prop && a.match_value == match_value)
     }
 
-    /// Record a sighting. Returns true when the registry changed in a way
-    /// worth persisting (new identity, or display/icon changed) - pure
-    /// last_seen bumps return false so the poll doesn't hit the disk.
+    /// Record a sighting; returns true when something worth persisting changed,
+    /// so pure last_seen bumps don't hit the disk.
     pub fn upsert(
         &mut self,
         match_prop: &str,
@@ -148,11 +145,8 @@ impl SeenApps {
             .retain(|a| !(a.match_prop == match_prop && a.match_value == match_value));
     }
 
-    /// Drop history entries last seen over `max_age_secs` ago that the user
-    /// never acted on. `has_intent` reports whether an identity carries an
-    /// assignment or an alias; those and ignored entries survive forever, so
-    /// a game played once a month keeps its channel. Returns true when
-    /// anything was removed (i.e. the caller should persist).
+    /// Drop history entries idle past `max_age_secs` with no user intent;
+    /// intent and ignored entries survive forever regardless of age.
     pub fn prune<F>(&mut self, now: u64, max_age_secs: u64, has_intent: F) -> bool
     where
         F: Fn(&str, &str) -> bool,

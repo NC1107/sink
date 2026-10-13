@@ -1,14 +1,6 @@
-//! AutoEq text-format import. AutoEq (the community headphone-correction
-//! project) publishes parametric EQs as plain text:
-//!
-//! ```text
-//! Preamp: -6.0 dB
-//! Filter 1: ON PK Fc 105 Hz Gain -2.4 dB Q 0.70
-//! ```
-//!
-//! Tolerant token parsing, no regex: disabled and unrecognized filter
-//! lines are skipped (a partial import beats a hard failure over one
-//! exotic filter type); it errors only when nothing usable remains.
+//! AutoEq text-format import: parses AutoEq's plain-text parametric EQ
+//! exports into an `EqConfig`. Tolerant token parsing (no regex) so an
+//! unrecognized filter degrades the import instead of failing it outright.
 
 use crate::audio::types::{EqBand, EqBandKind, EqConfig, MAX_EQ_BANDS};
 use crate::error::SinkError;
@@ -58,9 +50,8 @@ fn parse_filter_line(line: &str) -> Option<EqBand> {
     Some(band)
 }
 
-/// Parse an AutoEq result block into a (disabled, preview-ready) EqConfig.
-/// Keeps the first MAX_EQ_BANDS filters in file order - AutoEq emits them
-/// in descending importance already.
+/// Parse an AutoEq result block into an EqConfig. Keeps the first MAX_EQ_BANDS
+/// filters in file order - AutoEq already ranks them by importance.
 pub fn parse_autoeq(text: &str) -> Result<EqConfig, SinkError> {
     let mut preamp_db = 0.0f32;
     let mut bands: Vec<EqBand> = Vec::new();

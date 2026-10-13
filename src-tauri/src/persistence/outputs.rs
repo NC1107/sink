@@ -6,18 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::SinkError;
 
-/// Per-channel output device choices (Phase 4), stored as JSON at
-/// `$XDG_CONFIG_HOME/sink/outputs.json`. `None` = follow the system default
-/// output (with automatic failover, Sonar-style).
+/// Per-channel output device choices (JSON in `sink/outputs.json`).
+/// `None` = follow the system default, with automatic failover.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ChannelOutputs {
     pub outputs: HashMap<String, Option<String>>,
-    /// Channels with auto-failover turned off: they route only to their chosen
-    /// device (or the exact system default) and stay silent when it's gone,
-    /// rather than falling back to another sink - so e.g. a headset-pinned
-    /// channel never surprises you by jumping to the speakers. Absence (the
-    /// default) means failover is on. `serde(default)` keeps older configs,
-    /// written before this field, loading cleanly.
+    /// Channels with auto-failover off route only to their chosen device and
+    /// stay silent when it's gone; `serde(default)` keeps old configs loading.
     #[serde(default)]
     pub no_failover: HashSet<String>,
 }

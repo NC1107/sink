@@ -8,8 +8,6 @@ import { ChannelSelect } from "./ChannelSelect";
 /**
  * A previously-seen app that isn't currently playing. Routing edits here
  * are "pre-routing": they take effect the moment the app next plays audio.
- * Ignored apps use the same row minus the routing control - they are hidden
- * from Sink until un-ignored, so there is nothing to route.
  */
 export function InactiveRow({ app, ignored }: Readonly<{ app: SeenApp; ignored?: boolean }>) {
   const setAppAssignment = useMixerStore((s) => s.setAppAssignment);

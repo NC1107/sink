@@ -1,9 +1,6 @@
 @import "tailwindcss";
 
-/* ============================================================
-   Sink - design system ported from the Sink.zip prototype
-   (Echo tokens, dark theme) on top of a frameless Tauri window.
-   ============================================================ */
+/* Sink design system: dark theme, frameless Tauri window. */
 
 /* Brand font - Fira Code (self-hosted) */
 @font-face {
@@ -77,6 +74,12 @@
   --online: #22c55e;
   --danger: #ef4444;
   --warning: #f59e0b;
+  /* Channel triplets for washes and glows that take their own alpha. */
+  --danger-rgb: 239, 68, 68;
+  --online-rgb: 34, 197, 94;
+  /* Text on a danger wash. Fixed on purpose: --danger itself drops under
+     4.5:1 on the wash in gruvbox, this holds 6.9:1 or better in every theme. */
+  --on-danger-wash: #fca5a5;
 
   /* Type */
   --font-sans: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -104,6 +107,14 @@
 
   /* Strong enough to separate a panel from an equally dark surface below. */
   --shadow-popover: 0 16px 40px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.45);
+  /* Strip tints: a channel carries the accent, a mix its own hue, so the
+     two columns stay apart at a glance in every theme. */
+  --tint-channel: #2e2e55;
+  --tint-channel-wash: rgba(85, 87, 224, 0.06);
+  --tint-bus: #46350f;
+  --tint-bus-wash: rgba(245, 158, 11, 0.05);
+  --tint-bus-fg: #f59e0b;
+  --tint-bus-icon: rgba(245, 158, 11, 0.12);
 }
 
 * {
@@ -144,6 +155,13 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
   overflow: hidden;
+}
+/* Opaque window (WebKitGTK 2.54+): no see-through corners to round, so square
+   the main and popout containers and drop the border for an edge-to-edge fill. */
+:root[data-opaque] .window,
+:root[data-opaque] .popout {
+  border: none;
+  border-radius: 0;
 }
 
 /* ---------- Headerbar ---------- */
@@ -207,11 +225,11 @@ body,
   height: 7px;
   border-radius: 50%;
   background: var(--online);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+  box-shadow: 0 0 0 3px rgba(var(--online-rgb), 0.16);
 }
 .hb-status.err .dot {
   background: var(--danger);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+  box-shadow: 0 0 0 3px rgba(var(--danger-rgb), 0.16);
 }
 
 /* window controls */
@@ -325,10 +343,6 @@ body,
   flex-direction: column;
   background: var(--bg-main);
 }
-/* Form-like screens (mic, settings) read better in a tighter column. */
-.content.narrow {
-  --content-w: 720px;
-}
 .screen-head {
   flex: 0 0 auto;
   padding: var(--sp-6) var(--sp-7) var(--sp-4);
@@ -356,7 +370,10 @@ body,
 }
 .screen-scroll {
   flex: 1;
-  overflow-y: auto;
+  /* Always keep the (invisible when idle) scrollbar track, so content never
+     shifts sideways when a screen grows past the window. WebKitGTK ignores
+     scrollbar-gutter. */
+  overflow-y: scroll;
   overflow-x: hidden;
   padding: var(--sp-6) var(--sp-7);
   /* Matches .screen-head so rows line up under the title. The mixer opts out
@@ -688,6 +705,8 @@ body,
   font-size: var(--fs-caption);
   color: var(--fg-muted);
   text-align: center;
+  /* One line: a wrapped chevron reads as a second control. */
+  white-space: nowrap;
 }
 
 .strip-body {
@@ -763,10 +782,8 @@ body,
 .meter-fill {
   position: absolute;
   inset: 0;
-  /* The zone colors are fixed to the TRACK (not the fill) and revealed by
-   * a clip-path, so green/amber/red are calibrated positions: green below
-   * −6 dBFS (70.8%), amber to −3 dBFS (84.1%), red above. Red genuinely
-   * means "about to clip" - it can't appear at the tip of a quiet bar. */
+  /* Zone colors are fixed to the TRACK and revealed by a clip-path, so
+   * they're calibrated dBFS positions - red can't appear on a quiet bar. */
   background: linear-gradient(
     to top,
     var(--online) 0%,
@@ -824,7 +841,7 @@ body,
 .vu-clip.on {
   background: var(--danger);
   border-color: var(--danger);
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 6px rgba(var(--danger-rgb), 0.7);
 }
 .vu-db {
   flex: 0 0 auto;
@@ -842,6 +859,28 @@ body,
   font-weight: 600;
   color: var(--fg-primary);
   margin-bottom: var(--sp-3);
+  /* Typing takes exactly the room reading does, so nothing below moves. */
+  height: 17px;
+  line-height: 17px;
+}
+.strip-readout-editable {
+  cursor: text;
+}
+.strip-readout-input {
+  width: 38px;
+  height: 17px;
+  box-sizing: border-box;
+  padding: 0 2px;
+  vertical-align: top;
+  text-align: center;
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--fg-primary);
+  background: var(--bg-main);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  outline: none;
 }
 .strip-readout .db {
   color: var(--fg-muted);
@@ -906,6 +945,7 @@ body,
 }
 /* clickable variant: the per-strip output picker */
 .strip-route-btn {
+  border-radius: 4px;
   width: 100%;
   background: none;
   border: none;
@@ -935,6 +975,11 @@ body,
 }
 .section-label:first-child {
   margin-top: 0;
+}
+/* Each group wraps its own label, which is then a first child with no top
+   margin, so the groups need their gap from the wrapper instead. */
+.app-group + .app-group {
+  margin-top: var(--sp-6);
 }
 .card {
   background: var(--bg-surface);
@@ -1072,7 +1117,7 @@ body,
   background: var(--bg-active);
 }
 .icon-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.16);
+  background: rgba(var(--danger-rgb), 0.16);
   color: var(--danger);
 }
 .row .rtrail {
@@ -1200,6 +1245,11 @@ body,
   flex-direction: column;
   gap: var(--sp-4);
 }
+.mic-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
 .mic-device-row {
   display: flex;
   align-items: center;
@@ -1260,28 +1310,28 @@ body,
 }
 
 .tag.live {
-  background: rgba(34, 197, 94, 0.14);
+  background: rgba(var(--online-rgb), 0.14);
   color: var(--online);
 }
 
 /* mic input strip accent (design: input-strip) */
 .strip.input-strip {
-  border-color: #2e2e55;
-  background: linear-gradient(180deg, rgba(85, 87, 224, 0.06), var(--bg-surface) 38%);
+  border-color: var(--tint-channel);
+  background: linear-gradient(180deg, var(--tint-channel-wash), var(--bg-surface) 38%);
 }
 .strip-icon-mic {
   background: var(--accent-light);
   color: var(--accent-hover);
 }
 
-/* stream mix bus strip (record bus - amber accents) */
+/* stream mix bus strip (record bus) */
 .strip.bus-strip {
-  border-color: #46350f;
-  background: linear-gradient(180deg, rgba(245, 158, 11, 0.05), var(--bg-surface) 38%);
+  border-color: var(--tint-bus);
+  background: linear-gradient(180deg, var(--tint-bus-wash), var(--bg-surface) 38%);
 }
 .strip-icon-bus {
-  background: rgba(245, 158, 11, 0.12);
-  color: var(--warning);
+  background: var(--tint-bus-icon);
+  color: var(--tint-bus-fg);
 }
 
 /* inactive / ignored app history */
@@ -1630,9 +1680,9 @@ body,
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-7);
-  background: rgba(239, 68, 68, 0.12);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.35);
-  color: #fca5a5;
+  background: rgba(var(--danger-rgb), 0.12);
+  border-bottom: 1px solid rgba(var(--danger-rgb), 0.35);
+  color: var(--on-danger-wash);
   font-size: var(--fs-meta);
 }
 .error-banner-msg {
@@ -1652,11 +1702,19 @@ body,
   cursor: pointer;
 }
 .error-banner-x:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(var(--danger-rgb), 0.2);
 }
 .error-banner-x:focus-visible {
-  outline: 2px solid #fca5a5;
+  outline: 2px solid var(--on-danger-wash);
   outline-offset: 1px;
+}
+
+/* One focus ring for the whole app: the engine's own is a loose box in a
+   colour that is not ours, and it sits outside small controls. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: inherit;
 }
 
 /* Global hover tooltip (see components/Tooltip.tsx): replaces the native
@@ -1678,9 +1736,8 @@ body,
   white-space: normal;
 }
 
-/* DSP tuning sliders (mic processing card): inset under their stage's
- * toggle row with a guide line, so parameters read as controls rather
- * than blending into the stage descriptions. */
+/* DSP tuning sliders: inset under their stage's toggle row with a guide
+ * line, so parameters read as controls, not descriptions. */
 .dsp-row {
   display: flex;
   align-items: center;
@@ -1719,14 +1776,6 @@ body,
   opacity: 0.55;
   border-radius: 1px;
   pointer-events: none;
-}
-
-/* greyed status tag (e.g. mic muted) */
-.tag.tag-off {
-  opacity: 0.55;
-}
-.tag.tag-off .ms {
-  color: var(--fg-muted);
 }
 
 /* mic screen body while the chain is switched off: visible but inert */
@@ -1796,18 +1845,18 @@ body,
   color: var(--fg-muted);
 }
 .ob-flow-node.is-channel {
-  border-color: #2e2e55;
+  border-color: var(--tint-channel);
   color: var(--accent-hover);
 }
 .ob-flow-node.is-channel .ms {
   color: var(--accent-hover);
 }
 .ob-flow-node.is-mix {
-  border-color: #46350f;
-  color: var(--warning);
+  border-color: var(--tint-bus);
+  color: var(--tint-bus-fg);
 }
 .ob-flow-node.is-mix .ms {
-  color: var(--warning);
+  color: var(--tint-bus-fg);
 }
 .ob-flow-arrow {
   font-size: 14px;
@@ -1889,25 +1938,32 @@ body,
   user-select: text;
 }
 
-/* mic screen tip line */
-.mic-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-2);
-  margin-top: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-lg);
-  border: 1px dashed var(--border);
-  font-size: var(--fs-caption);
+/* noise suppression: the subtitle is also the status line */
+.rsub.ns-warn {
+  color: var(--warning);
+}
+.ns-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent-hover);
+  cursor: pointer;
+}
+.ns-link:hover {
+  text-decoration: underline;
+}
+.ns-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* A secondary action beside the engine link: muted until hovered. */
+.ns-link-quiet {
   color: var(--fg-muted);
 }
-.mic-tip .ms {
-  font-size: 16px;
-  color: var(--warning);
-  flex: 0 0 auto;
-}
-.mic-tip a {
-  color: var(--accent-hover);
+.ns-link-quiet:hover {
+  color: var(--danger);
 }
 
 /* ---------- balance pill (ChatMix, lives in the title bar) ---------- */
@@ -1987,12 +2043,31 @@ body,
   transition: left 0.06s linear;
 }
 
-/* settings sub-row: indented dependent option (e.g. start minimized) */
+/* A setting that belongs to the one above it. The extra indent leaves the
+   elbow room for its arm. */
 .row.row-sub {
-  margin-left: var(--sp-6);
+  margin-left: calc(var(--sp-6) + 14px);
+  position: relative;
 }
 .row.row-sub .ricon {
   opacity: 0.7;
+}
+/* Drops from the centre of the parent's icon and turns in to meet the left
+   edge of this row's. */
+.row.row-sub::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  /* Starts at the parent tile's bottom edge, not inside it. */
+  top: -14px;
+  bottom: 50%;
+  /* Stops where this row's tile starts. */
+  width: 14px;
+  border-left: 1px solid var(--fg-muted);
+  border-bottom: 1px solid var(--fg-muted);
+  border-bottom-left-radius: 5px;
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 /* ---- Parametric EQ modal (eqm-) ---- */
@@ -2438,10 +2513,7 @@ body,
   }
 }
 
-/* ============================================================
-   Theme: Tokyo Night (opt-in via <html data-theme="tokyo-night">)
-   Original theme stays the default under :root.
-   ============================================================ */
+/* Themes (opt-in via <html data-theme="...">); the EQ band palette stays shared across all of them. */
 :root[data-theme="tokyo-night"] {
   --bg-main: #1a1b26;
   --bg-sidebar: #16161e;
@@ -2452,7 +2524,7 @@ body,
 
   --fg-primary: #c0caf5;
   --fg-secondary: #a9b1d6;
-  --fg-muted: #565f89;
+  --fg-muted: #9aa5ce;
 
   --accent: #7aa2f7;
   --accent-hover: #9eb8f9;
@@ -2468,6 +2540,50 @@ body,
   --online: #9ece6a;
   --danger: #f7768e;
   --warning: #e0af68;
+  --danger-rgb: 247, 118, 142;
+  --online-rgb: 158, 206, 106;
+  --tint-channel: #2f3d63;
+  --tint-channel-wash: rgba(122, 162, 247, 0.07);
+  --tint-bus: #4b3a1e;
+  --tint-bus-wash: rgba(224, 175, 104, 0.06);
+  --tint-bus-fg: #e0af68;
+  --tint-bus-icon: rgba(224, 175, 104, 0.12);
+}
+
+:root[data-theme="gruvbox-dark"] {
+  --bg-main: #282828;
+  --bg-sidebar: #1d2021;
+  --bg-chat: #282828;
+  --bg-surface: #32302f;
+  --bg-surface-hover: #3c3836;
+  --bg-active: #504945;
+
+  --fg-primary: #ebdbb2;
+  --fg-secondary: #d5c4a1;
+  --fg-muted: #a89984;
+
+  --accent: #fe8019;
+  --accent-hover: #fe9a47;
+  --accent-light: rgba(254, 128, 25, 0.12);
+  --on-accent: #282828;
+
+  --bg-popover: #3c3836;
+  --bg-popover-hover: #504945;
+
+  --border: #3c3836;
+  --border-popover: #504945;
+
+  --online: #b8bb26;
+  --danger: #fb4934;
+  --warning: #fabd2f;
+  --danger-rgb: 251, 73, 52;
+  --online-rgb: 184, 187, 38;
+  --tint-channel: #5b3a17;
+  --tint-channel-wash: rgba(254, 128, 25, 0.07);
+  --tint-bus: #553a44;
+  --tint-bus-wash: rgba(211, 134, 155, 0.07);
+  --tint-bus-fg: #d3869b;
+  --tint-bus-icon: rgba(211, 134, 155, 0.14);
 }
 
 /* Theme picker (Settings › Appearance) */
@@ -2597,6 +2713,10 @@ body,
 }
 .seg-btn:hover {
   color: var(--fg-primary);
+}
+.seg-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 .seg-btn.active {
   background: var(--bg-surface);

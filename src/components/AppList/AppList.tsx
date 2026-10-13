@@ -74,7 +74,7 @@ export function AppList() {
           </div>
         ) : (
           groups.map((group) => (
-            <div key={group.key}>
+            <div key={group.key} className="app-group">
               <div className="section-label">
                 {group.label} · {group.apps.length}
               </div>

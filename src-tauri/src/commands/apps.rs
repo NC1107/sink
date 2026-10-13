@@ -38,9 +38,8 @@ fn stamp(entry: &SeenEntry) -> String {
     )
 }
 
-/// Icon and name lookups touch the icon themes and the Steam library, so
-/// they run once per row and never under the mixer lock, which every
-/// volume and routing command needs.
+/// Icon and name lookups touch the icon themes and the Steam library, so they
+/// run once per row, never under the mixer lock every command needs.
 fn history_facts(entry: &SeenEntry) -> HistoryFacts {
     let binary =
         (entry.match_prop == "application.process.binary").then_some(entry.match_value.as_str());
@@ -177,9 +176,8 @@ pub fn forget_app(
     Ok(())
 }
 
-/// Edit an app's routing assignment while it isn't running (pre-routing):
-/// the app lands on its channel the moment it next plays audio. Empty
-/// `sink_name` clears the assignment.
+/// Edit an app's routing assignment while it isn't running (pre-routing);
+/// it lands on the channel next time it plays. Empty `sink_name` clears it.
 #[tauri::command]
 pub fn set_app_assignment(
     state: State<'_, AppState>,

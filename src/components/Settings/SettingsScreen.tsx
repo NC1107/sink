@@ -162,7 +162,7 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="content narrow">
+    <div className="content">
       <div className="screen-head">
         <h1>Settings</h1>
       </div>
@@ -181,7 +181,7 @@ export function SettingsScreen() {
             </div>
             <div className="rmain">
               <div className="rtitle">Theme</div>
-              <div className="rsub">Original, or Tokyo Night to match your desktop</div>
+              <div className="rsub">Match the app to your desktop</div>
             </div>
             <div className="theme-picker">
               {THEMES.map((t) => (

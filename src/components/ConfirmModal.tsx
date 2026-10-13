@@ -8,11 +8,13 @@ interface ConfirmModalProps {
   /** Label for the destructive action, e.g. "Delete channel". */
   confirmLabel: string;
   onConfirm: () => void;
-  /** What the user is about to lose. */
+  /** What the user is about to lose, or agree to. */
   children: ReactNode;
+  /** "primary" for a non-destructive confirmation such as a download. */
+  tone?: "danger" | "primary";
 }
 
-/** Destructive-action confirmation: an explanation and a danger/cancel pair. */
+/** Confirmation: an explanation and a confirm/cancel pair, destructive by default. */
 export function ConfirmModal({
   open,
   onClose,
@@ -20,6 +22,7 @@ export function ConfirmModal({
   confirmLabel,
   onConfirm,
   children,
+  tone = "danger",
 }: Readonly<ConfirmModalProps>) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
@@ -27,7 +30,7 @@ export function ConfirmModal({
       <div className="modal-btns">
         <button
           type="button"
-          className="modal-btn danger"
+          className={"modal-btn " + tone}
           onClick={() => {
             onClose();
             onConfirm();

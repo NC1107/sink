@@ -81,9 +81,8 @@ export function MixerBoard() {
     );
   }
 
-  // Apps belonging to each channel, for the strip header. Mirrors the
-  // membership popover: live streams routed there plus remembered (offline)
-  // assignments - "3 apps" should match the 3 checked rows.
+  // Apps belonging to each channel, for the strip header - mirrors the
+  // membership popover so the count matches the checked rows there.
   const counts = new Map<string, number>();
   const counted = new Set<string>();
   for (const stream of appStreams) {
@@ -118,7 +117,9 @@ export function MixerBoard() {
 
   return (
     <div className="content">
-      <div className="screen-scroll" style={{ padding: 0 }}>
+      {/* The board centres itself and zooms to fit, so it skips the reserved
+          scrollbar track the other screens keep. */}
+      <div className="screen-scroll" style={{ padding: 0, overflowY: "auto" }}>
         <div className="mix-scroll">
           {micConfig?.enabled && (
             <>

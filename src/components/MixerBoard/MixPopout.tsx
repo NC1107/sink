@@ -14,10 +14,8 @@ function windowTitle(label?: string): string {
 }
 
 /**
- * A mix's popout window (see `open_mix_fader_window`): the one home of the
- * mix's per-member send levels, meant to be left on screen while streaming
- * or in a call. Reads and nudges levels only - the main window owns the
- * audio graph's lifecycle.
+ * A mix's popout window: the one home of its per-member send levels. Reads
+ * and nudges levels only - the main window owns the audio graph's lifecycle.
  */
 export function MixPopout({ busName }: Readonly<{ busName: string }>) {
   const win = getCurrentWindow();

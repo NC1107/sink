@@ -10,10 +10,8 @@ interface MixRoleSelectProps {
 }
 
 /**
- * Which device list a mix shows up in, in the same strip footer where a
- * channel picks its output. The wording is the system's own ("Recording
- * devices", "Playback devices") so the label matches what the user sees
- * in their sound settings.
+ * Which device list a mix shows up in. The wording is the system's own
+ * ("Recording devices", "Playback devices"), matching the sound settings.
  */
 export function MixRoleSelect({ role, onChange }: Readonly<MixRoleSelectProps>) {
   const [open, setOpen] = useState(false);

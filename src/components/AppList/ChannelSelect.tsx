@@ -17,9 +17,8 @@ export function ChannelSelect({ value, onChange }: Readonly<ChannelSelectProps>)
   const channels = useMixerStore((s) => s.channels);
 
   const current = channels.find((c) => c.name === value);
-  // An assignment outlives the channel it names - deleted here, or belonging
-  // to a profile that isn't loaded. Reporting that as "Unrouted" would be a
-  // lie, and picking Unrouted to confirm it would delete a real assignment.
+  // An assignment can outlive the channel it names (deleted, or belonging to
+  // a profile not loaded) - "Unrouted" would misreport it and risk deleting it.
   const missing = value !== null && !current;
 
   let icon: string;

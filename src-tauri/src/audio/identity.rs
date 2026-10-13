@@ -84,14 +84,8 @@ fn parse_pid(v: Option<&String>) -> Option<u32> {
     v.and_then(|s| s.trim().parse().ok()).filter(|p| *p > 1)
 }
 
-/// Sandboxed clients report their in-sandbox pid, someone else on the host.
-/// A native client's peer pid is kernel-verified and must agree with the
-/// pid it reports, or a client naming another process's pid would inherit
-/// that process's rules. A pipewire-pulse client's verified pid is the
-/// bridge's own, so its claim is all there is: it must be running the
-/// claimed binary (or a loader like Wine's, which hides it). That is what
-/// the pactl backend has for every stream too. A same-user process that
-/// lies here gains nothing it could not get by editing the config files.
+/// A pid is trusted only when kernel-verified, or, for pipewire-pulse (whose
+/// peer pid is only the bridge's), when the exe matches the binary.
 fn trusted_pid(props: &HashMap<String, String>, proc: &dyn ProcReader) -> Option<u32> {
     if props.contains_key("pipewire.access.portal.app_id")
         || props.get("pipewire.access").map(String::as_str) == Some("flatpak")
@@ -190,9 +184,7 @@ pub fn legacy_matchers(props: &HashMap<String, String>) -> Vec<(String, String)>
 }
 
 /// A pid-less stream borrows a sibling's identity only when exactly one
-/// process-backed stream claims the same real (non-runtime) app name, by
-/// its stream name or by what it resolved to (a game's engine stream says
-/// "FMOD Audio" while the game's own stream carries its manifest name).
+/// process-backed stream claims the same real app name.
 pub fn adopt_from_siblings(identities: &mut [Identity], props: &[&HashMap<String, String>]) {
     let real = |n: &str| {
         let n = n.trim();

@@ -34,9 +34,8 @@ pub struct BusDef {
     /// Exclude mode (false): channels carried by this mix.
     /// Exclude mode (true): channels kept OUT of this mix.
     pub channels: Vec<String>,
-    /// True = the mix carries every channel except `channels`, so new
-    /// channels join automatically ("everything but music"). False = the
-    /// mix carries exactly `channels` (manual selection).
+    /// True = the mix carries every channel except `channels` ("everything but
+    /// music"). False = the mix carries exactly `channels` (manual selection).
     #[serde(default)]
     pub exclude: bool,
     /// Playback level recorders hear (0-150%). Persisted so a mix keeps its
@@ -204,6 +203,13 @@ impl Buses {
         self.buses.iter().find(|b| b.name == name)
     }
 
+    fn get_mut(&mut self, name: &str) -> Result<&mut BusDef, SinkError> {
+        self.buses
+            .iter_mut()
+            .find(|b| b.name == name)
+            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))
+    }
+
     /// Ensure the master mix exists, sits first, and carries every channel.
     /// Called wherever the channel set changes (init, add, profile load).
     pub fn sync_master(&mut self, channels: &[String]) {
@@ -239,11 +245,7 @@ impl Buses {
                 "the master mix always carries every channel".into(),
             ));
         }
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         if def.exclude == exclude {
             return Ok(());
         }
@@ -283,9 +285,8 @@ impl Buses {
             name = format!("{base}_{counter}");
             counter += 1;
         }
-        // New mixes start in auto-include mode carrying everything -
-        // uncheck what you don't want ("everything but music") and future
-        // channels keep joining automatically.
+        // New mixes start in auto-include mode carrying everything - uncheck
+        // what you don't want and future channels keep joining automatically.
         let def = BusDef {
             name,
             label: label.to_string(),
@@ -308,11 +309,7 @@ impl Buses {
                 "mix label must be 1-24 characters".into(),
             ));
         }
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         def.label = label.to_string();
         Ok(())
     }
@@ -323,7 +320,7 @@ impl Buses {
         if is_master(name) {
             return Err(SinkError::Config("the master mix can't be deleted".into()));
         }
-        if !self.buses.iter().any(|b| b.name == name) {
+        if self.get(name).is_none() {
             return Err(SinkError::UnknownSink(name.to_string()));
         }
         Ok(())
@@ -341,11 +338,7 @@ impl Buses {
                 "the master mix always carries every channel".into(),
             ));
         }
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         def.channels = channels;
         Ok(())
     }
@@ -353,31 +346,19 @@ impl Buses {
     /// The updated definition comes back because the node has to be
     /// rebuilt in the new shape from it.
     pub fn set_role(&mut self, name: &str, role: MixRole) -> Result<BusDef, SinkError> {
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         def.role = role;
         Ok(def.clone())
     }
 
     pub fn set_volume(&mut self, name: &str, volume: u8) -> Result<(), SinkError> {
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         def.volume_percent = volume;
         Ok(())
     }
 
     pub fn set_muted(&mut self, name: &str, muted: bool) -> Result<(), SinkError> {
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         def.muted = muted;
         Ok(())
     }
@@ -385,11 +366,7 @@ impl Buses {
     /// Allowed on the master mix too - unlike channel membership, mic
     /// inclusion isn't auto-managed.
     pub fn set_mic(&mut self, name: &str, mic: bool) -> Result<(), SinkError> {
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         def.mic = mic;
         Ok(())
     }
@@ -402,11 +379,7 @@ impl Buses {
         member: &str,
         percent: u8,
     ) -> Result<(), SinkError> {
-        let def = self
-            .buses
-            .iter_mut()
-            .find(|b| b.name == name)
-            .ok_or_else(|| SinkError::UnknownSink(name.to_string()))?;
+        let def = self.get_mut(name)?;
         if percent == 100 {
             def.member_gains.remove(member);
         } else {

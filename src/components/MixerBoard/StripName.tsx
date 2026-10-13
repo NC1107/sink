@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEditTrigger } from "./useEditTrigger";
 
 interface StripNameProps {
   label: string;
@@ -6,13 +7,22 @@ interface StripNameProps {
   onRename: (label: string) => void;
 }
 
-/** A strip's label, renamed in place on double-click. */
+/** A strip's label, renamed in place on double-click or Enter. */
 export function StripName({ label, onRename }: Readonly<StripNameProps>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const trigger = useEditTrigger(() => {
+    setDraft(label);
+    setEditing(true);
+  });
+
+  const close = () => {
+    setEditing(false);
+    trigger.restoreFocus();
+  };
 
   const commit = () => {
-    setEditing(false);
+    close();
     const next = draft.trim();
     if (next && next !== label) onRename(next);
   };
@@ -28,7 +38,7 @@ export function StripName({ label, onRename }: Readonly<StripNameProps>) {
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") commit();
-          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Escape") close();
         }}
       />
     );
@@ -36,12 +46,10 @@ export function StripName({ label, onRename }: Readonly<StripNameProps>) {
 
   return (
     <div
+      {...trigger.props}
       className="strip-name strip-name-editable"
-      title="Double-click to rename"
-      onDoubleClick={() => {
-        setDraft(label);
-        setEditing(true);
-      }}
+      title="Double-click or press Enter to rename"
+      aria-label={`${label}, press Enter to rename`}
     >
       {label}
     </div>

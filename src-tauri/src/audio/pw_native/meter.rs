@@ -46,10 +46,8 @@ impl MeterHandle {
             "node.name" => format!("{METER_PREFIX}{sink_name}"),
             // For sinks: capture the monitor, don't keep the sink busy.
             "stream.capture.sink" => if capture_sink { "true" } else { "false" },
-            // Pin the meter to the channel it represents. Without an
-            // explicit target WirePlumber may move the first-created meter
-            // to a newly selected default device, making (for example) Game
-            // display the combined speaker output instead of Game itself.
+            // Pin the meter to its channel - without an explicit target,
+            // WirePlumber may move it to a newly selected default device.
             "target.object" => sink_name,
             "node.dont-reconnect" => "true",
             "node.passive" => "true",
@@ -71,8 +69,13 @@ impl MeterHandle {
                 let Some(bytes) = data.data() else { return };
                 let mut peaks = [0.0f32; 2];
                 // f32 interleaved stereo (negotiated below).
-                for (i, raw) in bytes[..valid.min(bytes.len())].chunks_exact(4).enumerate() {
-                    let v = f32::from_ne_bytes([raw[0], raw[1], raw[2], raw[3]]).abs();
+                for (i, raw) in bytes[..valid.min(bytes.len())]
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .enumerate()
+                {
+                    let v = f32::from_ne_bytes(*raw).abs();
                     let ch = i & 1;
                     if v > peaks[ch] {
                         peaks[ch] = v;

@@ -6,10 +6,8 @@ pkgdesc="SteelSeries Sonar for Linux - per-app audio routing, mixing, and a proc
 arch=('x86_64')
 url="https://github.com/NC1107/sink"
 license=('GPL-3.0-only')
-# Direct library deps (providers of the binary's NEEDED sonames), the
-# PipeWire session services, and the tray library. libayatana-appindicator
-# is dlopen'd, but the app aborts on startup when it is missing, so it is a
-# hard dep - it lives in extra, so `pacman -U` resolves it fine.
+# Direct library deps plus the tray library: libayatana-appindicator is
+# dlopen'd, but the app aborts on startup without it, so it's a hard dep.
 depends=('glibc' 'libgcc' 'glib2' 'gtk3' 'gdk-pixbuf2' 'cairo' 'dbus'
          'webkit2gtk-4.1' 'libsoup3' 'libpipewire' 'pipewire-pulse'
          'wireplumber' 'hicolor-icon-theme' 'libayatana-appindicator')
@@ -22,8 +20,7 @@ sha256sums=('SKIP')
 
 package() {
   cd "${srcdir}"
-  # The release .deb already ships the FHS layout (/usr/bin, .desktop,
-  # hicolor icons) and links against system libraries; unpack its payload
+  # The release .deb already ships the FHS layout; unpack its payload
   # straight into the package root.
   bsdtar -xf "sink_${pkgver}_amd64.deb"
   bsdtar -xf data.tar.* -C "${pkgdir}"

@@ -115,14 +115,8 @@ impl Channels {
         }
     }
 
-    /// Parse and sanitize the channel set from JSON. Entries that break the
-    /// invariants `add()` guarantees - a reserved name, a missing `sink_`
-    /// prefix, or a duplicate - are dropped: a hand-edited or foreign-tool
-    /// file would otherwise collide with the mic/stream service nodes, or make
-    /// `is_virtual_sink` reject a channel and abort `init_virtual_devices`.
-    /// The set is capped at `MAX_CHANNELS` so it can't exhaust the level-meter
-    /// slots. Returns `None` only when the text isn't valid JSON, so `load`
-    /// can tell a corrupt file from a merely empty one.
+    /// Sanitize the channel set (drops reserved names, missing `sink_`
+    /// prefix, duplicates); `None` means invalid JSON, not merely empty.
     fn parse(raw: &str) -> Option<Self> {
         let parsed: Self = serde_json::from_str(raw).ok()?;
         let mut seen = std::collections::HashSet::new();
@@ -171,8 +165,7 @@ impl Channels {
     }
 
     /// Record a channel's fader position so it survives a restart. Unknown
-    /// channels are ignored rather than erroring: this runs on every fader
-    /// tick, and a channel deleted mid-drag shouldn't surface an error.
+    /// channels are ignored, not erroring - this runs on every fader tick.
     pub fn set_volume(&mut self, name: &str, volume_percent: u8) {
         if let Some(def) = self.channels.iter_mut().find(|c| c.name == name) {
             def.volume_percent = volume_percent;
@@ -204,8 +197,7 @@ impl Channels {
         let mut base = format!("sink_{}", slugify(label));
         if crate::persistence::buses::is_bus_name(&base) {
             // A label like "Bus Foo" would slug straight into the mix-bus
-            // namespace, where every suffixed variant still matches the
-            // prefix; step out of it instead of trying to disambiguate.
+            // namespace; step out of it instead of disambiguating variants.
             base = base.replacen("sink_bus_", "sink_ch_bus_", 1);
         }
         let mut name = base.clone();
@@ -372,8 +364,8 @@ mod tests {
 
     #[test]
     fn parse_keeps_valid_and_fills_serde_defaults() {
-        // Old-shape entries (pre-Phase-4: no icon / stream_mix) must still
-        // load, with the serde defaults applied - an upgrade keeps user data.
+        // Bug shape: old-shape entries (no icon / stream_mix) must still load
+        // via serde defaults.
         let raw = r#"{"channels":[
             {"name":"sink_game","label":"Game"},
             {"name":"sink_music","label":"Music","icon":"music_note","stream_mix":false}

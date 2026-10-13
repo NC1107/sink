@@ -1,9 +1,6 @@
-//! Phase 3 mic engine: captures the selected (or default) microphone,
-//! runs the native DSP chain (gate → gain → compressor → limiter), and
-//! plays the processed signal into a `Audio/Source/Virtual` node - a
-//! virtual microphone that Discord/OBS can capture.
-//!
-//! Topology:  hw mic ──capture stream──▶ DSP ──ring──▶ playback stream ──▶ sink_mic (virtual source)
+//! Native mic engine: captures the selected microphone, runs the DSP chain
+//! (noise suppression → gate → gain → compressor → limiter), and plays the processed signal into a
+//! virtual `Audio/Source/Virtual` node that Discord/OBS can capture.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
@@ -12,10 +9,12 @@ use pipewire as pw;
 use pw::spa;
 use spa::pod::Pod;
 
+use crate::audio::deepfilter::EngineProcess;
+use crate::audio::pw_native::denoise::Denoiser;
 use crate::audio::pw_native::dsp::{DspChain, DspSettings};
 use crate::audio::pw_native::levels::LevelStore;
 use crate::audio::pw_native::ring::Ring;
-use crate::audio::types::MicConfig;
+use crate::audio::types::{MicConfig, NoiseSuppression};
 use crate::error::SinkError;
 
 /// node.name of the virtual microphone.
@@ -35,10 +34,11 @@ pub struct MicParams {
     comp_threshold_bits: AtomicU32,
     comp_ratio_bits: AtomicU32,
     limiter_ceiling_bits: AtomicU32,
+    denoise: AtomicBool,
 }
 
 impl MicParams {
-    pub fn from_config(config: &MicConfig) -> Self {
+    pub fn from_config(config: &MicConfig, light_fallback: bool) -> Self {
         let p = Self {
             gain_bits: AtomicU32::new(1.0f32.to_bits()),
             gate: AtomicBool::new(true),
@@ -49,12 +49,15 @@ impl MicParams {
             comp_threshold_bits: AtomicU32::new((-18.0f32).to_bits()),
             comp_ratio_bits: AtomicU32::new(3.0f32.to_bits()),
             limiter_ceiling_bits: AtomicU32::new((-1.0f32).to_bits()),
+            denoise: AtomicBool::new(false),
         };
-        p.apply(config);
+        p.apply(config, light_fallback);
         p
     }
 
-    pub fn apply(&self, config: &MicConfig) {
+    /// `light_fallback`: Strong was asked for but its engine isn't running,
+    /// so the built-in suppressor stands in rather than none at all.
+    pub fn apply(&self, config: &MicConfig, light_fallback: bool) {
         let gain = f32::from(config.gain_percent) / 100.0;
         self.gain_bits.store(gain.to_bits(), Ordering::Relaxed);
         self.gate.store(config.gate_enabled, Ordering::Relaxed);
@@ -70,6 +73,10 @@ impl MicParams {
             .store(config.comp_ratio.to_bits(), Ordering::Relaxed);
         self.limiter_ceiling_bits
             .store(config.limiter_ceiling_db.to_bits(), Ordering::Relaxed);
+        self.denoise.store(
+            config.noise_suppression == NoiseSuppression::Light || light_fallback,
+            Ordering::Relaxed,
+        );
     }
 
     fn settings(&self) -> DspSettings {
@@ -88,6 +95,8 @@ impl MicParams {
 }
 
 struct CaptureCtx {
+    denoiser: Denoiser,
+    denoising: bool,
     chain: DspChain,
     params: Arc<MicParams>,
     ring: Arc<Ring>,
@@ -101,26 +110,39 @@ struct PlaybackCtx {
 }
 
 pub struct MicStreams {
-    _capture: pw::stream::StreamRc,
+    capture: pw::stream::StreamRc,
     _capture_listener: pw::stream::StreamListener<CaptureCtx>,
     playback: pw::stream::StreamRc,
     _playback_listener: pw::stream::StreamListener<PlaybackCtx>,
     pub params: Arc<MicParams>,
+    /// The Strong engine feeding the capture, when running. Declared after
+    /// the streams it feeds; dropping it stops the process.
+    engine: Option<EngineProcess>,
+    pub light_fallback: bool,
 }
 
 impl MicStreams {
-    /// Node id of the playback stream - the loop links its output ports to
-    /// the virtual mic itself (WirePlumber 0.5 does not reliably honor
-    /// target.object for playback→virtual-source routing).
+    pub fn capture_node_id(&self) -> u32 {
+        self.capture.node_id()
+    }
+
+    pub fn engine_pid(&self) -> Option<u32> {
+        self.engine.as_ref().map(EngineProcess::pid)
+    }
+
+    /// Node id of the playback stream - the loop links it to the virtual mic
+    /// itself; WirePlumber 0.5 doesn't honor target.object for this routing.
     pub fn playback_node_id(&self) -> u32 {
         self.playback.node_id()
     }
 }
 
-/// Mono F32 format pod for stream negotiation.
+/// Mono F32 format pod for stream negotiation. The rate is pinned because
+/// noise suppression only works at 48 kHz; PipeWire resamples other graphs.
 fn mono_f32_format() -> Result<Vec<u8>, SinkError> {
     let mut info = spa::param::audio::AudioInfoRaw::new();
     info.set_format(spa::param::audio::AudioFormat::F32LE);
+    info.set_rate(48000);
     info.set_channels(1);
     let object = spa::pod::Object {
         type_: spa::sys::SPA_TYPE_OBJECT_Format,
@@ -136,48 +158,49 @@ fn mono_f32_format() -> Result<Vec<u8>, SinkError> {
 }
 
 impl MicStreams {
-    /// Build both streams. `mic_target` is the node.name of the hardware
-    /// mic to capture (None = system default source). Targets are set via
-    /// the `target.object` property - the connect-id parameter is
-    /// deprecated and WirePlumber 0.5 ignores it.
+    /// Build both streams. `mic_target` is the hardware mic to capture (None =
+    /// default), set via `target.object` - connect-id is deprecated. With an
+    /// `engine`, the engine captures the mic instead and the loop links its
+    /// output into this chain, so the capture never autoconnects.
     pub fn new(
         core: &pw::core::CoreRc,
         config: &MicConfig,
         mic_target: Option<&str>,
         levels: Arc<LevelStore>,
+        engine: Option<EngineProcess>,
     ) -> Result<Self, SinkError> {
         let err = |stage: &str, e: pw::Error| SinkError::Config(format!("mic {stage}: {e}"));
-        let params = Arc::new(MicParams::from_config(config));
+        let light_fallback =
+            config.noise_suppression == NoiseSuppression::Strong && engine.is_none();
+        let params = Arc::new(MicParams::from_config(config, light_fallback));
         let level_slot = levels
             .slot_for(MIC_NODE)
             .ok_or_else(|| SinkError::Config("meter budget exhausted for mic".into()))?;
         // ~85 ms of headroom at 48 kHz; actual added latency is one quantum.
         let ring = Arc::new(Ring::new(4096));
 
-        // ---- capture: hardware mic -> DSP -> ring ----
-        // NOT passive: this stream must hold the hardware mic running for
-        // as long as the chain is enabled. With passive links the source
-        // suspends the moment its last real consumer leaves (e.g. Discord
-        // switching from the raw mic to the virtual one) - and the chain
-        // starves exactly when someone starts using it.
+        // Capture stage, NOT passive: it must hold the mic running while the
+        // chain is enabled, or the source suspends and starves it when needed.
         let mut capture_props = pw::properties::properties! {
             "media.type" => "Audio",
             "media.category" => "Capture",
             "node.name" => MIC_CAPTURE_NAME,
-            // Never let the session manager migrate this stream (e.g. when
-            // the default source changes - it could land on sink_mic and
-            // feed the chain its own output). Default-follow is handled by
-            // rebuilding with a resolved hardware target instead.
+            // Never let the session manager migrate this stream - it could land
+            // on sink_mic and feed the chain its own output.
             "node.dont-reconnect" => "true",
         };
-        if let Some(target) = mic_target {
-            capture_props.insert("target.object", target);
+        match (&engine, mic_target) {
+            (Some(_), _) => capture_props.insert("node.autoconnect", "false"),
+            (None, Some(target)) => capture_props.insert("target.object", target),
+            (None, None) => {}
         }
         let capture = pw::stream::StreamRc::new(core.clone(), MIC_CAPTURE_NAME, capture_props)
             .map_err(|e| err("capture stream", e))?;
 
         let capture_listener = capture
             .add_local_listener_with_user_data(CaptureCtx {
+                denoiser: Denoiser::new(),
+                denoising: false,
                 chain: DspChain::new(48000.0),
                 params: params.clone(),
                 ring: ring.clone(),
@@ -211,9 +234,20 @@ impl MicStreams {
                 ctx.scratch.clear();
                 ctx.scratch.extend(
                     bytes[..n * 4]
-                        .chunks_exact(4)
-                        .map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]])),
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
+                        .map(|b| f32::from_ne_bytes(*b)),
                 );
+
+                let denoise = ctx.params.denoise.load(Ordering::Relaxed);
+                if denoise && !ctx.denoising {
+                    ctx.denoiser.clear();
+                }
+                ctx.denoising = denoise;
+                if denoise {
+                    ctx.denoiser.process(&mut ctx.scratch);
+                }
 
                 let settings = ctx.params.settings();
                 ctx.chain.process(&mut ctx.scratch, &settings);
@@ -235,23 +269,23 @@ impl MicStreams {
             .connect(
                 spa::utils::Direction::Input,
                 None,
-                pw::stream::StreamFlags::AUTOCONNECT
-                    | pw::stream::StreamFlags::MAP_BUFFERS
+                if engine.is_some() {
+                    pw::stream::StreamFlags::empty()
+                } else {
+                    pw::stream::StreamFlags::AUTOCONNECT
+                } | pw::stream::StreamFlags::MAP_BUFFERS
                     | pw::stream::StreamFlags::RT_PROCESS,
                 &mut capture_params,
             )
             .map_err(|e| err("capture connect", e))?;
 
-        // ---- playback: ring -> virtual source ----
-        // node.autoconnect=false keeps WirePlumber's hands off this stream
-        // (it routes playback streams to the default *sink*, i.e. the
-        // speakers - observed live); the loop links it to sink_mic itself.
+        // Playback stage: node.autoconnect=false keeps WirePlumber from routing
+        // this to the default sink; the loop links it to sink_mic itself.
         let playback = pw::stream::StreamRc::new(
             core.clone(),
             MIC_PLAYBACK_NAME,
-            // NOT passive (see capture): the processed signal must reach
-            // sink_mic whenever the chain is up, regardless of who is -
-            // or isn't - capturing at this instant.
+            // NOT passive: the processed signal must reach sink_mic whenever
+            // the chain is up, regardless of who is capturing.
             pw::properties::properties! {
                 "media.type" => "Audio",
                 "media.category" => "Playback",
@@ -268,9 +302,8 @@ impl MicStreams {
                 let Some(mut buffer) = stream.dequeue_buffer() else {
                     return;
                 };
-                // Fill only what the graph asked for this cycle - filling
-                // the whole mmap'd buffer (8k+ frames vs ~1k produced per
-                // quantum) starves the ring and chops the audio.
+                // Fill only what the graph asked for this cycle - filling the
+                // whole mmap'd buffer starves the ring and chops the audio.
                 let requested = buffer.requested() as usize;
                 let datas = buffer.datas_mut();
                 let Some(data) = datas.first_mut() else {
@@ -322,11 +355,13 @@ impl MicStreams {
             .map_err(|e| err("playback connect", e))?;
 
         Ok(Self {
-            _capture: capture,
+            capture,
             _capture_listener: capture_listener,
             playback,
             _playback_listener: playback_listener,
             params,
+            engine,
+            light_fallback,
         })
     }
 }
