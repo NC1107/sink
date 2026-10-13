@@ -4,6 +4,7 @@ mod error;
 mod hotkeys;
 mod mixer;
 mod persistence;
+mod renderer;
 mod state;
 mod webkit;
 
@@ -21,6 +22,12 @@ use audio::pactl::PactlBackend;
 use audio::pw_native::levels::LevelStore;
 use audio::pw_native::PipeWireBackend;
 use state::AppState;
+
+/// Choose WebKit's renderer; main calls it before any webview exists,
+/// because the renderer can't change under a running one.
+pub fn configure_renderer() {
+    renderer::configure();
+}
 
 pub fn run() {
     // Fall back to pactl subprocess calls if the native PipeWire loop can't
@@ -135,6 +142,8 @@ pub fn run() {
             commands::settings::set_balance_channels,
             commands::settings::set_balance_visible,
             commands::settings::set_start_minimized,
+            commands::settings::set_gpu_rendering,
+            commands::settings::get_renderer,
             commands::settings::reset_app,
             commands::hotkeys::get_hotkeys,
             commands::hotkeys::configure_hotkeys,

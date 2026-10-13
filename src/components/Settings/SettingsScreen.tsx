@@ -86,10 +86,28 @@ function engineDesc(native: boolean | null): string {
     : "pactl fallback - native engine unavailable on this system";
 }
 
+/** The slice of the backend's prefs this screen edits. */
+interface SettingsPrefs {
+  device_label_style: LabelStyle;
+  start_minimized: boolean;
+  gpu_rendering: boolean;
+  gpu_rendering_failed: boolean;
+}
+
+/** What the GPU rendering row says, given the setting and this launch. */
+function gpuRenderingSub(enabled: boolean, failed: boolean, active: boolean) {
+  if (failed && !enabled) return "Turned off, Sink didn't start with it on this system";
+  if (enabled !== active) return "Applies when Sink restarts";
+  return "Lighter on the CPU with a working GPU driver";
+}
+
 export function SettingsScreen() {
   const { theme, setTheme } = useTheme();
   const [autostart, setAutostart] = useState<boolean | null>(null);
   const [startMinimized, setStartMinimized] = useState(false);
+  const [gpuRendering, setGpuRendering] = useState(false);
+  const [gpuFailed, setGpuFailed] = useState(false);
+  const [renderer, setRenderer] = useState<{ available: boolean; active: boolean } | null>(null);
   const [backendNative, setBackendNative] = useState<boolean | null>(null);
   const [version, setVersion] = useState("");
   const [defaults, setDefaults] = useState<DefaultDevices>({ output: null, input: null });
@@ -109,11 +127,17 @@ export function SettingsScreen() {
     void invoke<DefaultDevices>("get_default_devices")
       .then(setDefaults)
       .catch(() => {});
-    void invoke<{ device_label_style: LabelStyle; start_minimized: boolean }>("get_prefs")
-      .then((p) => {
-        setLabelStyle(p.device_label_style);
-        setStartMinimized(p.start_minimized);
-      })
+    const applyPrefs = (p: SettingsPrefs) => {
+      setLabelStyle(p.device_label_style);
+      setStartMinimized(p.start_minimized);
+      setGpuRendering(p.gpu_rendering);
+      setGpuFailed(p.gpu_rendering_failed);
+    };
+    void invoke<SettingsPrefs>("get_prefs")
+      .then(applyPrefs)
+      .catch(() => {});
+    void invoke<{ available: boolean; active: boolean }>("get_renderer")
+      .then(setRenderer)
       .catch(() => {});
     void getVersion().then(setVersion);
   }, []);
@@ -157,6 +181,19 @@ export function SettingsScreen() {
       setError(null);
     } catch (e) {
       setStartMinimized(!next);
+      setError(String(e));
+    }
+  };
+
+  const toggleGpuRendering = async () => {
+    const next = !gpuRendering;
+    setGpuRendering(next);
+    try {
+      await invoke("set_gpu_rendering", { enabled: next });
+      setGpuFailed(false);
+      setError(null);
+    } catch (e) {
+      setGpuRendering(!next);
       setError(String(e));
     }
   };
@@ -287,6 +324,20 @@ export function SettingsScreen() {
                 <div className="rsub">Boot to the tray instead of opening the window</div>
               </div>
               <Toggle on={startMinimized} onClick={() => void toggleStartMinimized()} />
+            </div>
+          )}
+          {renderer?.available && (
+            <div className="row">
+              <div className="ricon">
+                <Ms name="memory" />
+              </div>
+              <div className="rmain">
+                <div className="rtitle">GPU rendering</div>
+                <div className="rsub">
+                  {gpuRenderingSub(gpuRendering, gpuFailed, renderer.active)}
+                </div>
+              </div>
+              <Toggle on={gpuRendering} onClick={() => void toggleGpuRendering()} />
             </div>
           )}
         </div>

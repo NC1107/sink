@@ -39,6 +39,15 @@ pub struct Prefs {
     /// showing the window (only meaningful with autostart enabled).
     #[serde(default)]
     pub start_minimized: bool,
+    /// Let WebKit render on the GPU (its DMABUF renderer). Off by default,
+    /// since the CPU path is the one every stack can draw; see `renderer`.
+    /// Read once at launch, before the webview exists.
+    #[serde(default)]
+    pub gpu_rendering: bool,
+    /// GPU rendering was switched off because a launch with it never
+    /// started, so Settings can say why.
+    #[serde(default)]
+    pub gpu_rendering_failed: bool,
 }
 
 fn default_true() -> bool {
@@ -54,6 +63,8 @@ impl Default for Prefs {
             balance_b: None,
             show_balance: true,
             start_minimized: false,
+            gpu_rendering: false,
+            gpu_rendering_failed: false,
         }
     }
 }
@@ -133,5 +144,12 @@ mod tests {
         // Unknown fields are tolerated; known fields still apply.
         let p = Prefs::parse(r#"{"device_label_style":"suffix","future_field":1}"#);
         assert_eq!(p.device_label_style, DeviceLabelStyle::Suffix);
+    }
+
+    #[test]
+    fn gpu_rendering_is_opt_in() {
+        // Files written before the setting existed keep the CPU renderer.
+        assert!(!Prefs::parse(r#"{"onboarded":true}"#).gpu_rendering);
+        assert!(Prefs::parse(r#"{"gpu_rendering":true}"#).gpu_rendering);
     }
 }
