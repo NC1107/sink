@@ -82,12 +82,15 @@ pub fn set_gpu_rendering(state: State<'_, AppState>, enabled: bool) -> Result<()
         mixer.prefs.gpu_rendering_failed = false;
         mixer.prefs.clone()
     };
+    if enabled {
+        crate::renderer::clear_probe();
+    }
     prefs.save().map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
 pub struct RendererInfo {
-    /// GPU rendering can be offered in this session (Wayland only).
+    /// GPU rendering can be offered here (Wayland with a hardware GPU).
     pub available: bool,
     /// This launch is drawing with the GPU renderer.
     pub active: bool,
