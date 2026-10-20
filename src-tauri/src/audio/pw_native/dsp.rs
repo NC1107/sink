@@ -1,4 +1,4 @@
-//! Native mic DSP chain: noise gate → gain → compressor → limiter. Pure Rust,
+//! Native mic DSP chain: noise gate → EQ → gain → compressor → limiter. Pure Rust,
 //! no LV2/LADSPA, running per-sample inside the mic capture stream's process
 //! callback, with one-pole envelope followers so gain changes never click.
 
@@ -84,19 +84,56 @@ impl DspChain {
         }
     }
 
-    /// Process a mono buffer in place.
-    pub fn process(&mut self, samples: &mut [f32], s: &DspSettings) {
+    /// Process a mono buffer in place. `eq` runs between the gate and the
+    /// compressor: the gate keys on the raw mic, and the compressor and
+    /// limiter see the shaped voice, so an EQ boost can't push past the ceiling.
+    pub fn process(&mut self, samples: &mut [f32], s: &DspSettings, eq: impl FnOnce(&mut [f32])) {
         if s.muted {
             samples.fill(0.0);
             return;
         }
+        if s.gate_enabled {
+            self.gate(samples, s);
+        }
+        eq(samples);
+        self.dynamics(samples, s);
+    }
 
+    fn gate(&mut self, samples: &mut [f32], s: &DspSettings) {
         let sr = self.sample_rate;
         let gate_thresh = db_to_linear(s.gate_threshold_db);
         let gate_att = coeff(GATE_ATTACK_MS, sr);
         let gate_rel = coeff(GATE_RELEASE_MS, sr);
         let hold_samples = (GATE_HOLD_MS * 0.001 * sr) as u32;
 
+        for sample in samples.iter_mut() {
+            let mag = sample.abs();
+            // envelope follower (fast attack, slower release); both decay
+            // toward zero over silence - see flush_denormal.
+            self.gate_env = flush_denormal(if mag > self.gate_env {
+                mag + gate_att * (self.gate_env - mag)
+            } else {
+                mag + gate_rel * (self.gate_env - mag)
+            });
+            let open = self.gate_env > gate_thresh;
+            if open {
+                self.gate_hold = hold_samples;
+            } else if self.gate_hold > 0 {
+                self.gate_hold -= 1;
+            }
+            let target = if open || self.gate_hold > 0 { 1.0 } else { 0.0 };
+            let c = if target > self.gate_gain {
+                gate_att
+            } else {
+                gate_rel
+            };
+            self.gate_gain = flush_denormal(target + c * (self.gate_gain - target));
+            *sample *= self.gate_gain;
+        }
+    }
+
+    fn dynamics(&mut self, samples: &mut [f32], s: &DspSettings) {
+        let sr = self.sample_rate;
         let comp_thresh_db = s.comp_threshold_db;
         let comp_att = coeff(COMP_ATTACK_MS, sr);
         let comp_rel = coeff(COMP_RELEASE_MS, sr);
@@ -106,36 +143,8 @@ impl DspChain {
         let limit_rel = coeff(LIMIT_RELEASE_MS, sr);
 
         for sample in samples.iter_mut() {
-            let mut x = *sample;
-
-            // ---- noise gate ----
-            if s.gate_enabled {
-                let mag = x.abs();
-                // envelope follower (fast attack, slower release); both decay
-                // toward zero over silence - see flush_denormal.
-                self.gate_env = flush_denormal(if mag > self.gate_env {
-                    mag + gate_att * (self.gate_env - mag)
-                } else {
-                    mag + gate_rel * (self.gate_env - mag)
-                });
-                let open = self.gate_env > gate_thresh;
-                if open {
-                    self.gate_hold = hold_samples;
-                } else if self.gate_hold > 0 {
-                    self.gate_hold -= 1;
-                }
-                let target = if open || self.gate_hold > 0 { 1.0 } else { 0.0 };
-                let c = if target > self.gate_gain {
-                    gate_att
-                } else {
-                    gate_rel
-                };
-                self.gate_gain = flush_denormal(target + c * (self.gate_gain - target));
-                x *= self.gate_gain;
-            }
-
             // ---- gain ----
-            x *= s.gain;
+            let mut x = *sample * s.gain;
 
             // ---- compressor (downward, feed-forward) ----
             if s.comp_enabled {
@@ -200,7 +209,7 @@ mod tests {
         let mut buf = vec![0.5f32; 480];
         let mut s = settings(false, false, false, 1.0);
         s.muted = true;
-        chain.process(&mut buf, &s);
+        chain.process(&mut buf, &s, |_| {});
         assert_eq!(peak(&buf), 0.0);
     }
 
@@ -211,7 +220,7 @@ mod tests {
         let mut hiss: Vec<f32> = (0..4800)
             .map(|i| 0.001 * ((i % 7) as f32 - 3.0) / 3.0)
             .collect();
-        chain.process(&mut hiss, &settings(true, false, false, 1.0));
+        chain.process(&mut hiss, &settings(true, false, false, 1.0), |_| {});
         assert!(
             peak(&hiss) < 0.0005,
             "noise should be gated, got {}",
@@ -221,7 +230,7 @@ mod tests {
         // loud signal (~-12 dB) opens the gate
         let mut chain = DspChain::new(48000.0);
         let mut voice: Vec<f32> = (0..4800).map(|i| 0.25 * (i as f32 * 0.05).sin()).collect();
-        chain.process(&mut voice, &settings(true, false, false, 1.0));
+        chain.process(&mut voice, &settings(true, false, false, 1.0), |_| {});
         // after the attack settles, the tail should be near full level
         assert!(peak(&voice[2400..]) > 0.2, "speech should pass the gate");
     }
@@ -230,7 +239,7 @@ mod tests {
     fn gain_scales_linearly() {
         let mut chain = DspChain::new(48000.0);
         let mut buf = vec![0.1f32; 480];
-        chain.process(&mut buf, &settings(false, false, false, 2.0));
+        chain.process(&mut buf, &settings(false, false, false, 2.0), |_| {});
         assert!((buf[479] - 0.2).abs() < 1e-6);
     }
 
@@ -239,7 +248,7 @@ mod tests {
         // Loud signal: -6 dB in, threshold -18 dB, ratio 3 → reduction.
         let mut chain = DspChain::new(48000.0);
         let mut loud: Vec<f32> = (0..48000).map(|i| 0.5 * (i as f32 * 0.06).sin()).collect();
-        chain.process(&mut loud, &settings(false, true, false, 1.0));
+        chain.process(&mut loud, &settings(false, true, false, 1.0), |_| {});
         let out_peak = peak(&loud[24000..]);
         // -6 dB over threshold is 12 dB; reduced by 12*(1-1/3)=8 dB, +4 makeup
         // → net -4 dB from input peak 0.5 → ~0.315. Allow generous tolerance.
@@ -248,11 +257,33 @@ mod tests {
     }
 
     #[test]
+    fn gate_keys_on_the_raw_mic_not_the_eq_boost() {
+        let mut chain = DspChain::new(48000.0);
+        let mut hiss: Vec<f32> = (0..4800)
+            .map(|i| 0.001 * ((i % 7) as f32 - 3.0) / 3.0)
+            .collect();
+        chain.process(&mut hiss, &settings(true, false, false, 1.0), |buf| {
+            buf.iter_mut().for_each(|x| *x *= 100.0);
+        });
+        assert!(peak(&hiss[2400..]) < 0.05, "boosted hiss should stay gated");
+    }
+
+    #[test]
+    fn limiter_catches_an_eq_boost() {
+        let mut chain = DspChain::new(48000.0);
+        let mut buf: Vec<f32> = (0..48000).map(|i| 0.5 * (i as f32 * 0.07).sin()).collect();
+        chain.process(&mut buf, &settings(false, false, true, 1.0), |buf| {
+            buf.iter_mut().for_each(|x| *x *= 4.0);
+        });
+        assert!(peak(&buf) <= db_to_linear(-1.0) + 1e-4);
+    }
+
+    #[test]
     fn limiter_holds_ceiling() {
         let mut chain = DspChain::new(48000.0);
         // grossly hot signal, gain-boosted ×4
         let mut buf: Vec<f32> = (0..48000).map(|i| 0.9 * (i as f32 * 0.07).sin()).collect();
-        chain.process(&mut buf, &settings(false, false, true, 4.0));
+        chain.process(&mut buf, &settings(false, false, true, 4.0), |_| {});
         let ceiling = db_to_linear(-1.0);
         assert!(
             peak(&buf) <= ceiling + 1e-4,

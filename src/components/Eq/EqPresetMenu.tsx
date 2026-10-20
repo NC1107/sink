@@ -18,15 +18,25 @@ interface EqPresetEntry {
 }
 
 interface EqPresetMenuProps {
-  sinkName: string;
+  /** Names the exported preset and its file. */
+  name: string;
   config: EqConfig;
   onApply: (config: EqConfig) => void;
   onError: (message: string) => void;
 }
 
+/** "Voice Chat" -> "voice-chat", falling back when nothing usable is left. */
+function exportFileStem(name: string): string {
+  const stem = name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return stem || "sink";
+}
+
 /** Preset picker + import/export. Bundled presets ship inside the binary
  *  (repo presets/eq/); user presets live in ~/.config/sink/eq_presets. */
-export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<EqPresetMenuProps>) {
+export function EqPresetMenu({ name, config, onApply, onError }: Readonly<EqPresetMenuProps>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [presets, setPresets] = useState<EqPresetEntry[]>([]);
   const [saveName, setSaveName] = useState("");
@@ -59,10 +69,10 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   };
 
   const saveCurrent = async () => {
-    const name = saveName.trim();
-    if (!name) return;
+    const presetName = saveName.trim();
+    if (!presetName) return;
     try {
-      await invoke("save_user_eq_preset", { name, config });
+      await invoke("save_user_eq_preset", { name: presetName, config });
       setSaveName("");
       refresh();
     } catch (e) {
@@ -103,11 +113,11 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   const exportToFile = async () => {
     try {
       const path = await saveDialog({
-        defaultPath: `${sinkName.replace(/^sink_/, "")}-eq.json`,
+        defaultPath: `${exportFileStem(name)}-eq.json`,
         filters: [{ name: "EQ preset", extensions: ["json"] }],
       });
       if (typeof path !== "string") return;
-      await invoke("export_channel_eq_to_file", { sinkName, path });
+      await invoke("export_eq_to_file", { name, config, path });
       setMenuOpen(false);
     } catch (e) {
       onError(String(e));

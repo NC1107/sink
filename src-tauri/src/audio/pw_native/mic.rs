@@ -1,5 +1,5 @@
 //! Native mic engine: captures the selected microphone, runs the DSP chain
-//! (noise suppression → gate → gain → compressor → limiter), and plays the processed signal into a
+//! (noise suppression → gate → EQ → gain → compressor → limiter), and plays the processed signal into a
 //! virtual `Audio/Source/Virtual` node that Discord/OBS can capture.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -12,6 +12,7 @@ use spa::pod::Pod;
 use crate::audio::deepfilter::EngineProcess;
 use crate::audio::pw_native::denoise::Denoiser;
 use crate::audio::pw_native::dsp::{DspChain, DspSettings};
+use crate::audio::pw_native::eq::{EqEngine, EqParams};
 use crate::audio::pw_native::levels::LevelStore;
 use crate::audio::pw_native::ring::Ring;
 use crate::audio::types::{MicConfig, NoiseSuppression};
@@ -35,6 +36,7 @@ pub struct MicParams {
     comp_ratio_bits: AtomicU32,
     limiter_ceiling_bits: AtomicU32,
     denoise: AtomicBool,
+    eq: EqParams,
 }
 
 impl MicParams {
@@ -50,6 +52,7 @@ impl MicParams {
             comp_ratio_bits: AtomicU32::new(3.0f32.to_bits()),
             limiter_ceiling_bits: AtomicU32::new((-1.0f32).to_bits()),
             denoise: AtomicBool::new(false),
+            eq: EqParams::from_config(&config.eq),
         };
         p.apply(config, light_fallback);
         p
@@ -77,6 +80,7 @@ impl MicParams {
             config.noise_suppression == NoiseSuppression::Light || light_fallback,
             Ordering::Relaxed,
         );
+        self.eq.apply(&config.eq);
     }
 
     fn settings(&self) -> DspSettings {
@@ -98,6 +102,7 @@ struct CaptureCtx {
     denoiser: Denoiser,
     denoising: bool,
     chain: DspChain,
+    eq: EqEngine,
     params: Arc<MicParams>,
     ring: Arc<Ring>,
     levels: Arc<LevelStore>,
@@ -202,6 +207,7 @@ impl MicStreams {
                 denoiser: Denoiser::new(),
                 denoising: false,
                 chain: DspChain::new(48000.0),
+                eq: EqEngine::new(48000.0),
                 params: params.clone(),
                 ring: ring.clone(),
                 levels,
@@ -217,6 +223,7 @@ impl MicStreams {
                 let mut info = spa::param::audio::AudioInfoRaw::new();
                 if info.parse(param).is_ok() && info.rate() > 0 {
                     ctx.chain = DspChain::new(info.rate() as f32);
+                    ctx.eq.set_sample_rate(info.rate() as f32);
                 }
             })
             .process(|stream, ctx| {
@@ -250,7 +257,10 @@ impl MicStreams {
                 }
 
                 let settings = ctx.params.settings();
-                ctx.chain.process(&mut ctx.scratch, &settings);
+                let (eq, eq_params) = (&mut ctx.eq, &ctx.params.eq);
+                ctx.chain.process(&mut ctx.scratch, &settings, |buf| {
+                    eq.process_mono(buf, eq_params);
+                });
 
                 // Post-DSP level for the UI (mono → both meter channels).
                 let peak = ctx.scratch.iter().fold(0.0f32, |a, s| a.max(s.abs()));

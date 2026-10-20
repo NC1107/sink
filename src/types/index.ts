@@ -72,6 +72,8 @@ export interface MicConfig {
   comp_ratio: number;
   limiter_ceiling_db: number;
   noise_suppression: NoiseSuppression;
+  /** Runs between the gate and the compressor. */
+  eq: EqConfig;
 }
 
 /** Default DSP values (markers on the tuning sliders). */

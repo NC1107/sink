@@ -313,11 +313,20 @@ impl EqEngine {
     /// Process an interleaved stereo buffer in place. Pass-through when
     /// disabled - covers the window between a disable apply() and the relink.
     pub fn process_interleaved(&mut self, buf: &mut [f32], params: &EqParams) {
+        self.process_frames::<2>(buf, params);
+    }
+
+    /// The mic chain's EQ: always in line, so disabled is the steady state.
+    pub fn process_mono(&mut self, buf: &mut [f32], params: &EqParams) {
+        self.process_frames::<1>(buf, params);
+    }
+
+    fn process_frames<const CHANNELS: usize>(&mut self, buf: &mut [f32], params: &EqParams) {
         self.refresh(params);
         if !self.enabled {
             return;
         }
-        for frame in buf.as_chunks_mut::<2>().0 {
+        for frame in buf.as_chunks_mut::<CHANNELS>().0 {
             for (ch, sample) in frame.iter_mut().enumerate() {
                 let mut x = *sample * self.preamp_linear;
                 for i in 0..self.count {
@@ -489,6 +498,22 @@ mod tests {
         assert_eq!(engine.count, 1);
         let expected = BiquadCoeffs::design(EqBandKind::HighPass, 80.0, 0.0, 0.71, SR);
         assert_eq!(engine.coeffs[0], expected);
+    }
+
+    #[test]
+    fn mono_filters_like_one_stereo_channel() {
+        let params = EqParams::from_config(&config(
+            vec![band(EqBandKind::Peaking, 1000.0, 6.0, 1.0)],
+            -2.0,
+        ));
+        let input: Vec<f32> = (0..480).map(|i| 0.5 * (i as f32 * 0.13).sin()).collect();
+        let mut mono = input.clone();
+        EqEngine::new(SR).process_mono(&mut mono, &params);
+        let mut stereo: Vec<f32> = input.iter().flat_map(|&x| [x, 0.0]).collect();
+        EqEngine::new(SR).process_interleaved(&mut stereo, &params);
+        let left: Vec<f32> = stereo.iter().step_by(2).copied().collect();
+        assert_eq!(mono, left);
+        assert_ne!(mono, input);
     }
 
     #[test]

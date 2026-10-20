@@ -101,9 +101,13 @@ pub fn export_channel_eq(state: State<'_, AppState>, sink_name: String) -> Resul
             .unwrap_or_else(|| sink_name.clone());
         (mixer.eq.get(&sink_name), label)
     };
+    preset_json(label, config)
+}
+
+fn preset_json(name: String, config: EqConfig) -> Result<String, String> {
     let preset = EqPreset {
         schema: PRESET_SCHEMA,
-        name: label,
+        name,
         author: None,
         description: None,
         preamp_db: config.preamp_db,
@@ -112,15 +116,13 @@ pub fn export_channel_eq(state: State<'_, AppState>, sink_name: String) -> Resul
     serde_json::to_string_pretty(&preset).map_err(|e| e.to_string())
 }
 
-/// Write a channel's EQ preset JSON to `path` (picked via the native save
-/// dialog; the file I/O stays in Rust so no fs plugin scope is needed).
+/// Write the editor's curve as preset JSON to `path` (picked via the native
+/// save dialog; the file I/O stays in Rust so no fs plugin scope is needed).
+/// It takes the curve itself so channels and the mic export the same way.
 #[tauri::command]
-pub fn export_channel_eq_to_file(
-    state: State<'_, AppState>,
-    sink_name: String,
-    path: String,
-) -> Result<(), String> {
-    let json = export_channel_eq(state, sink_name)?;
+pub fn export_eq_to_file(name: String, mut config: EqConfig, path: String) -> Result<(), String> {
+    config.clamp_ranges();
+    let json = preset_json(name, config)?;
     std::fs::write(&path, json).map_err(|e| format!("write {path}: {e}"))
 }
 
@@ -150,4 +152,31 @@ pub fn import_eq_config(text: String) -> Result<EqConfig, String> {
 pub fn import_eq_file(path: String) -> Result<EqConfig, String> {
     let text = std::fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))?;
     import_eq_config(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::testing::TempConfig;
+
+    #[test]
+    fn exported_curve_imports_back_clamped() {
+        let _root = TempConfig::new("eq-export");
+        let path = crate::persistence::config_root()
+            .unwrap()
+            .join("mic-eq.json");
+        let mut config = EqConfig {
+            preamp_db: -3.0,
+            ..EqConfig::default()
+        };
+        config.bands[0].freq_hz = 99999.0;
+        export_eq_to_file("Clean Mic".into(), config, path.display().to_string()).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"name\": \"Clean Mic\""));
+        let back = import_eq_file(path.display().to_string()).unwrap();
+        assert_eq!(back.preamp_db, -3.0);
+        assert_eq!(back.bands[0].freq_hz, 20000.0);
+        assert_eq!(back.bands.len(), EqConfig::default().bands.len());
+    }
 }
