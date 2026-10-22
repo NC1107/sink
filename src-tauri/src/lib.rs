@@ -113,7 +113,6 @@ pub fn run() {
             commands::eq::list_eq_presets,
             commands::eq::save_user_eq_preset,
             commands::eq::delete_user_eq_preset,
-            commands::eq::export_channel_eq,
             commands::eq::export_eq_to_file,
             commands::eq::import_eq_config,
             commands::eq::import_eq_file,

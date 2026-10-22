@@ -97,6 +97,10 @@ export interface EqBand {
   q: number;
 }
 
+/** What an EQ preset is tuned for (mirrors Rust PresetTarget): channels
+ *  you hear, or the mic others hear. Each editor only offers its own kind. */
+export type PresetTarget = "output" | "mic";
+
 /** A channel's parametric EQ (mirrors Rust EqConfig). */
 export interface EqConfig {
   enabled: boolean;

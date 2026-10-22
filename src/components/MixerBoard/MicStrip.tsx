@@ -111,6 +111,7 @@ export function MicStrip() {
 
       <EqModal
         name={micConfig.output_label || "Microphone"}
+        target="mic"
         config={micConfig.eq}
         onChange={(eq) => void setMicConfig({ eq })}
         open={editingEq}

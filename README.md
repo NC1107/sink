@@ -37,6 +37,7 @@ Config is plain json, so nothing is hidden.
   In obs, add a mix as an audio input, not Desktop Audio.
   A mix can also sit with the output devices instead if you would rather keep your recording list short, and it stays capturable through its monitor.
 - **Equalizer** - parametric EQ (up to 10 bands) on each channel and on the mic, with a draggable response curve and bundled community presets.
+  The mic gets its own voice presets (Broadcast, Podcast, De-boom and more), kept apart from the channel ones.
   It imports and exports presets too, including AutoEq text blocks.
 - **Microphone** - a virtual mic you select in discord or obs, named whatever you want.
   Your input goes through noise suppression, a noise gate, an eq, a compressor and a limiter, in that order.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
-import type { EqBand, EqConfig, VirtualSink } from "../../types";
+import type { EqBand, EqConfig, PresetTarget, VirtualSink } from "../../types";
 import { defaultEqConfig, MAX_EQ_BANDS } from "../../types";
 import { Modal } from "../Modal";
 import { Ms } from "../Icons";
@@ -13,6 +13,8 @@ import { EqPresetMenu } from "./EqPresetMenu";
 interface EqModalProps {
   /** What the EQ shapes; titles the modal and names exported presets. */
   name: string;
+  /** Which preset list the editor offers. */
+  target: PresetTarget;
   config: EqConfig;
   onChange: (config: EqConfig) => void;
   open: boolean;
@@ -30,6 +32,7 @@ export function ChannelEqModal({
   return (
     <EqModal
       name={channel.label}
+      target="output"
       config={config}
       onChange={(next) => void setChannelEq(channel.name, next)}
       open={open}
@@ -39,7 +42,14 @@ export function ChannelEqModal({
 }
 
 /** Parametric EQ editor: response curve, band list, preamp. */
-export function EqModal({ name, config, onChange: apply, open, onClose }: Readonly<EqModalProps>) {
+export function EqModal({
+  name,
+  target,
+  config,
+  onChange: apply,
+  open,
+  onClose,
+}: Readonly<EqModalProps>) {
   const backendNative = useMixerStore((s) => s.backendNative);
   const [selected, setSelected] = useState(0);
 
@@ -87,7 +97,13 @@ export function EqModal({ name, config, onChange: apply, open, onClose }: Readon
           <span>{config.enabled ? "On" : "Off"}</span>
         </div>
         <div className="eqm-head-actions">
-          <EqPresetMenu name={name} config={config} onApply={apply} onError={setError} />
+          <EqPresetMenu
+            name={name}
+            target={target}
+            config={config}
+            onApply={apply}
+            onError={setError}
+          />
           <button
             type="button"
             className="select eqm-iconbtn"
