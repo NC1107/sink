@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "name": "Telephone",
+  "target": "mic",
+  "author": "Sink",
+  "description": "Old phone line: only 300 Hz to 3.4 kHz gets through.",
+  "preamp_db": -3,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 300, "gain_db": 0, "q": 0.71 },
+    { "kind": "high_pass", "freq_hz": 300, "gain_db": 0, "q": 0.71 },
+    { "kind": "low_pass", "freq_hz": 3400, "gain_db": 0, "q": 0.71 },
+    { "kind": "low_pass", "freq_hz": 3400, "gain_db": 0, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 1500, "gain_db": 3, "q": 1.0 }
+  ]
+}

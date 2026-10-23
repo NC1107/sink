@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "name": "Broadcast",
+  "target": "mic",
+  "author": "Sink",
+  "description": "Radio host voice: full low end, forward presence, rumble rolled off.",
+  "preamp_db": -4,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 70, "gain_db": 0, "q": 0.71 },
+    { "kind": "low_shelf", "freq_hz": 150, "gain_db": 3, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 350, "gain_db": -2, "q": 1.2 },
+    { "kind": "peaking", "freq_hz": 3000, "gain_db": 3, "q": 1.0 },
+    { "kind": "high_shelf", "freq_hz": 10000, "gain_db": 2, "q": 0.71 }
+  ]
+}

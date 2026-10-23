@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::audio::eq_import::parse_autoeq;
-use crate::audio::presets::{bundled_presets, EqPreset, PRESET_SCHEMA};
+use crate::audio::presets::{bundled_presets, EqPreset, PresetTarget, PRESET_SCHEMA};
 use crate::audio::types::EqConfig;
 use crate::persistence::eq_presets;
 use crate::state::AppState;
@@ -46,10 +46,11 @@ pub struct EqPresetEntry {
     pub preset: EqPreset,
 }
 
-/// Bundled presets first, then the user's library, each sorted by name.
+/// The presets for one editor: bundled first, then the user's library, each
+/// sorted by name.
 #[tauri::command]
-pub fn list_eq_presets() -> Result<Vec<EqPresetEntry>, String> {
-    let mut entries: Vec<EqPresetEntry> = bundled_presets()
+pub fn list_eq_presets(target: PresetTarget) -> Result<Vec<EqPresetEntry>, String> {
+    let mut entries: Vec<EqPresetEntry> = bundled_presets(target)
         .into_iter()
         .map(|preset| EqPresetEntry {
             source: "bundled".into(),
@@ -57,7 +58,7 @@ pub fn list_eq_presets() -> Result<Vec<EqPresetEntry>, String> {
         })
         .collect();
     entries.extend(
-        eq_presets::list()
+        eq_presets::list(target)
             .map_err(|e| e.to_string())?
             .into_iter()
             .map(|preset| EqPresetEntry {
@@ -68,59 +69,46 @@ pub fn list_eq_presets() -> Result<Vec<EqPresetEntry>, String> {
     Ok(entries)
 }
 
-/// Save the given config into the user's local preset library.
-#[tauri::command]
-pub fn save_user_eq_preset(name: String, mut config: EqConfig) -> Result<(), String> {
+fn user_preset(name: String, target: PresetTarget, mut config: EqConfig) -> EqPreset {
     config.clamp_ranges();
-    let preset = EqPreset {
+    EqPreset {
         schema: PRESET_SCHEMA,
         name,
+        target,
         author: None,
         description: None,
         preamp_db: config.preamp_db,
         bands: config.bands,
-    };
-    eq_presets::save(&preset).map_err(|e| e.to_string())
+    }
+}
+
+/// Save the given config into the user's local preset library.
+#[tauri::command]
+pub fn save_user_eq_preset(
+    name: String,
+    target: PresetTarget,
+    config: EqConfig,
+) -> Result<(), String> {
+    eq_presets::save(&user_preset(name, target, config)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_user_eq_preset(name: String) -> Result<(), String> {
-    eq_presets::delete(&name).map_err(|e| e.to_string())
+pub fn delete_user_eq_preset(name: String, target: PresetTarget) -> Result<(), String> {
+    eq_presets::delete(&name, target).map_err(|e| e.to_string())
 }
 
-/// A channel's EQ as shareable preset JSON (pretty-printed, schema 1).
+/// Write the editor's curve as preset JSON to `path` (picked via the native
+/// save dialog; the file I/O stays in Rust so no fs plugin scope is needed).
+/// It takes the curve itself so channels and the mic export the same way.
 #[tauri::command]
-pub fn export_channel_eq(state: State<'_, AppState>, sink_name: String) -> Result<String, String> {
-    let (config, label) = {
-        let mixer = state.lock_mixer()?;
-        let label = mixer
-            .channels
-            .iter()
-            .find(|c| c.name == sink_name)
-            .map(|c| c.label.clone())
-            .unwrap_or_else(|| sink_name.clone());
-        (mixer.eq.get(&sink_name), label)
-    };
-    let preset = EqPreset {
-        schema: PRESET_SCHEMA,
-        name: label,
-        author: None,
-        description: None,
-        preamp_db: config.preamp_db,
-        bands: config.bands,
-    };
-    serde_json::to_string_pretty(&preset).map_err(|e| e.to_string())
-}
-
-/// Write a channel's EQ preset JSON to `path` (picked via the native save
-/// dialog; the file I/O stays in Rust so no fs plugin scope is needed).
-#[tauri::command]
-pub fn export_channel_eq_to_file(
-    state: State<'_, AppState>,
-    sink_name: String,
+pub fn export_eq_to_file(
+    name: String,
+    target: PresetTarget,
+    config: EqConfig,
     path: String,
 ) -> Result<(), String> {
-    let json = export_channel_eq(state, sink_name)?;
+    let json = serde_json::to_string_pretty(&user_preset(name, target, config))
+        .map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| format!("write {path}: {e}"))
 }
 
@@ -150,4 +138,38 @@ pub fn import_eq_config(text: String) -> Result<EqConfig, String> {
 pub fn import_eq_file(path: String) -> Result<EqConfig, String> {
     let text = std::fs::read_to_string(&path).map_err(|e| format!("read {path}: {e}"))?;
     import_eq_config(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::persistence::testing::TempConfig;
+
+    #[test]
+    fn exported_curve_imports_back_clamped() {
+        let _root = TempConfig::new("eq-export");
+        let path = crate::persistence::config_root()
+            .unwrap()
+            .join("mic-eq.json");
+        let mut config = EqConfig {
+            preamp_db: -3.0,
+            ..EqConfig::default()
+        };
+        config.bands[0].freq_hz = 99999.0;
+        export_eq_to_file(
+            "Clean Mic".into(),
+            PresetTarget::Mic,
+            config,
+            path.display().to_string(),
+        )
+        .unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"name\": \"Clean Mic\""));
+        assert!(text.contains("\"target\": \"mic\""));
+        let back = import_eq_file(path.display().to_string()).unwrap();
+        assert_eq!(back.preamp_db, -3.0);
+        assert_eq!(back.bands[0].freq_hz, 20000.0);
+        assert_eq!(back.bands.len(), EqConfig::default().bands.len());
+    }
 }

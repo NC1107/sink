@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "Podcast",
+  "target": "mic",
+  "author": "Sink",
+  "description": "A gentler Broadcast: clearer speech without sounding processed.",
+  "preamp_db": -2,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 80, "gain_db": 0, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 250, "gain_db": -2, "q": 1.2 },
+    { "kind": "peaking", "freq_hz": 3500, "gain_db": 2, "q": 1.0 },
+    { "kind": "high_shelf", "freq_hz": 9000, "gain_db": 1.5, "q": 0.71 }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "name": "Walkie-Talkie",
+  "target": "mic",
+  "author": "Sink",
+  "description": "Narrow, honky radio voice.",
+  "preamp_db": -6,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 500, "gain_db": 0, "q": 0.71 },
+    { "kind": "high_pass", "freq_hz": 500, "gain_db": 0, "q": 0.71 },
+    { "kind": "low_pass", "freq_hz": 2500, "gain_db": 0, "q": 0.71 },
+    { "kind": "low_pass", "freq_hz": 2500, "gain_db": 0, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 1200, "gain_db": 6, "q": 1.5 }
+  ]
+}
