@@ -31,8 +31,9 @@ interface EqPresetMenuProps {
 function exportFileStem(name: string): string {
   const stem = name
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .join("-");
   return stem || "sink";
 }
 
