@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
 import { MAX_MIC_GAIN, MIC_LEVEL_KEY } from "../../types";
 import { perceptual } from "../../lib/audio";
+import { EqModal } from "../Eq/EqModal";
 import { Ms } from "../Icons";
 import { Fader } from "./Fader";
 import { VolumeReadout } from "./VolumeReadout";
@@ -15,6 +16,7 @@ export function MicStrip() {
   const monitoring = useMixerStore((s) => s.monitors[MIC_LEVEL_KEY] ?? false);
   const toggleMonitor = useMixerStore((s) => s.toggleMonitor);
   const [editing, setEditing] = useState(false);
+  const [editingEq, setEditingEq] = useState(false);
   const [draft, setDraft] = useState("");
 
   if (!micConfig?.enabled) return null;
@@ -96,7 +98,25 @@ export function MicStrip() {
         >
           <Ms name="headphones" style={{ fontSize: 16 }} />
         </button>
+        <button
+          type="button"
+          className={"sbtn" + (micConfig.eq.enabled ? " on-eq" : "")}
+          onClick={() => setEditingEq(true)}
+          aria-pressed={micConfig.eq.enabled}
+          title="Equalizer"
+        >
+          <Ms name="tune" style={{ fontSize: 16 }} />
+        </button>
       </div>
+
+      <EqModal
+        name={micConfig.output_label || "Microphone"}
+        target="mic"
+        config={micConfig.eq}
+        onChange={(eq) => void setMicConfig({ eq })}
+        open={editingEq}
+        onClose={() => setEditingEq(false)}
+      />
 
       <div className="strip-route" />
     </div>

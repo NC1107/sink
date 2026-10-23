@@ -72,6 +72,8 @@ export interface MicConfig {
   comp_ratio: number;
   limiter_ceiling_db: number;
   noise_suppression: NoiseSuppression;
+  /** Runs between the gate and the compressor. */
+  eq: EqConfig;
 }
 
 /** Default DSP values (markers on the tuning sliders). */
@@ -94,6 +96,10 @@ export interface EqBand {
   /** Peaking/LP/HP: filter Q. Shelves: RBJ shelf slope. */
   q: number;
 }
+
+/** What an EQ preset is tuned for (mirrors Rust PresetTarget): channels
+ *  you hear, or the mic others hear. Each editor only offers its own kind. */
+export type PresetTarget = "output" | "mic";
 
 /** A channel's parametric EQ (mirrors Rust EqConfig). */
 export interface EqConfig {

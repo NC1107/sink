@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMixerStore } from "../../store/mixer";
-import type { EqBand, EqConfig, VirtualSink } from "../../types";
+import type { EqBand, EqConfig, PresetTarget, VirtualSink } from "../../types";
 import { defaultEqConfig, MAX_EQ_BANDS } from "../../types";
 import { Modal } from "../Modal";
 import { Ms } from "../Icons";
@@ -11,22 +11,50 @@ import { bandColor, EqCurve } from "./EqCurve";
 import { EqPresetMenu } from "./EqPresetMenu";
 
 interface EqModalProps {
-  channel: VirtualSink;
+  /** What the EQ shapes; titles the modal and names exported presets. */
+  name: string;
+  /** Which preset list the editor offers. */
+  target: PresetTarget;
+  config: EqConfig;
+  onChange: (config: EqConfig) => void;
   open: boolean;
   onClose: () => void;
 }
 
-/** Per-channel parametric EQ editor: response curve, band list, preamp. */
-export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
+/** A channel's EQ, kept in the store per channel. */
+export function ChannelEqModal({
+  channel,
+  open,
+  onClose,
+}: Readonly<{ channel: VirtualSink; open: boolean; onClose: () => void }>) {
   const config = useMixerStore((s) => s.eqConfigs[channel.name] ?? null) ?? defaultEqConfig();
   const setChannelEq = useMixerStore((s) => s.setChannelEq);
+  return (
+    <EqModal
+      name={channel.label}
+      target="output"
+      config={config}
+      onChange={(next) => void setChannelEq(channel.name, next)}
+      open={open}
+      onClose={onClose}
+    />
+  );
+}
+
+/** Parametric EQ editor: response curve, band list, preamp. */
+export function EqModal({
+  name,
+  target,
+  config,
+  onChange: apply,
+  open,
+  onClose,
+}: Readonly<EqModalProps>) {
   const backendNative = useMixerStore((s) => s.backendNative);
   const [selected, setSelected] = useState(0);
 
   // Surface preset/import failures on the app's global error banner.
   const setError = (message: string) => useMixerStore.setState({ error: message });
-
-  const apply = (next: EqConfig) => void setChannelEq(channel.name, next);
 
   const patchBand = (index: number, patch: Partial<EqBand>) => {
     const bands = config.bands.map((b, i) => (i === index ? { ...b, ...patch } : b));
@@ -54,12 +82,7 @@ export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={`${channel.label} - Equalizer`}
-      className="eqm-modal"
-    >
+    <Modal open={open} onClose={onClose} title={`${name} - Equalizer`} className="eqm-modal">
       {backendNative === false && (
         <p className="modal-text">
           Parametric EQ requires the native PipeWire engine, which isn't running on this system.
@@ -75,7 +98,8 @@ export function EqModal({ channel, open, onClose }: Readonly<EqModalProps>) {
         </div>
         <div className="eqm-head-actions">
           <EqPresetMenu
-            sinkName={channel.name}
+            name={name}
+            target={target}
             config={config}
             onApply={apply}
             onError={setError}

@@ -412,6 +412,8 @@ pub struct MicConfig {
     pub limiter_ceiling_db: f32,
     #[serde(default)]
     pub noise_suppression: NoiseSuppression,
+    #[serde(default)]
+    pub eq: EqConfig,
 }
 
 /// A config value clamped to its range, or the default when it is not a
@@ -448,6 +450,7 @@ impl MicConfig {
             -60.0,
             0.0,
         );
+        self.eq.clamp_ranges();
     }
 }
 
@@ -467,6 +470,7 @@ impl Default for MicConfig {
             comp_ratio: default_comp_ratio(),
             limiter_ceiling_db: default_limiter_ceiling(),
             noise_suppression: NoiseSuppression::Off,
+            eq: EqConfig::default(),
         }
     }
 }
@@ -520,6 +524,30 @@ mod mic_clamp_tests {
         let before = c.clone();
         c.clamp_ranges();
         assert_eq!(c, before);
+    }
+
+    #[test]
+    fn config_from_before_mic_eq_loads_with_it_off() {
+        let mut v = serde_json::to_value(MicConfig {
+            gain_percent: 140,
+            ..MicConfig::default()
+        })
+        .unwrap();
+        v.as_object_mut().unwrap().remove("eq");
+        let c: MicConfig = serde_json::from_value(v).unwrap();
+        assert_eq!(c.eq, EqConfig::default());
+        assert!(!c.eq.enabled);
+        assert_eq!(c.gain_percent, 140);
+    }
+
+    #[test]
+    fn clamp_ranges_sanitizes_the_eq_too() {
+        let mut c = MicConfig::default();
+        c.eq.preamp_db = f32::NAN;
+        c.eq.bands[0].freq_hz = 99999.0;
+        c.clamp_ranges();
+        assert_eq!(c.eq.preamp_db, 0.0);
+        assert_eq!(c.eq.bands[0].freq_hz, 20000.0);
     }
 
     #[test]

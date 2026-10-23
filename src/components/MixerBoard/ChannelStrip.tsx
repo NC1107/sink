@@ -6,7 +6,7 @@ import { channelIcon, Ms, ICON_CHOICES } from "../Icons";
 import { ConfirmModal } from "../ConfirmModal";
 import { Popover } from "../Popover";
 import { perceptual } from "../../lib/audio";
-import { EqModal } from "../Eq/EqModal";
+import { ChannelEqModal } from "../Eq/EqModal";
 import { ChannelApps } from "./ChannelApps";
 import { Fader } from "./Fader";
 import { OutputSelect } from "./OutputSelect";
@@ -188,7 +188,7 @@ export function ChannelStrip({
         </button>
       </div>
 
-      <EqModal channel={channel} open={editingEq} onClose={() => setEditingEq(false)} />
+      <ChannelEqModal channel={channel} open={editingEq} onClose={() => setEditingEq(false)} />
 
       <OutputSelect
         compact

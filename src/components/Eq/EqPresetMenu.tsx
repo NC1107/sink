@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import type { EqConfig } from "../../types";
+import type { EqConfig, PresetTarget } from "../../types";
 import { Ms } from "../Icons";
 import { Popover } from "../Popover";
 
@@ -10,6 +10,7 @@ interface EqPresetEntry {
   preset: {
     schema: number;
     name: string;
+    target: PresetTarget;
     author?: string | null;
     description?: string | null;
     preamp_db: number;
@@ -18,15 +19,34 @@ interface EqPresetEntry {
 }
 
 interface EqPresetMenuProps {
-  sinkName: string;
+  /** Names the exported preset and its file. */
+  name: string;
+  target: PresetTarget;
   config: EqConfig;
   onApply: (config: EqConfig) => void;
   onError: (message: string) => void;
 }
 
-/** Preset picker + import/export. Bundled presets ship inside the binary
- *  (repo presets/eq/); user presets live in ~/.config/sink/eq_presets. */
-export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<EqPresetMenuProps>) {
+/** "Voice Chat" -> "voice-chat", falling back when nothing usable is left. */
+function exportFileStem(name: string): string {
+  const stem = name
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .join("-");
+  return stem || "sink";
+}
+
+/** Preset picker + import/export for one target. Bundled presets ship inside
+ *  the binary (repo presets/eq/); user presets live in
+ *  ~/.config/sink/eq_presets (mic ones in its mic/ folder). */
+export function EqPresetMenu({
+  name,
+  target,
+  config,
+  onApply,
+  onError,
+}: Readonly<EqPresetMenuProps>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [presets, setPresets] = useState<EqPresetEntry[]>([]);
   const [saveName, setSaveName] = useState("");
@@ -36,7 +56,7 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const refresh = () => {
-    invoke<EqPresetEntry[]>("list_eq_presets")
+    invoke<EqPresetEntry[]>("list_eq_presets", { target })
       .then(setPresets)
       .catch((e) => onError(String(e)));
   };
@@ -59,10 +79,10 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   };
 
   const saveCurrent = async () => {
-    const name = saveName.trim();
-    if (!name) return;
+    const presetName = saveName.trim();
+    if (!presetName) return;
     try {
-      await invoke("save_user_eq_preset", { name, config });
+      await invoke("save_user_eq_preset", { name: presetName, target, config });
       setSaveName("");
       refresh();
     } catch (e) {
@@ -103,20 +123,20 @@ export function EqPresetMenu({ sinkName, config, onApply, onError }: Readonly<Eq
   const exportToFile = async () => {
     try {
       const path = await saveDialog({
-        defaultPath: `${sinkName.replace(/^sink_/, "")}-eq.json`,
+        defaultPath: `${exportFileStem(name)}-eq.json`,
         filters: [{ name: "EQ preset", extensions: ["json"] }],
       });
       if (typeof path !== "string") return;
-      await invoke("export_channel_eq_to_file", { sinkName, path });
+      await invoke("export_eq_to_file", { name, target, config, path });
       setMenuOpen(false);
     } catch (e) {
       onError(String(e));
     }
   };
 
-  const deletePreset = async (name: string) => {
+  const deletePreset = async (presetName: string) => {
     try {
-      await invoke("delete_user_eq_preset", { name });
+      await invoke("delete_user_eq_preset", { name: presetName, target });
       setConfirmDelete(null);
       refresh();
     } catch (e) {

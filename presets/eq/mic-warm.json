@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "Warm",
+  "target": "mic",
+  "author": "Sink",
+  "description": "Softens a thin or harsh mic.",
+  "preamp_db": -3,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 60, "gain_db": 0, "q": 0.71 },
+    { "kind": "low_shelf", "freq_hz": 180, "gain_db": 3, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 3500, "gain_db": -1.5, "q": 1.0 },
+    { "kind": "high_shelf", "freq_hz": 8000, "gain_db": -3, "q": 0.71 }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "name": "Bright",
+  "target": "mic",
+  "author": "Sink",
+  "description": "Opens up a dull or muffled mic.",
+  "preamp_db": -4,
+  "bands": [
+    { "kind": "high_pass", "freq_hz": 80, "gain_db": 0, "q": 0.71 },
+    { "kind": "peaking", "freq_hz": 4000, "gain_db": 3, "q": 0.9 },
+    { "kind": "high_shelf", "freq_hz": 8000, "gain_db": 4, "q": 0.71 }
+  ]
+}

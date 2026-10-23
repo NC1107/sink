@@ -2083,7 +2083,7 @@ body,
   overflow: hidden;
 }
 /* Everything above the list keeps its natural height; only the list flexes. */
-.modal.eqm-modal > * {
+.modal.eqm-modal > :not(.eqm-bandlist) {
   flex-shrink: 0;
 }
 .eqm-head {
@@ -2257,7 +2257,7 @@ body,
 .eqm-kind {
   /* Fixed width so "Peak" and "High shelf" share one edge and the row
      controls stay aligned; the delete button floats to the far right. */
-  flex: 0 0 104px;
+  flex: 0 0 112px;
   min-width: 0;
   height: 26px;
   padding: 0 22px 0 var(--sp-2);
