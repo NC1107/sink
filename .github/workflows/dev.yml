@@ -263,10 +263,12 @@ jobs:
               ;;
             appimage)
               # Headless runner: give it the graphics stack a desktop has, since
-              # an appimage isn't expected to ship drivers.
+              # an appimage isn't expected to ship drivers. Same for
+              # libpipewire: it must match the host's daemon, so it is never
+              # bundled, and the runner image stopped carrying it.
               sudo apt-get update
               sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-                xvfb libegl1 libgl1 libgles2
+                xvfb libegl1 libgl1 libgles2 libpipewire-0.3-0t64
               ;;
           esac
 
