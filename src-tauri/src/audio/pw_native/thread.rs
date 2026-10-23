@@ -1126,6 +1126,27 @@ fn fallback_sink(s: &State) -> Option<u32> {
     )
 }
 
+/// The system default sink's node, unless it is one of ours: a user can make
+/// a channel the default, and following it would loop channel/EQ audio back,
+/// so that counts as "no default".
+fn real_default(default_sink_name: Option<&str>, node_ids: &HashMap<String, u32>) -> Option<u32> {
+    default_sink_name
+        .filter(|name| !is_own_sink(name))
+        .and_then(|name| node_ids.get(name))
+        .copied()
+}
+
+/// Where listening (monitoring) plays: the real default, else the device
+/// follow-default channels fail over to. Without the fallback, making a
+/// channel the default would silently mute every monitor.
+fn listen_target(
+    default_sink_name: Option<&str>,
+    node_ids: &HashMap<String, u32>,
+    fallback: Option<u32>,
+) -> Option<u32> {
+    real_default(default_sink_name, node_ids).or(fallback)
+}
+
 /// Which device a channel routes to: explicit pin wins, then default, then the
 /// best available sink; strict + gone device = silence.
 fn resolve_target(
@@ -1357,14 +1378,7 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
             .as_deref()
             .and_then(|name| node_ids.get(name).copied());
         let strict = s.channel_strict.contains(sink_name);
-        // A user can make one of our nodes the system default; following it
-        // would loop channel/EQ audio back, so treat that as "no default".
-        let default_id = s
-            .default_sink_name
-            .as_ref()
-            .filter(|name| !is_own_sink(name))
-            .and_then(|name| node_ids.get(name))
-            .copied();
+        let default_id = real_default(s.default_sink_name.as_deref(), &node_ids);
         let target_id = resolve_target(explicit_id, pinned, strict, default_id, fallback);
         // Record where this channel resolves to (even when the link set is
         // unchanged) so the UI reflects the live target, including failover.
@@ -1441,13 +1455,7 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
     }
 
     // ---- monitor links (listen on the default output, session scoped) ----
-    // Same guard: our own nodes shouldn't feed back what they carry.
-    let default_id = s
-        .default_sink_name
-        .as_ref()
-        .filter(|name| !is_own_sink(name))
-        .and_then(|name| node_ids.get(name))
-        .copied();
+    let default_id = listen_target(s.default_sink_name.as_deref(), &node_ids, fallback);
     let monitored: Vec<String> = s.monitored.iter().cloned().collect();
     for name in monitored {
         // Monitoring an EQ'd channel listens to the insert's output - the
@@ -2471,6 +2479,28 @@ mod tests {
         assert_eq!(resolve_target(None, true, false, None, Some(2)), Some(2));
         // Pinned but gone, failover off -> silence, never another device.
         assert_eq!(resolve_target(None, true, true, Some(1), Some(2)), None);
+    }
+
+    #[test]
+    fn listening_survives_a_channel_as_the_default() {
+        let node_ids: HashMap<String, u32> = [
+            ("sink_game".to_string(), 1u32),
+            ("alsa_output.usb-headset".to_string(), 9),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            listen_target(Some("alsa_output.usb-headset"), &node_ids, Some(5)),
+            Some(9)
+        );
+        // The bug: a channel as the default left monitors with no output.
+        assert_eq!(real_default(Some("sink_game"), &node_ids), None);
+        assert_eq!(
+            listen_target(Some("sink_game"), &node_ids, Some(9)),
+            Some(9)
+        );
+        assert_eq!(listen_target(None, &node_ids, Some(9)), Some(9));
+        assert_eq!(listen_target(Some("sink_game"), &node_ids, None), None);
     }
 
     #[test]
