@@ -1,6 +1,7 @@
 import type { EqBand, EqBandKind } from "../../types";
 import { EQ_FREQ_MAX_HZ, EQ_FREQ_MIN_HZ, EQ_GAIN_RANGE_DB } from "../../types";
 import { Ms } from "../Icons";
+import { NumField } from "./NumField";
 
 const KINDS: { value: EqBandKind; label: string }[] = [
   { value: "peaking", label: "Peak" },
@@ -39,11 +40,6 @@ export function EqBandRow({
   onChange,
   onRemove,
 }: Readonly<EqBandRowProps>) {
-  const clampNum = (v: string, lo: number, hi: number, fallback: number) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;
-  };
-
   const widthLabel = isShelf(band.kind) ? "Slope" : "Q";
 
   return (
@@ -68,49 +64,39 @@ export function EqBandRow({
       </select>
       <label className="eqm-field">
         <span>Hz</span>
-        <input
-          type="number"
+        <NumField
+          value={band.freq_hz}
           min={EQ_FREQ_MIN_HZ}
           max={EQ_FREQ_MAX_HZ}
           step={1}
-          value={Math.round(band.freq_hz)}
+          format={(n) => String(Math.round(n))}
           aria-label={`Band ${index + 1} frequency in hertz`}
-          onChange={(e) =>
-            onChange({
-              freq_hz: clampNum(e.target.value, EQ_FREQ_MIN_HZ, EQ_FREQ_MAX_HZ, band.freq_hz),
-            })
-          }
+          onChange={(freq_hz) => onChange({ freq_hz })}
         />
       </label>
       <label className="eqm-field">
         <span>dB</span>
-        <input
-          type="number"
+        <NumField
+          value={band.gain_db}
           min={-EQ_GAIN_RANGE_DB}
           max={EQ_GAIN_RANGE_DB}
           step={0.5}
-          value={band.gain_db}
           disabled={isPass(band.kind)}
           title={isPass(band.kind) ? "Pass filters have no gain" : undefined}
           aria-label={`Band ${index + 1} gain in decibels`}
-          onChange={(e) =>
-            onChange({
-              gain_db: clampNum(e.target.value, -EQ_GAIN_RANGE_DB, EQ_GAIN_RANGE_DB, band.gain_db),
-            })
-          }
+          onChange={(gain_db) => onChange({ gain_db })}
         />
       </label>
       <label className="eqm-field">
         {/* One schema field, two meanings (see EqBand.q). */}
         <span>{widthLabel}</span>
-        <input
-          type="number"
+        <NumField
+          value={band.q}
           min={0.1}
           max={10}
           step={0.1}
-          value={band.q}
           aria-label={`Band ${index + 1} ${widthLabel}`}
-          onChange={(e) => onChange({ q: clampNum(e.target.value, 0.1, 10, band.q) })}
+          onChange={(q) => onChange({ q })}
         />
       </label>
       <button
