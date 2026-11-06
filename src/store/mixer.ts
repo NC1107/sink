@@ -129,6 +129,8 @@ interface MixerStore {
   activeProfile: string | null;
   /** Fatal error surfaced to the UI (e.g. pactl missing, PipeWire down). */
   error: string | null;
+  /** The error the stream poll itself reported, so recovery clears only that. */
+  pollError: string | null;
   /** Dismiss the error banner. */
   clearError: () => void;
   initialized: boolean;
@@ -197,6 +199,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   profiles: [],
   activeProfile: null,
   error: null,
+  pollError: null,
   clearError: () => set({ error: null }),
   initialized: false,
   backendNative: null,
@@ -310,10 +313,15 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       const s = get();
       const patch: Partial<MixerStore> = {};
       if (!jsonEqual(s.appStreams, appStreams)) patch.appStreams = appStreams;
-      if (s.error !== null) patch.error = null;
+      // Recovering clears only the error this poll reported; anything else
+      // stays up until the user sees it.
+      if (s.pollError !== null) {
+        patch.pollError = null;
+        if (s.error === s.pollError) patch.error = null;
+      }
       if (Object.keys(patch).length) set(patch);
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: String(e), pollError: String(e) });
     }
   },
 

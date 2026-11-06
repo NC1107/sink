@@ -217,3 +217,24 @@ describe("removeChannel", () => {
     expect(useMixerStore.getState().monitors).toEqual({ sink_game: true });
   });
 });
+
+describe("fetchAppStreams", () => {
+  it("doesn't wipe an error some other command reported", async () => {
+    useMixerStore.setState({ error: "set_channel_output failed: unknown device" });
+    invoke.mockResolvedValue([]);
+
+    await useMixerStore.getState().fetchAppStreams();
+
+    expect(useMixerStore.getState().error).toBe("set_channel_output failed: unknown device");
+  });
+
+  it("clears its own error once polling works again", async () => {
+    invoke.mockRejectedValueOnce("pipewire request timed out");
+    await useMixerStore.getState().fetchAppStreams();
+    expect(useMixerStore.getState().error).toBe("pipewire request timed out");
+
+    invoke.mockResolvedValue([]);
+    await useMixerStore.getState().fetchAppStreams();
+    expect(useMixerStore.getState().error).toBeNull();
+  });
+});
