@@ -237,7 +237,9 @@ impl MicStreams {
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
-                let n = (valid.min(bytes.len())) / 4;
+                // Clamp to the scratch buffer's capacity: an oversized quantum
+                // must drop samples, never reallocate on the RT thread.
+                let n = ((valid.min(bytes.len())) / 4).min(ctx.scratch.capacity());
                 ctx.scratch.clear();
                 ctx.scratch.extend(
                     bytes[..n * 4]
@@ -329,8 +331,7 @@ impl MicStreams {
                 if n == 0 {
                     return;
                 }
-                {
-                    let bytes = data.data().expect("checked above");
+                if let Some(bytes) = data.data() {
                     // Pop straight into the buffer as f32 ne bytes.
                     let mut frame = [0.0f32; 1024];
                     let mut written = 0;
