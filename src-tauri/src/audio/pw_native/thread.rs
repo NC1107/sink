@@ -1126,6 +1126,22 @@ fn fallback_sink(s: &State) -> Option<u32> {
     )
 }
 
+/// Where a stream move sends a stream: an empty sink name means "unassigned",
+/// which must clear the pin rather than pin to whatever is default right now.
+#[derive(Debug, PartialEq)]
+enum StreamTarget<'a> {
+    FollowDefault,
+    Node(&'a str),
+}
+
+fn stream_target(sink_name: &str) -> StreamTarget<'_> {
+    if sink_name.is_empty() {
+        StreamTarget::FollowDefault
+    } else {
+        StreamTarget::Node(sink_name)
+    }
+}
+
 /// The system default sink's node, unless it is one of ours: a user can make
 /// a channel the default, and following it would loop channel/EQ audio back,
 /// so that counts as "no default".
@@ -2218,17 +2234,18 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 )));
                 return;
             };
-            // Empty sink name = back to the default device.
-            let target = if sink_name.is_empty() {
-                s.default_sink_name.clone()
-            } else {
-                Some(sink_name.clone())
+            let target = match stream_target(&sink_name) {
+                StreamTarget::FollowDefault => {
+                    // No pin at all, so the stream keeps following the
+                    // default as it changes (and works with no default).
+                    metadata.set_property(id, "target.object", None, None);
+                    metadata.set_property(id, "target.node", None, None);
+                    let _ = reply.send(Ok(()));
+                    return;
+                }
+                StreamTarget::Node(name) => name,
             };
-            let serial = target
-                .as_deref()
-                .and_then(|name| s.node_by_name(name))
-                .and_then(|n| n.serial);
-            match serial {
+            match s.node_by_name(target).and_then(|n| n.serial) {
                 Some(serial) => {
                     metadata.set_property(
                         id,
@@ -2241,9 +2258,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     let _ = reply.send(Ok(()));
                 }
                 None => {
-                    let _ = reply.send(Err(SinkError::UnknownSink(
-                        target.unwrap_or_else(|| "<default>".into()),
-                    )));
+                    let _ = reply.send(Err(SinkError::UnknownSink(target.to_string())));
                 }
             }
         }
@@ -2479,6 +2494,12 @@ mod tests {
         assert_eq!(resolve_target(None, true, false, None, Some(2)), Some(2));
         // Pinned but gone, failover off -> silence, never another device.
         assert_eq!(resolve_target(None, true, true, Some(1), Some(2)), None);
+    }
+
+    #[test]
+    fn unassigning_a_stream_clears_its_pin() {
+        assert_eq!(stream_target(""), StreamTarget::FollowDefault);
+        assert_eq!(stream_target("sink_game"), StreamTarget::Node("sink_game"));
     }
 
     #[test]
