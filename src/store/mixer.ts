@@ -76,6 +76,8 @@ interface MixerStore {
   createBlankProfile: (name: string) => Promise<void>;
   /** A profile was switched outside the UI (tray) - sync everything. */
   onProfileChanged: (name: string) => Promise<void>;
+  /** PipeWire restarted and the backend replayed the setup onto it. */
+  onBackendReconnected: () => Promise<void>;
   /** App history (live + gone + ignored). */
   seenApps: SeenApp[];
   fetchSeenApps: () => Promise<void>;
@@ -127,6 +129,8 @@ interface MixerStore {
   activeProfile: string | null;
   /** Fatal error surfaced to the UI (e.g. pactl missing, PipeWire down). */
   error: string | null;
+  /** The error the stream poll itself reported, so recovery clears only that. */
+  pollError: string | null;
   /** Dismiss the error banner. */
   clearError: () => void;
   initialized: boolean;
@@ -195,6 +199,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   profiles: [],
   activeProfile: null,
   error: null,
+  pollError: null,
   clearError: () => set({ error: null }),
   initialized: false,
   backendNative: null,
@@ -308,10 +313,15 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       const s = get();
       const patch: Partial<MixerStore> = {};
       if (!jsonEqual(s.appStreams, appStreams)) patch.appStreams = appStreams;
-      if (s.error !== null) patch.error = null;
+      // Recovering clears only the error this poll reported; anything else
+      // stays up until the user sees it.
+      if (s.pollError !== null) {
+        patch.pollError = null;
+        if (s.error === s.pollError) patch.error = null;
+      }
       if (Object.keys(patch).length) set(patch);
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: String(e), pollError: String(e) });
     }
   },
 
@@ -481,6 +491,19 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     }
+  },
+
+  onBackendReconnected: async () => {
+    // Listen toggles lived on the old daemon and are not replayed.
+    set({ monitors: {} });
+    await Promise.all([
+      get().fetchChannels(),
+      get().fetchAppStreams(),
+      get().fetchOutputs(),
+      get().fetchEq(),
+      get().fetchMic(),
+      get().fetchBuses(),
+    ]);
   },
 
   onProfileChanged: async (name) => {
@@ -812,6 +835,12 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   removeChannel: async (sinkName) => {
     try {
       await invoke("remove_channel", { sinkName });
+      // The backend dropped its listen toggle; a channel re-added under the
+      // same name must not show one.
+      set((s) => {
+        const { [sinkName]: _gone, ...monitors } = s.monitors;
+        return { monitors };
+      });
       await Promise.all([
         get().fetchChannels(),
         get().fetchAppStreams(),

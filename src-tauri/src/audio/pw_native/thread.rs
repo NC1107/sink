@@ -291,6 +291,33 @@ struct State {
 }
 
 impl State {
+    /// Drop everything the loop keeps for a deleted channel. One place, so a
+    /// channel re-added under the same name starts clean (it used to inherit
+    /// the old listen toggle, strict failover and mix membership) and the
+    /// next per-channel field can't be forgotten in one teardown path.
+    fn forget_channel(&mut self, name: &str) {
+        self.desired.remove(name);
+        self.meters.remove(name);
+        // Drop the EQ insert before the sink proxy goes away so the capture
+        // stream's target doesn't vanish under it mid-teardown.
+        self.eq_streams.remove(name);
+        self.eq_configs.remove(name);
+        self.channel_links.remove(name);
+        self.channel_targets.remove(name);
+        self.channel_outputs.remove(name);
+        self.channel_strict.remove(name);
+        self.monitored.remove(name);
+        self.monitor_links.remove(name);
+        for members in self.bus_members.values_mut() {
+            members.remove(name);
+        }
+        self.bus_links.retain(|(_, ch), _| ch != name);
+        self.send_gains.retain(|(_, ch), _| ch != name);
+        self.send_gain_in_links.retain(|(_, ch), _| ch != name);
+        self.bus_member_gains.retain(|(_, ch), _| ch != name);
+        self.send_gain_failed.retain(|(_, ch)| ch != name);
+    }
+
     /// Live node id of the mic playback stream. Resolved lazily - the id
     /// is only valid once the server has created the stream's node.
     fn mic_playback_node(&self) -> Option<u32> {
@@ -344,34 +371,135 @@ thread_local! {
     static CORE: RefCell<Option<CoreRc>> = const { RefCell::new(None) };
 }
 
-/// Entry point: runs the PipeWire loop until the channel closes.
-/// `init_tx` reports startup success/failure exactly once.
+/// How long to wait between attempts to reach a restarted PipeWire daemon.
+const RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Entry point: runs the PipeWire loop until the channel closes, reconnecting
+/// whenever the daemon goes away (restart, upgrade, crash).
+/// `init_tx` reports the first connection's success/failure exactly once;
+/// `reconnected` fires after every later connection so the owner can replay
+/// the user's setup onto the fresh daemon.
 pub fn run(
     receiver: pw::channel::Receiver<Cmd>,
     self_tx: pw::channel::Sender<Cmd>,
     init_tx: mpsc::Sender<Result<(), SinkError>>,
     levels: Arc<LevelStore>,
     stream_wake: mpsc::SyncSender<()>,
+    reconnected: mpsc::Sender<()>,
 ) {
-    if let Err(e) = setup_and_run(receiver, self_tx, &init_tx, levels, stream_wake) {
-        let _ = init_tx.send(Err(e));
+    pw::init();
+    let mut receiver = receiver;
+    let mut first = true;
+    loop {
+        let conn = match Connection::open() {
+            Ok(conn) => conn,
+            Err(e) if first => {
+                let _ = init_tx.send(Err(e));
+                return;
+            }
+            Err(_) => {
+                std::thread::sleep(RECONNECT_DELAY);
+                continue;
+            }
+        };
+        let ready = || {
+            if first {
+                init_tx.send(Ok(())).is_ok()
+            } else {
+                eprintln!("sink: pipewire is back - restoring");
+                let _ = reconnected.send(());
+                true
+            }
+        };
+        match session(
+            conn,
+            receiver,
+            self_tx.clone(),
+            levels.clone(),
+            stream_wake.clone(),
+            ready,
+        ) {
+            SessionEnd::Closed => return,
+            SessionEnd::Disconnected(rx) => {
+                eprintln!("sink: lost the pipewire connection - reconnecting");
+                receiver = rx;
+                first = false;
+                std::thread::sleep(RECONNECT_DELAY);
+            }
+        }
     }
 }
 
-fn setup_and_run(
+struct Connection {
+    mainloop: pw::main_loop::MainLoopRc,
+    // Kept alive for the core's lifetime.
+    _context: pw::context::ContextRc,
+    core: CoreRc,
+    registry: RegistryRc,
+}
+
+impl Connection {
+    fn open() -> Result<Self, SinkError> {
+        let err = |stage: &str, e: pw::Error| SinkError::Config(format!("pipewire {stage}: {e}"));
+        let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| err("mainloop", e))?;
+        let context =
+            pw::context::ContextRc::new(&mainloop, None).map_err(|e| err("context", e))?;
+        let core = context.connect_rc(None).map_err(|e| err("connect", e))?;
+        let registry = core.get_registry_rc().map_err(|e| err("registry", e))?;
+        Ok(Self {
+            mainloop,
+            _context: context,
+            core,
+            registry,
+        })
+    }
+}
+
+enum SessionEnd {
+    /// The owner is gone (channel closed or init report unread): stop.
+    Closed,
+    /// The daemon went away; the command receiver carries over to the next
+    /// connection so queued and future commands still arrive.
+    Disconnected(pw::channel::Receiver<Cmd>),
+}
+
+/// The daemon hung up on us: every node, link and stream of this connection
+/// is gone with it.
+fn is_connection_lost(id: u32, res: i32) -> bool {
+    id == pw::core::PW_ID_CORE && res == -libc::EPIPE
+}
+
+/// One connection's worth of state and listeners; `ready` reports it is up.
+fn session(
+    conn: Connection,
     receiver: pw::channel::Receiver<Cmd>,
     self_tx: pw::channel::Sender<Cmd>,
-    init_tx: &mpsc::Sender<Result<(), SinkError>>,
     levels: Arc<LevelStore>,
     stream_wake: mpsc::SyncSender<()>,
-) -> Result<(), SinkError> {
-    pw::init();
-    let err = |stage: &str, e: pw::Error| SinkError::Config(format!("pipewire {stage}: {e}"));
+    ready: impl FnOnce() -> bool,
+) -> SessionEnd {
+    let Connection {
+        mainloop,
+        _context,
+        core,
+        registry,
+    } = conn;
 
-    let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| err("mainloop", e))?;
-    let context = pw::context::ContextRc::new(&mainloop, None).map_err(|e| err("context", e))?;
-    let core = context.connect_rc(None).map_err(|e| err("connect", e))?;
-    let registry = core.get_registry_rc().map_err(|e| err("registry", e))?;
+    let lost = Rc::new(std::cell::Cell::new(false));
+    let _core_listener = core
+        .add_listener_local()
+        .error({
+            let lost = lost.clone();
+            let mainloop = mainloop.clone();
+            move |id, _seq, res, message| {
+                if is_connection_lost(id, res) {
+                    eprintln!("sink: pipewire core error: {message}");
+                    lost.set(true);
+                    mainloop.quit();
+                }
+            }
+        })
+        .register();
 
     CORE.with(|c| *c.borrow_mut() = Some(core.clone()));
 
@@ -504,16 +632,27 @@ fn setup_and_run(
     // ---- command channel ----
     let state_c = state.clone();
     let registry_c = registry.clone();
-    let _recv = receiver.attach(mainloop.loop_(), move |cmd| {
+    let attached = receiver.attach(mainloop.loop_(), move |cmd| {
         handle_cmd(&state_c, &registry_c, cmd);
     });
 
-    init_tx
-        .send(Ok(()))
-        .map_err(|_| SinkError::Config("backend owner vanished during init".into()))?;
+    if !ready() {
+        CORE.with(|c| *c.borrow_mut() = None);
+        return SessionEnd::Closed;
+    }
 
     mainloop.run();
-    Ok(())
+
+    let receiver = attached.deattach();
+    // Every object of this connection died with it; drop them before the
+    // core so nothing tries to talk to the dead socket on the way out.
+    drop(state);
+    CORE.with(|c| *c.borrow_mut() = None);
+    if lost.get() {
+        SessionEnd::Disconnected(receiver)
+    } else {
+        SessionEnd::Closed
+    }
 }
 
 fn on_global(
@@ -853,13 +992,15 @@ fn on_node(
         return;
     }
 
-    // A chain waiting for its device: plugged in now, or installed by a
-    // tool that starts after we do.
-    if s.mic_streams.is_none()
-        && s.mic_config.enabled
-        && s.mic_config.input_device.as_deref() == Some(node_name.as_str())
-        && is_capture_class(&media_class)
-    {
+    // A chain waiting for its device: plugged in now, installed by a tool
+    // that starts after we do, or (following the default) the first real
+    // input after a daemon restart, which can come up after we reconnect.
+    if mic_waits_for(
+        s.mic_streams.is_none() && s.mic_config.enabled,
+        s.mic_config.input_device.as_deref(),
+        &node_name,
+        &media_class,
+    ) {
         drop(s);
         build_mic_streams(state);
         ensure_all_links(state);
@@ -877,6 +1018,46 @@ fn on_node(
 /// virtual source, not a real device, and the chain can capture either.
 fn is_capture_class(media_class: &str) -> bool {
     media_class == SOURCE_CLASS || media_class == VIRTUAL_SOURCE_CLASS
+}
+
+fn node_name(n: &NodeEntry) -> &str {
+    n.props.get("node.name").map(String::as_str).unwrap_or("")
+}
+
+fn node_priority(n: &NodeEntry) -> i64 {
+    n.props
+        .get("priority.session")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Whether a newly appeared node is the input a stopped mic chain waits for:
+/// its pinned device, or any real source when it follows the default.
+fn mic_waits_for(waiting: bool, pinned: Option<&str>, node_name: &str, media_class: &str) -> bool {
+    waiting
+        && is_capture_class(media_class)
+        && match pinned {
+            Some(pinned) => pinned == node_name,
+            None => !is_own_sink(node_name),
+        }
+}
+
+/// The mic chain's input when it follows the system default: the default
+/// source, unless that is one of ours (the virtual mic, or a mix that records
+/// it - capturing either loops the chain into itself), then the best real
+/// source. `None` while there is no real input to capture.
+fn follow_default_input<'a>(
+    default_source: Option<&'a str>,
+    sources: impl Iterator<Item = (&'a str, i64)>,
+) -> Option<&'a str> {
+    default_source
+        .filter(|name| !is_own_sink(name))
+        .or_else(|| {
+            sources
+                .filter(|(name, _)| !name.is_empty() && !is_own_sink(name))
+                .max_by_key(|&(_, priority)| priority)
+                .map(|(name, _)| name)
+        })
 }
 
 /// (Re)build the mic capture/DSP/playback streams. The loop links the
@@ -901,20 +1082,33 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
             return;
         }
     }
-    // Resolve "follow default" to the hardware source: the capture must never
-    // point at our own virtual mic, or the chain would eat its output.
-    let mic_target = s.mic_config.input_device.clone().or_else(|| {
-        s.default_source_name
-            .clone()
-            .filter(|name| name != MIC_NODE)
-    });
+    let mic_target = match &s.mic_config.input_device {
+        Some(pinned) => pinned.clone(),
+        None => {
+            let sources = s
+                .nodes
+                .values()
+                .filter(|n| is_capture_class(&n.media_class))
+                .map(|n| (node_name(n), node_priority(n)));
+            match follow_default_input(s.default_source_name.as_deref(), sources) {
+                Some(name) => name.to_string(),
+                None => {
+                    // Anything else would let the capture follow the default
+                    // onto our own output and feed the chain back into itself.
+                    eprintln!("sink: mic chain waiting for a real input");
+                    s.mic_streams = None;
+                    return;
+                }
+            }
+        }
+    };
     let Some(levels) = s.levels.clone() else {
         return;
     };
     // Stop the old engine before starting another on the same mic.
     s.mic_streams = None;
-    let engine = start_engine(&mut s, mic_target.as_deref());
-    match MicStreams::new(&core, &s.mic_config, mic_target.as_deref(), levels, engine) {
+    let engine = start_engine(&mut s, Some(&mic_target));
+    match MicStreams::new(&core, &s.mic_config, Some(&mic_target), levels, engine) {
         Ok(streams) => {
             s.mic_links.clear();
             s.engine_links.clear();
@@ -1124,6 +1318,22 @@ fn fallback_sink(s: &State) -> Option<u32> {
                 )
             }),
     )
+}
+
+/// Where a stream move sends a stream: an empty sink name means "unassigned",
+/// which must clear the pin rather than pin to whatever is default right now.
+#[derive(Debug, PartialEq)]
+enum StreamTarget<'a> {
+    FollowDefault,
+    Node(&'a str),
+}
+
+fn stream_target(sink_name: &str) -> StreamTarget<'_> {
+    if sink_name.is_empty() {
+        StreamTarget::FollowDefault
+    } else {
+        StreamTarget::Node(sink_name)
+    }
 }
 
 /// The system default sink's node, unless it is one of ours: a user can make
@@ -1638,19 +1848,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
         }
         Cmd::DestroySink { name, reply } => {
             let mut s = state.borrow_mut();
-            s.desired.remove(&name);
-            s.meters.remove(&name);
-            // Drop the EQ insert before the sink proxy goes away so the
-            // capture stream's target doesn't vanish under it mid-teardown.
-            s.eq_streams.remove(&name);
-            s.eq_configs.remove(&name);
-            s.channel_links.remove(&name);
-            s.bus_links.retain(|(_, ch), _| ch != &name);
-            s.send_gains.retain(|(_, ch), _| ch != &name);
-            s.send_gain_in_links.retain(|(_, ch), _| ch != &name);
-            s.bus_member_gains.retain(|(_, ch), _| ch != &name);
-            s.send_gain_failed.retain(|(_, ch)| ch != &name);
-            s.channel_outputs.remove(&name);
+            s.forget_channel(&name);
             if let Some(levels) = &s.levels {
                 levels.release(&name);
             }
@@ -2218,17 +2416,18 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 )));
                 return;
             };
-            // Empty sink name = back to the default device.
-            let target = if sink_name.is_empty() {
-                s.default_sink_name.clone()
-            } else {
-                Some(sink_name.clone())
+            let target = match stream_target(&sink_name) {
+                StreamTarget::FollowDefault => {
+                    // No pin at all, so the stream keeps following the
+                    // default as it changes (and works with no default).
+                    metadata.set_property(id, "target.object", None, None);
+                    metadata.set_property(id, "target.node", None, None);
+                    let _ = reply.send(Ok(()));
+                    return;
+                }
+                StreamTarget::Node(name) => name,
             };
-            let serial = target
-                .as_deref()
-                .and_then(|name| s.node_by_name(name))
-                .and_then(|n| n.serial);
-            match serial {
+            match s.node_by_name(target).and_then(|n| n.serial) {
                 Some(serial) => {
                     metadata.set_property(
                         id,
@@ -2241,9 +2440,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                     let _ = reply.send(Ok(()));
                 }
                 None => {
-                    let _ = reply.send(Err(SinkError::UnknownSink(
-                        target.unwrap_or_else(|| "<default>".into()),
-                    )));
+                    let _ = reply.send(Err(SinkError::UnknownSink(target.to_string())));
                 }
             }
         }
@@ -2479,6 +2676,103 @@ mod tests {
         assert_eq!(resolve_target(None, true, false, None, Some(2)), Some(2));
         // Pinned but gone, failover off -> silence, never another device.
         assert_eq!(resolve_target(None, true, true, Some(1), Some(2)), None);
+    }
+
+    #[test]
+    fn mic_never_follows_the_default_onto_our_own_nodes() {
+        let sources = || {
+            [
+                ("sink_mic", 3000i64),
+                ("sink_stream", 2500),
+                ("alsa_input.usb-headset", 2000),
+                ("alsa_input.pci-builtin", 1000),
+            ]
+            .into_iter()
+        };
+        assert_eq!(
+            follow_default_input(Some("alsa_input.pci-builtin"), sources()),
+            Some("alsa_input.pci-builtin")
+        );
+        // The bug: the default became our own mic and the capture followed it.
+        assert_eq!(
+            follow_default_input(Some("sink_mic"), sources()),
+            Some("alsa_input.usb-headset")
+        );
+        assert_eq!(
+            follow_default_input(Some("sink_stream"), sources()),
+            Some("alsa_input.usb-headset")
+        );
+        assert_eq!(
+            follow_default_input(None, sources()),
+            Some("alsa_input.usb-headset")
+        );
+        let only_ours = [("sink_mic", 3000i64)].into_iter();
+        assert_eq!(follow_default_input(Some("sink_mic"), only_ours), None);
+    }
+
+    #[test]
+    fn a_waiting_mic_chain_starts_when_a_real_input_appears() {
+        // Following the default: any real source wakes it, our own never do.
+        assert!(mic_waits_for(true, None, "alsa_input.usb", SOURCE_CLASS));
+        assert!(!mic_waits_for(true, None, "sink_mic", VIRTUAL_SOURCE_CLASS));
+        assert!(!mic_waits_for(true, None, "sink_stream", SOURCE_CLASS));
+        // Pinned: only that device.
+        assert!(mic_waits_for(
+            true,
+            Some("alsa_input.usb"),
+            "alsa_input.usb",
+            SOURCE_CLASS
+        ));
+        assert!(!mic_waits_for(
+            true,
+            Some("alsa_input.usb"),
+            "alsa_input.pci",
+            SOURCE_CLASS
+        ));
+        // A running chain, or a sink, never triggers a rebuild.
+        assert!(!mic_waits_for(false, None, "alsa_input.usb", SOURCE_CLASS));
+        assert!(!mic_waits_for(true, None, "alsa_output.usb", SINK_CLASS));
+    }
+
+    #[test]
+    fn deleting_a_channel_forgets_all_its_loop_state() {
+        let mut s = State::default();
+        let mix = "sink_stream".to_string();
+        for ch in ["sink_game", "sink_chat"] {
+            s.monitored.insert(ch.into());
+            s.channel_strict.insert(ch.into());
+            s.channel_outputs
+                .insert(ch.into(), Some("alsa_output.usb".into()));
+            s.channel_targets.insert(ch.into(), 42);
+            s.eq_configs.insert(ch.into(), EqConfig::default());
+            s.bus_member_gains.insert((mix.clone(), ch.into()), 70);
+        }
+        s.bus_members.insert(
+            mix.clone(),
+            ["sink_game", "sink_chat"].map(String::from).into(),
+        );
+
+        s.forget_channel("sink_game");
+
+        assert!(!s.monitored.contains("sink_game"));
+        assert!(!s.channel_strict.contains("sink_game"));
+        assert!(!s.channel_outputs.contains_key("sink_game"));
+        assert!(!s.channel_targets.contains_key("sink_game"));
+        assert!(!s.eq_configs.contains_key("sink_game"));
+        assert!(!s.bus_members[&mix].contains("sink_game"));
+        assert!(!s
+            .bus_member_gains
+            .contains_key(&(mix.clone(), "sink_game".into())));
+        // Other channels keep theirs.
+        assert!(s.monitored.contains("sink_chat"));
+        assert!(s.channel_strict.contains("sink_chat"));
+        assert!(s.bus_members[&mix].contains("sink_chat"));
+    }
+
+    #[test]
+    fn unassigning_a_stream_clears_its_pin() {
+        assert_eq!(stream_target(""), StreamTarget::FollowDefault);
+        assert_eq!(stream_target("sink_game"), StreamTarget::Node("sink_game"));
     }
 
     #[test]

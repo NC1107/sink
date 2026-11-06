@@ -124,7 +124,9 @@ impl EqChainHandle {
                 let valid = data.chunk().size() as usize;
                 let Some(bytes) = data.data() else { return };
 
-                let n = (valid.min(bytes.len())) / 4;
+                // Clamp to the scratch buffer's capacity: an oversized quantum
+                // must drop samples, never reallocate on the RT thread.
+                let n = ((valid.min(bytes.len())) / 4).min(ctx.scratch.capacity());
                 ctx.scratch.clear();
                 ctx.scratch.extend(
                     bytes[..n * 4]

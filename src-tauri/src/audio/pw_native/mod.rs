@@ -32,6 +32,9 @@ pub struct PipeWireBackend {
     sender: Mutex<pw::channel::Sender<Cmd>>,
     /// Live per-sink peak levels, fed by the meter capture streams.
     pub levels: Arc<LevelStore>,
+    /// Fires each time the loop reconnects to a restarted daemon, which
+    /// starts empty: the owner must replay the user's setup.
+    reconnects: Mutex<Option<mpsc::Receiver<()>>>,
 }
 
 impl PipeWireBackend {
@@ -42,12 +45,22 @@ impl PipeWireBackend {
         let (init_tx, init_rx) = mpsc::channel();
         // One slot, so a burst of wakes collapses into one pass.
         let (wake_tx, wake_rx) = mpsc::sync_channel(1);
+        let (reconnect_tx, reconnect_rx) = mpsc::channel();
 
         let thread_levels = levels.clone();
         let self_tx = sender.clone();
         std::thread::Builder::new()
             .name("pipewire-loop".into())
-            .spawn(move || thread::run(receiver, self_tx, init_tx, thread_levels, wake_tx))
+            .spawn(move || {
+                thread::run(
+                    receiver,
+                    self_tx,
+                    init_tx,
+                    thread_levels,
+                    wake_tx,
+                    reconnect_tx,
+                )
+            })
             .map_err(|e| SinkError::Config(format!("spawn pipewire thread: {e}")))?;
 
         match init_rx.recv_timeout(Duration::from_secs(5)) {
@@ -55,6 +68,7 @@ impl PipeWireBackend {
                 Self {
                     sender: Mutex::new(sender),
                     levels,
+                    reconnects: Mutex::new(Some(reconnect_rx)),
                 },
                 wake_rx,
             )),
@@ -63,6 +77,11 @@ impl PipeWireBackend {
                 "pipewire loop did not come up within 5s".into(),
             )),
         }
+    }
+
+    /// The reconnect events, for the one owner that restores state on them.
+    pub fn take_reconnects(&self) -> Option<mpsc::Receiver<()>> {
+        self.reconnects.lock().ok()?.take()
     }
 
     fn request<T>(
@@ -230,7 +249,10 @@ impl AudioBackend for PipeWireBackend {
     }
 
     fn set_mic_config(&self, config: &crate::audio::types::MicConfig) -> Result<(), SinkError> {
-        let config = config.clone();
+        // Every path ends here (commands, startup, profiles), and the RT
+        // filters trust their input, so this is the last place to sanitize.
+        let mut config = config.clone();
+        config.clamp_ranges();
         self.request(|reply| Cmd::SetMicConfig { config, reply })
     }
 
@@ -248,7 +270,8 @@ impl AudioBackend for PipeWireBackend {
         config: &crate::audio::types::EqConfig,
     ) -> Result<(), SinkError> {
         let sink_name = sink_name.to_string();
-        let config = config.clone();
+        let mut config = config.clone();
+        config.clamp_ranges();
         self.request(|reply| Cmd::SetChannelEq {
             sink_name,
             config,

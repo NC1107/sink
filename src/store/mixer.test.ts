@@ -179,3 +179,62 @@ describe("setChannelEq", () => {
     });
   });
 });
+
+describe("onBackendReconnected", () => {
+  it("drops listen toggles the restarted daemon no longer has and refetches", async () => {
+    useMixerStore.setState({ monitors: { sink_game: true, sink_mic: true } });
+    invoke.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "get_virtual_devices" ? [channel("sink_game", 30)] : undefined),
+    );
+
+    await useMixerStore.getState().onBackendReconnected();
+
+    expect(useMixerStore.getState().monitors).toEqual({});
+    const called = invoke.mock.calls.map(([cmd]) => cmd);
+    expect(called).toContain("get_virtual_devices");
+    expect(useMixerStore.getState().channels[0].volume_percent).toBe(30);
+  });
+});
+
+describe("removeChannel", () => {
+  it("drops the deleted channel's listen toggle and keeps the others", async () => {
+    useMixerStore.setState({ monitors: { sink_game: true, sink_chat: true } });
+    invoke.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "get_virtual_devices" ? [] : undefined),
+    );
+
+    await useMixerStore.getState().removeChannel("sink_game");
+
+    expect(useMixerStore.getState().monitors).toEqual({ sink_chat: true });
+  });
+
+  it("keeps the toggle when the delete fails", async () => {
+    useMixerStore.setState({ monitors: { sink_game: true } });
+    invoke.mockRejectedValue("pipewire request timed out");
+
+    await useMixerStore.getState().removeChannel("sink_game");
+
+    expect(useMixerStore.getState().monitors).toEqual({ sink_game: true });
+  });
+});
+
+describe("fetchAppStreams", () => {
+  it("doesn't wipe an error some other command reported", async () => {
+    useMixerStore.setState({ error: "set_channel_output failed: unknown device" });
+    invoke.mockResolvedValue([]);
+
+    await useMixerStore.getState().fetchAppStreams();
+
+    expect(useMixerStore.getState().error).toBe("set_channel_output failed: unknown device");
+  });
+
+  it("clears its own error once polling works again", async () => {
+    invoke.mockRejectedValueOnce("pipewire request timed out");
+    await useMixerStore.getState().fetchAppStreams();
+    expect(useMixerStore.getState().error).toBe("pipewire request timed out");
+
+    invoke.mockResolvedValue([]);
+    await useMixerStore.getState().fetchAppStreams();
+    expect(useMixerStore.getState().error).toBeNull();
+  });
+});

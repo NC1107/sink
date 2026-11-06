@@ -251,15 +251,21 @@ impl Channels {
         Ok(())
     }
 
-    pub fn remove(&mut self, name: &str) -> Result<(), SinkError> {
+    /// Why `name` can't be removed, if it can't - checked before any backend
+    /// work so a refused delete changes nothing.
+    pub fn removable(&self, name: &str) -> Result<(), SinkError> {
         if self.channels.len() <= 1 {
             return Err(SinkError::Config("at least one channel is required".into()));
         }
-        let before = self.channels.len();
-        self.channels.retain(|c| c.name != name);
-        if self.channels.len() == before {
+        if !self.channels.iter().any(|c| c.name == name) {
             return Err(SinkError::UnknownSink(name.to_string()));
         }
+        Ok(())
+    }
+
+    pub fn remove(&mut self, name: &str) -> Result<(), SinkError> {
+        self.removable(name)?;
+        self.channels.retain(|c| c.name != name);
         Ok(())
     }
 }

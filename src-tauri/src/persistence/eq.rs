@@ -27,12 +27,21 @@ impl ChannelEq {
         let Ok(path) = Self::config_path() else {
             return Self::default();
         };
-        match fs::read_to_string(&path) {
+        let mut eq: Self = match fs::read_to_string(&path) {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
                 eprintln!("sink: ignoring malformed {}: {e}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
+        };
+        eq.clamp_ranges();
+        eq
+    }
+
+    /// Sanitize every channel's config, as the editor does before it saves.
+    pub fn clamp_ranges(&mut self) {
+        for config in self.configs.values_mut() {
+            config.clamp_ranges();
         }
     }
 
@@ -66,6 +75,29 @@ impl ChannelEq {
 mod tests {
     use super::*;
     use crate::audio::types::{default_eq_bands, EqBandKind};
+
+    /// A hand-edited or downgraded file reaches the RT biquads straight from
+    /// here at startup; -500 dB silenced the whole channel, not just a band.
+    #[test]
+    fn load_clamps_out_of_range_values() {
+        let _root = crate::persistence::testing::TempConfig::new("eq-load-clamp");
+        let path = ChannelEq::config_path().unwrap();
+        crate::persistence::ensure_private_dir(path.parent().unwrap()).unwrap();
+        let band = r#"{"kind":"peaking","freq_hz":99999,"gain_db":-500,"q":1}"#;
+        let bands = vec![band; 30].join(",");
+        let raw = format!(
+            r#"{{"configs":{{"sink_game":{{"enabled":true,"preamp_db":900,"bands":[{bands}]}}}}}}"#
+        );
+        std::fs::write(&path, raw).unwrap();
+
+        let config = ChannelEq::load().get("sink_game");
+        assert_eq!(config.preamp_db, 24.0);
+        assert_eq!(config.bands.len(), crate::audio::types::MAX_EQ_BANDS);
+        assert!(config
+            .bands
+            .iter()
+            .all(|b| b.gain_db == -24.0 && b.freq_hz == 20000.0));
+    }
 
     #[test]
     fn roundtrips_configured_channels() {

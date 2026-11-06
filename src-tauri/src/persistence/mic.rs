@@ -16,13 +16,15 @@ pub fn load() -> MicConfig {
     let Ok(path) = config_path() else {
         return MicConfig::default();
     };
-    match fs::read_to_string(&path) {
+    let mut config: MicConfig = match fs::read_to_string(&path) {
         Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
             eprintln!("sink: ignoring malformed {}: {e}", path.display());
             MicConfig::default()
         }),
         Err(_) => MicConfig::default(),
-    }
+    };
+    config.clamp_ranges();
+    config
 }
 
 pub fn save(config: &MicConfig) -> Result<(), SinkError> {
@@ -34,4 +36,26 @@ pub fn save(config: &MicConfig) -> Result<(), SinkError> {
         .map_err(|e| SinkError::Config(format!("serialize mic config: {e}")))?;
     super::write_atomic(&path, &json)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_clamps_out_of_range_values() {
+        let _root = crate::persistence::testing::TempConfig::new("mic-load-clamp");
+        let path = config_path().unwrap();
+        crate::persistence::ensure_private_dir(path.parent().unwrap()).unwrap();
+        let mut raw = serde_json::to_value(MicConfig::default()).unwrap();
+        raw["gain_percent"] = 255.into();
+        raw["limiter_ceiling_db"] = 40.0.into();
+        raw["eq"]["bands"][0]["gain_db"] = 500.0.into();
+        std::fs::write(&path, raw.to_string()).unwrap();
+
+        let config = load();
+        assert_eq!(config.gain_percent, 200);
+        assert_eq!(config.limiter_ceiling_db, 0.0);
+        assert_eq!(config.eq.bands[0].gain_db, 24.0);
+    }
 }
