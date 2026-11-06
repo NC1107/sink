@@ -120,8 +120,10 @@ pub fn load(name: &str) -> Result<Profile, SinkError> {
             e.into()
         }
     })?;
-    serde_json::from_str(&raw)
-        .map_err(|e| SinkError::Config(format!("malformed profile {name}: {e}")))
+    let mut profile: Profile = serde_json::from_str(&raw)
+        .map_err(|e| SinkError::Config(format!("malformed profile {name}: {e}")))?;
+    profile.eq.clamp_ranges();
+    Ok(profile)
 }
 
 pub fn delete(name: &str) -> Result<(), SinkError> {
@@ -138,6 +140,28 @@ pub fn delete(name: &str) -> Result<(), SinkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A profile load pushes its EQ to the backend; a hand-edited one must
+    /// not reach the filters unclamped.
+    #[test]
+    fn load_clamps_the_profile_eq() {
+        let _root = crate::persistence::testing::TempConfig::new("profile-load-clamp");
+        let path = profile_path("Edited").unwrap();
+        crate::persistence::ensure_private_dir(path.parent().unwrap()).unwrap();
+        let mut eq = crate::persistence::eq::ChannelEq::default();
+        eq.set("sink_game", crate::audio::types::EqConfig::default());
+        let mut raw = serde_json::json!({
+            "name": "Edited",
+            "channels": [],
+            "assignments": crate::persistence::assignments::Assignments::default(),
+            "eq": eq,
+        });
+        raw["eq"]["configs"]["sink_game"]["bands"][0]["gain_db"] = (-500.0).into();
+        std::fs::write(&path, raw.to_string()).unwrap();
+
+        let profile = load("Edited").unwrap();
+        assert_eq!(profile.eq.get("sink_game").bands[0].gain_db, -24.0);
+    }
 
     #[test]
     fn sanitize_accepts_reasonable_names() {

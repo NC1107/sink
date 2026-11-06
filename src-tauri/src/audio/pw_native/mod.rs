@@ -230,7 +230,10 @@ impl AudioBackend for PipeWireBackend {
     }
 
     fn set_mic_config(&self, config: &crate::audio::types::MicConfig) -> Result<(), SinkError> {
-        let config = config.clone();
+        // Every path ends here (commands, startup, profiles), and the RT
+        // filters trust their input, so this is the last place to sanitize.
+        let mut config = config.clone();
+        config.clamp_ranges();
         self.request(|reply| Cmd::SetMicConfig { config, reply })
     }
 
@@ -248,7 +251,8 @@ impl AudioBackend for PipeWireBackend {
         config: &crate::audio::types::EqConfig,
     ) -> Result<(), SinkError> {
         let sink_name = sink_name.to_string();
-        let config = config.clone();
+        let mut config = config.clone();
+        config.clamp_ranges();
         self.request(|reply| Cmd::SetChannelEq {
             sink_name,
             config,
