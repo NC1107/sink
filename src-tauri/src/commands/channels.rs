@@ -139,14 +139,17 @@ pub fn rename_channel(
 /// assignments are dropped, and the sink is destroyed.
 #[tauri::command]
 pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(), String> {
-    // Validate against the definition set first (also enforces "keep one").
-    {
-        let mut mixer = state.lock_mixer()?;
-        mixer
-            .channel_defs
-            .remove(&sink_name)
-            .map_err(|e| e.to_string())?;
-    }
+    remove_channel_on(state.inner(), sink_name)
+}
+
+pub fn remove_channel_on(state: &AppState, sink_name: String) -> Result<(), String> {
+    // Validate first (also enforces "keep one") without touching anything,
+    // so a refused or failed delete leaves the channel fully intact.
+    state
+        .lock_mixer()?
+        .channel_defs
+        .removable(&sink_name)
+        .map_err(|e| e.to_string())?;
 
     // Hand the channel's streams back to the default sink before the rug
     // is pulled out from under them.
@@ -167,6 +170,10 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
 
     let (defs, assignments, outputs, eq, buses, names) = {
         let mut mixer = state.lock_mixer()?;
+        mixer
+            .channel_defs
+            .remove(&sink_name)
+            .map_err(|e| e.to_string())?;
         mixer.channels.retain(|c| c.name != sink_name);
         mixer
             .assignments
@@ -196,7 +203,7 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
             .backend
             .set_bus_members(&bus.name, &bus.effective_members(&names));
     }
-    crate::commands::devices::route_now(state.inner());
+    crate::commands::devices::route_now(state);
 
     defs.save().map_err(|e| e.to_string())?;
     assignments.save().map_err(|e| e.to_string())?;
@@ -204,4 +211,58 @@ pub fn remove_channel(state: State<'_, AppState>, sink_name: String) -> Result<(
     eq.save().map_err(|e| e.to_string())?;
     buses.save().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::mock::MockBackend;
+    use crate::persistence::testing::TempConfig;
+    use std::sync::Arc;
+
+    fn defined(state: &AppState, name: &str) -> bool {
+        let mixer = state.lock_mixer().expect("mixer");
+        mixer.channel_defs.channels.iter().any(|c| c.name == name)
+    }
+
+    /// The daemon refusing the destroy (or being gone) used to leave the
+    /// channel deleted from its definitions but alive everywhere else - a
+    /// ghost the next save made permanent.
+    #[test]
+    fn a_failed_delete_leaves_the_channel_intact() {
+        let _root = TempConfig::new("remove-channel-fails");
+        let backend = Arc::new(MockBackend::default());
+        backend.fail("destroy_virtual_sink");
+        let state = AppState::new(backend, true);
+        assert!(defined(&state, "sink_game"));
+
+        assert!(remove_channel_on(&state, "sink_game".into()).is_err());
+        assert!(
+            defined(&state, "sink_game"),
+            "definition dropped on failure"
+        );
+    }
+
+    #[test]
+    fn a_delete_removes_the_definition() {
+        let _root = TempConfig::new("remove-channel-ok");
+        let state = AppState::new(Arc::new(MockBackend::default()), true);
+
+        remove_channel_on(&state, "sink_game".into()).expect("removed");
+        assert!(!defined(&state, "sink_game"));
+    }
+
+    #[test]
+    fn an_unknown_channel_is_refused_without_backend_work() {
+        let _root = TempConfig::new("remove-channel-unknown");
+        let backend = Arc::new(MockBackend::default());
+        let state = AppState::new(backend.clone(), true);
+
+        assert!(remove_channel_on(&state, "sink_nope".into()).is_err());
+        assert!(
+            backend.calls().is_empty(),
+            "touched the backend: {:?}",
+            backend.calls()
+        );
+    }
 }

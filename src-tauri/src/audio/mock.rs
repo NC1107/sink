@@ -31,6 +31,8 @@ pub struct MockBackend {
     calls: Mutex<Vec<Call>>,
     on_move: Mutex<Option<MoveHook>>,
     on_bus: Mutex<Option<BusHook>>,
+    /// Backend calls (by `Call::Other` name) that return an error.
+    failing: Mutex<Vec<&'static str>>,
 }
 
 impl MockBackend {
@@ -47,6 +49,18 @@ impl MockBackend {
 
     pub fn on_bus(&self, f: impl Fn(&Call) + Send + Sync + 'static) {
         *self.on_bus.lock().expect("on_bus") = Some(Box::new(f));
+    }
+
+    /// Make every later `op` call fail, as a dead or refusing daemon would.
+    pub fn fail(&self, op: &'static str) {
+        self.failing.lock().expect("failing").push(op);
+    }
+
+    fn check(&self, op: &'static str) -> Result<(), SinkError> {
+        if self.failing.lock().expect("failing").contains(&op) {
+            return Err(SinkError::Config(format!("{op} failed (test)")));
+        }
+        Ok(())
     }
 
     pub fn calls(&self) -> Vec<Call> {
@@ -151,7 +165,7 @@ impl AudioBackend for MockBackend {
 
     fn destroy_virtual_sink(&self, _name: &str) -> Result<(), SinkError> {
         self.record(Call::Other("destroy_virtual_sink"));
-        Ok(())
+        self.check("destroy_virtual_sink")
     }
 
     fn list_output_devices(&self) -> Result<Vec<OutputDevice>, SinkError> {
