@@ -879,6 +879,35 @@ fn is_capture_class(media_class: &str) -> bool {
     media_class == SOURCE_CLASS || media_class == VIRTUAL_SOURCE_CLASS
 }
 
+fn node_name(n: &NodeEntry) -> &str {
+    n.props.get("node.name").map(String::as_str).unwrap_or("")
+}
+
+fn node_priority(n: &NodeEntry) -> i64 {
+    n.props
+        .get("priority.session")
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(0)
+}
+
+/// The mic chain's input when it follows the system default: the default
+/// source, unless that is one of ours (the virtual mic, or a mix that records
+/// it - capturing either loops the chain into itself), then the best real
+/// source. `None` while there is no real input to capture.
+fn follow_default_input<'a>(
+    default_source: Option<&'a str>,
+    sources: impl Iterator<Item = (&'a str, i64)>,
+) -> Option<&'a str> {
+    default_source
+        .filter(|name| !is_own_sink(name))
+        .or_else(|| {
+            sources
+                .filter(|(name, _)| !name.is_empty() && !is_own_sink(name))
+                .max_by_key(|&(_, priority)| priority)
+                .map(|(name, _)| name)
+        })
+}
+
 /// (Re)build the mic capture/DSP/playback streams. The loop links the
 /// playback stream to the virtual source by name, so no id is needed.
 fn build_mic_streams(state: &Rc<RefCell<State>>) {
@@ -901,20 +930,33 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
             return;
         }
     }
-    // Resolve "follow default" to the hardware source: the capture must never
-    // point at our own virtual mic, or the chain would eat its output.
-    let mic_target = s.mic_config.input_device.clone().or_else(|| {
-        s.default_source_name
-            .clone()
-            .filter(|name| name != MIC_NODE)
-    });
+    let mic_target = match &s.mic_config.input_device {
+        Some(pinned) => pinned.clone(),
+        None => {
+            let sources = s
+                .nodes
+                .values()
+                .filter(|n| is_capture_class(&n.media_class))
+                .map(|n| (node_name(n), node_priority(n)));
+            match follow_default_input(s.default_source_name.as_deref(), sources) {
+                Some(name) => name.to_string(),
+                None => {
+                    // Anything else would let the capture follow the default
+                    // onto our own output and feed the chain back into itself.
+                    eprintln!("sink: mic chain waiting for a real input");
+                    s.mic_streams = None;
+                    return;
+                }
+            }
+        }
+    };
     let Some(levels) = s.levels.clone() else {
         return;
     };
     // Stop the old engine before starting another on the same mic.
     s.mic_streams = None;
-    let engine = start_engine(&mut s, mic_target.as_deref());
-    match MicStreams::new(&core, &s.mic_config, mic_target.as_deref(), levels, engine) {
+    let engine = start_engine(&mut s, Some(&mic_target));
+    match MicStreams::new(&core, &s.mic_config, Some(&mic_target), levels, engine) {
         Ok(streams) => {
             s.mic_links.clear();
             s.engine_links.clear();
@@ -2494,6 +2536,38 @@ mod tests {
         assert_eq!(resolve_target(None, true, false, None, Some(2)), Some(2));
         // Pinned but gone, failover off -> silence, never another device.
         assert_eq!(resolve_target(None, true, true, Some(1), Some(2)), None);
+    }
+
+    #[test]
+    fn mic_never_follows_the_default_onto_our_own_nodes() {
+        let sources = || {
+            [
+                ("sink_mic", 3000i64),
+                ("sink_stream", 2500),
+                ("alsa_input.usb-headset", 2000),
+                ("alsa_input.pci-builtin", 1000),
+            ]
+            .into_iter()
+        };
+        assert_eq!(
+            follow_default_input(Some("alsa_input.pci-builtin"), sources()),
+            Some("alsa_input.pci-builtin")
+        );
+        // The bug: the default became our own mic and the capture followed it.
+        assert_eq!(
+            follow_default_input(Some("sink_mic"), sources()),
+            Some("alsa_input.usb-headset")
+        );
+        assert_eq!(
+            follow_default_input(Some("sink_stream"), sources()),
+            Some("alsa_input.usb-headset")
+        );
+        assert_eq!(
+            follow_default_input(None, sources()),
+            Some("alsa_input.usb-headset")
+        );
+        let only_ours = [("sink_mic", 3000i64)].into_iter();
+        assert_eq!(follow_default_input(Some("sink_mic"), only_ours), None);
     }
 
     #[test]
