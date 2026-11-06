@@ -291,6 +291,33 @@ struct State {
 }
 
 impl State {
+    /// Drop everything the loop keeps for a deleted channel. One place, so a
+    /// channel re-added under the same name starts clean (it used to inherit
+    /// the old listen toggle, strict failover and mix membership) and the
+    /// next per-channel field can't be forgotten in one teardown path.
+    fn forget_channel(&mut self, name: &str) {
+        self.desired.remove(name);
+        self.meters.remove(name);
+        // Drop the EQ insert before the sink proxy goes away so the capture
+        // stream's target doesn't vanish under it mid-teardown.
+        self.eq_streams.remove(name);
+        self.eq_configs.remove(name);
+        self.channel_links.remove(name);
+        self.channel_targets.remove(name);
+        self.channel_outputs.remove(name);
+        self.channel_strict.remove(name);
+        self.monitored.remove(name);
+        self.monitor_links.remove(name);
+        for members in self.bus_members.values_mut() {
+            members.remove(name);
+        }
+        self.bus_links.retain(|(_, ch), _| ch != name);
+        self.send_gains.retain(|(_, ch), _| ch != name);
+        self.send_gain_in_links.retain(|(_, ch), _| ch != name);
+        self.bus_member_gains.retain(|(_, ch), _| ch != name);
+        self.send_gain_failed.retain(|(_, ch)| ch != name);
+    }
+
     /// Live node id of the mic playback stream. Resolved lazily - the id
     /// is only valid once the server has created the stream's node.
     fn mic_playback_node(&self) -> Option<u32> {
@@ -1821,19 +1848,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
         }
         Cmd::DestroySink { name, reply } => {
             let mut s = state.borrow_mut();
-            s.desired.remove(&name);
-            s.meters.remove(&name);
-            // Drop the EQ insert before the sink proxy goes away so the
-            // capture stream's target doesn't vanish under it mid-teardown.
-            s.eq_streams.remove(&name);
-            s.eq_configs.remove(&name);
-            s.channel_links.remove(&name);
-            s.bus_links.retain(|(_, ch), _| ch != &name);
-            s.send_gains.retain(|(_, ch), _| ch != &name);
-            s.send_gain_in_links.retain(|(_, ch), _| ch != &name);
-            s.bus_member_gains.retain(|(_, ch), _| ch != &name);
-            s.send_gain_failed.retain(|(_, ch)| ch != &name);
-            s.channel_outputs.remove(&name);
+            s.forget_channel(&name);
             if let Some(levels) = &s.levels {
                 levels.release(&name);
             }
@@ -2717,6 +2732,41 @@ mod tests {
         // A running chain, or a sink, never triggers a rebuild.
         assert!(!mic_waits_for(false, None, "alsa_input.usb", SOURCE_CLASS));
         assert!(!mic_waits_for(true, None, "alsa_output.usb", SINK_CLASS));
+    }
+
+    #[test]
+    fn deleting_a_channel_forgets_all_its_loop_state() {
+        let mut s = State::default();
+        let mix = "sink_stream".to_string();
+        for ch in ["sink_game", "sink_chat"] {
+            s.monitored.insert(ch.into());
+            s.channel_strict.insert(ch.into());
+            s.channel_outputs
+                .insert(ch.into(), Some("alsa_output.usb".into()));
+            s.channel_targets.insert(ch.into(), 42);
+            s.eq_configs.insert(ch.into(), EqConfig::default());
+            s.bus_member_gains.insert((mix.clone(), ch.into()), 70);
+        }
+        s.bus_members.insert(
+            mix.clone(),
+            ["sink_game", "sink_chat"].map(String::from).into(),
+        );
+
+        s.forget_channel("sink_game");
+
+        assert!(!s.monitored.contains("sink_game"));
+        assert!(!s.channel_strict.contains("sink_game"));
+        assert!(!s.channel_outputs.contains_key("sink_game"));
+        assert!(!s.channel_targets.contains_key("sink_game"));
+        assert!(!s.eq_configs.contains_key("sink_game"));
+        assert!(!s.bus_members[&mix].contains("sink_game"));
+        assert!(!s
+            .bus_member_gains
+            .contains_key(&(mix.clone(), "sink_game".into())));
+        // Other channels keep theirs.
+        assert!(s.monitored.contains("sink_chat"));
+        assert!(s.channel_strict.contains("sink_chat"));
+        assert!(s.bus_members[&mix].contains("sink_chat"));
     }
 
     #[test]

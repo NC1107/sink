@@ -195,3 +195,25 @@ describe("onBackendReconnected", () => {
     expect(useMixerStore.getState().channels[0].volume_percent).toBe(30);
   });
 });
+
+describe("removeChannel", () => {
+  it("drops the deleted channel's listen toggle and keeps the others", async () => {
+    useMixerStore.setState({ monitors: { sink_game: true, sink_chat: true } });
+    invoke.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "get_virtual_devices" ? [] : undefined),
+    );
+
+    await useMixerStore.getState().removeChannel("sink_game");
+
+    expect(useMixerStore.getState().monitors).toEqual({ sink_chat: true });
+  });
+
+  it("keeps the toggle when the delete fails", async () => {
+    useMixerStore.setState({ monitors: { sink_game: true } });
+    invoke.mockRejectedValue("pipewire request timed out");
+
+    await useMixerStore.getState().removeChannel("sink_game");
+
+    expect(useMixerStore.getState().monitors).toEqual({ sink_game: true });
+  });
+});

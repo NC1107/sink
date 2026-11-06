@@ -827,6 +827,12 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   removeChannel: async (sinkName) => {
     try {
       await invoke("remove_channel", { sinkName });
+      // The backend dropped its listen toggle; a channel re-added under the
+      // same name must not show one.
+      set((s) => {
+        const { [sinkName]: _gone, ...monitors } = s.monitors;
+        return { monitors };
+      });
       await Promise.all([
         get().fetchChannels(),
         get().fetchAppStreams(),
