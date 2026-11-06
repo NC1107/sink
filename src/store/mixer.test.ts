@@ -179,3 +179,19 @@ describe("setChannelEq", () => {
     });
   });
 });
+
+describe("onBackendReconnected", () => {
+  it("drops listen toggles the restarted daemon no longer has and refetches", async () => {
+    useMixerStore.setState({ monitors: { sink_game: true, sink_mic: true } });
+    invoke.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "get_virtual_devices" ? [channel("sink_game", 30)] : undefined),
+    );
+
+    await useMixerStore.getState().onBackendReconnected();
+
+    expect(useMixerStore.getState().monitors).toEqual({});
+    const called = invoke.mock.calls.map(([cmd]) => cmd);
+    expect(called).toContain("get_virtual_devices");
+    expect(useMixerStore.getState().channels[0].volume_percent).toBe(30);
+  });
+});

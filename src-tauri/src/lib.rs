@@ -31,6 +31,9 @@ pub fn run() {
         })
         .ok();
     let levels = native.as_ref().map(|(backend, _)| backend.levels.clone());
+    let reconnects = native
+        .as_ref()
+        .and_then(|(backend, _)| backend.take_reconnects());
     let (backend, stream_wake): (Arc<dyn AudioBackend>, _) = match native {
         Some((backend, stream_wake)) => (Arc::new(backend), Some(stream_wake)),
         None => (Arc::new(PactlBackend::new()), None),
@@ -156,6 +159,9 @@ pub fn run() {
             }
             persistence::wireplumber::remove_stale();
             spawn_route_enforcer(app.handle().clone(), stream_wake);
+            if let Some(reconnects) = reconnects {
+                spawn_reconnect_restorer(app.handle().clone(), reconnects);
+            }
             Ok(())
         })
         // Close button hides to tray instead of quitting - main window
@@ -187,6 +193,26 @@ const ROUTE_ENFORCE_INTERVAL_PACTL: Duration = Duration::from_secs(2);
 
 /// Longer than the UI's 2s poll; clock-based so a stalled webview is covered.
 const UI_POLL_GRACE: Duration = Duration::from_secs(5);
+
+/// A restarted PipeWire daemon starts with none of the user's channels, mixes
+/// or mic chain. Replay them the same way startup does, then let the UI
+/// refetch (listen toggles are session state and start off again).
+fn spawn_reconnect_restorer(handle: tauri::AppHandle, reconnects: Receiver<()>) {
+    let spawned = std::thread::Builder::new()
+        .name("pipewire-restore".into())
+        .spawn(move || {
+            for () in reconnects.iter() {
+                let state = handle.state::<AppState>();
+                if let Err(e) = commands::devices::init_virtual_devices(handle.clone(), state) {
+                    eprintln!("sink: restoring after pipewire restart failed: {e}");
+                }
+                let _ = handle.emit("backend-reconnected", ());
+            }
+        });
+    if let Err(e) = spawned {
+        eprintln!("sink: no pipewire restore thread ({e}); a daemon restart needs a relaunch");
+    }
+}
 
 /// Enforces assignments from the backend; the UI poll pauses in the tray.
 /// `stream_wake` (native only) triggers a pass as soon as a stream is ready.

@@ -76,6 +76,8 @@ interface MixerStore {
   createBlankProfile: (name: string) => Promise<void>;
   /** A profile was switched outside the UI (tray) - sync everything. */
   onProfileChanged: (name: string) => Promise<void>;
+  /** PipeWire restarted and the backend replayed the setup onto it. */
+  onBackendReconnected: () => Promise<void>;
   /** App history (live + gone + ignored). */
   seenApps: SeenApp[];
   fetchSeenApps: () => Promise<void>;
@@ -481,6 +483,19 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     }
+  },
+
+  onBackendReconnected: async () => {
+    // Listen toggles lived on the old daemon and are not replayed.
+    set({ monitors: {} });
+    await Promise.all([
+      get().fetchChannels(),
+      get().fetchAppStreams(),
+      get().fetchOutputs(),
+      get().fetchEq(),
+      get().fetchMic(),
+      get().fetchBuses(),
+    ]);
   },
 
   onProfileChanged: async (name) => {

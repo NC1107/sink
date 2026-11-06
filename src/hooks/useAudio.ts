@@ -67,6 +67,15 @@ export function useAudio() {
     };
   }, [onProfileChanged]);
 
+  // PipeWire restarted: the backend rebuilt everything on the new daemon.
+  const onBackendReconnected = useMixerStore((s) => s.onBackendReconnected);
+  useEffect(() => {
+    const unlisten = listen("backend-reconnected", () => void onBackendReconnected());
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [onBackendReconnected]);
+
   // A hotkey moved the balance in the backend; the strips need the volumes.
   const fetchChannels = useMixerStore((s) => s.fetchChannels);
   useEffect(() => {

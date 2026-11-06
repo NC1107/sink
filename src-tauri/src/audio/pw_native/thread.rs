@@ -344,34 +344,135 @@ thread_local! {
     static CORE: RefCell<Option<CoreRc>> = const { RefCell::new(None) };
 }
 
-/// Entry point: runs the PipeWire loop until the channel closes.
-/// `init_tx` reports startup success/failure exactly once.
+/// How long to wait between attempts to reach a restarted PipeWire daemon.
+const RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Entry point: runs the PipeWire loop until the channel closes, reconnecting
+/// whenever the daemon goes away (restart, upgrade, crash).
+/// `init_tx` reports the first connection's success/failure exactly once;
+/// `reconnected` fires after every later connection so the owner can replay
+/// the user's setup onto the fresh daemon.
 pub fn run(
     receiver: pw::channel::Receiver<Cmd>,
     self_tx: pw::channel::Sender<Cmd>,
     init_tx: mpsc::Sender<Result<(), SinkError>>,
     levels: Arc<LevelStore>,
     stream_wake: mpsc::SyncSender<()>,
+    reconnected: mpsc::Sender<()>,
 ) {
-    if let Err(e) = setup_and_run(receiver, self_tx, &init_tx, levels, stream_wake) {
-        let _ = init_tx.send(Err(e));
+    pw::init();
+    let mut receiver = receiver;
+    let mut first = true;
+    loop {
+        let conn = match Connection::open() {
+            Ok(conn) => conn,
+            Err(e) if first => {
+                let _ = init_tx.send(Err(e));
+                return;
+            }
+            Err(_) => {
+                std::thread::sleep(RECONNECT_DELAY);
+                continue;
+            }
+        };
+        let ready = || {
+            if first {
+                init_tx.send(Ok(())).is_ok()
+            } else {
+                eprintln!("sink: pipewire is back - restoring");
+                let _ = reconnected.send(());
+                true
+            }
+        };
+        match session(
+            conn,
+            receiver,
+            self_tx.clone(),
+            levels.clone(),
+            stream_wake.clone(),
+            ready,
+        ) {
+            SessionEnd::Closed => return,
+            SessionEnd::Disconnected(rx) => {
+                eprintln!("sink: lost the pipewire connection - reconnecting");
+                receiver = rx;
+                first = false;
+                std::thread::sleep(RECONNECT_DELAY);
+            }
+        }
     }
 }
 
-fn setup_and_run(
+struct Connection {
+    mainloop: pw::main_loop::MainLoopRc,
+    // Kept alive for the core's lifetime.
+    _context: pw::context::ContextRc,
+    core: CoreRc,
+    registry: RegistryRc,
+}
+
+impl Connection {
+    fn open() -> Result<Self, SinkError> {
+        let err = |stage: &str, e: pw::Error| SinkError::Config(format!("pipewire {stage}: {e}"));
+        let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| err("mainloop", e))?;
+        let context =
+            pw::context::ContextRc::new(&mainloop, None).map_err(|e| err("context", e))?;
+        let core = context.connect_rc(None).map_err(|e| err("connect", e))?;
+        let registry = core.get_registry_rc().map_err(|e| err("registry", e))?;
+        Ok(Self {
+            mainloop,
+            _context: context,
+            core,
+            registry,
+        })
+    }
+}
+
+enum SessionEnd {
+    /// The owner is gone (channel closed or init report unread): stop.
+    Closed,
+    /// The daemon went away; the command receiver carries over to the next
+    /// connection so queued and future commands still arrive.
+    Disconnected(pw::channel::Receiver<Cmd>),
+}
+
+/// The daemon hung up on us: every node, link and stream of this connection
+/// is gone with it.
+fn is_connection_lost(id: u32, res: i32) -> bool {
+    id == pw::core::PW_ID_CORE && res == -libc::EPIPE
+}
+
+/// One connection's worth of state and listeners; `ready` reports it is up.
+fn session(
+    conn: Connection,
     receiver: pw::channel::Receiver<Cmd>,
     self_tx: pw::channel::Sender<Cmd>,
-    init_tx: &mpsc::Sender<Result<(), SinkError>>,
     levels: Arc<LevelStore>,
     stream_wake: mpsc::SyncSender<()>,
-) -> Result<(), SinkError> {
-    pw::init();
-    let err = |stage: &str, e: pw::Error| SinkError::Config(format!("pipewire {stage}: {e}"));
+    ready: impl FnOnce() -> bool,
+) -> SessionEnd {
+    let Connection {
+        mainloop,
+        _context,
+        core,
+        registry,
+    } = conn;
 
-    let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| err("mainloop", e))?;
-    let context = pw::context::ContextRc::new(&mainloop, None).map_err(|e| err("context", e))?;
-    let core = context.connect_rc(None).map_err(|e| err("connect", e))?;
-    let registry = core.get_registry_rc().map_err(|e| err("registry", e))?;
+    let lost = Rc::new(std::cell::Cell::new(false));
+    let _core_listener = core
+        .add_listener_local()
+        .error({
+            let lost = lost.clone();
+            let mainloop = mainloop.clone();
+            move |id, _seq, res, message| {
+                if is_connection_lost(id, res) {
+                    eprintln!("sink: pipewire core error: {message}");
+                    lost.set(true);
+                    mainloop.quit();
+                }
+            }
+        })
+        .register();
 
     CORE.with(|c| *c.borrow_mut() = Some(core.clone()));
 
@@ -504,16 +605,27 @@ fn setup_and_run(
     // ---- command channel ----
     let state_c = state.clone();
     let registry_c = registry.clone();
-    let _recv = receiver.attach(mainloop.loop_(), move |cmd| {
+    let attached = receiver.attach(mainloop.loop_(), move |cmd| {
         handle_cmd(&state_c, &registry_c, cmd);
     });
 
-    init_tx
-        .send(Ok(()))
-        .map_err(|_| SinkError::Config("backend owner vanished during init".into()))?;
+    if !ready() {
+        CORE.with(|c| *c.borrow_mut() = None);
+        return SessionEnd::Closed;
+    }
 
     mainloop.run();
-    Ok(())
+
+    let receiver = attached.deattach();
+    // Every object of this connection died with it; drop them before the
+    // core so nothing tries to talk to the dead socket on the way out.
+    drop(state);
+    CORE.with(|c| *c.borrow_mut() = None);
+    if lost.get() {
+        SessionEnd::Disconnected(receiver)
+    } else {
+        SessionEnd::Closed
+    }
 }
 
 fn on_global(
@@ -853,13 +965,15 @@ fn on_node(
         return;
     }
 
-    // A chain waiting for its device: plugged in now, or installed by a
-    // tool that starts after we do.
-    if s.mic_streams.is_none()
-        && s.mic_config.enabled
-        && s.mic_config.input_device.as_deref() == Some(node_name.as_str())
-        && is_capture_class(&media_class)
-    {
+    // A chain waiting for its device: plugged in now, installed by a tool
+    // that starts after we do, or (following the default) the first real
+    // input after a daemon restart, which can come up after we reconnect.
+    if mic_waits_for(
+        s.mic_streams.is_none() && s.mic_config.enabled,
+        s.mic_config.input_device.as_deref(),
+        &node_name,
+        &media_class,
+    ) {
         drop(s);
         build_mic_streams(state);
         ensure_all_links(state);
@@ -888,6 +1002,17 @@ fn node_priority(n: &NodeEntry) -> i64 {
         .get("priority.session")
         .and_then(|p| p.parse().ok())
         .unwrap_or(0)
+}
+
+/// Whether a newly appeared node is the input a stopped mic chain waits for:
+/// its pinned device, or any real source when it follows the default.
+fn mic_waits_for(waiting: bool, pinned: Option<&str>, node_name: &str, media_class: &str) -> bool {
+    waiting
+        && is_capture_class(media_class)
+        && match pinned {
+            Some(pinned) => pinned == node_name,
+            None => !is_own_sink(node_name),
+        }
 }
 
 /// The mic chain's input when it follows the system default: the default
@@ -2568,6 +2693,30 @@ mod tests {
         );
         let only_ours = [("sink_mic", 3000i64)].into_iter();
         assert_eq!(follow_default_input(Some("sink_mic"), only_ours), None);
+    }
+
+    #[test]
+    fn a_waiting_mic_chain_starts_when_a_real_input_appears() {
+        // Following the default: any real source wakes it, our own never do.
+        assert!(mic_waits_for(true, None, "alsa_input.usb", SOURCE_CLASS));
+        assert!(!mic_waits_for(true, None, "sink_mic", VIRTUAL_SOURCE_CLASS));
+        assert!(!mic_waits_for(true, None, "sink_stream", SOURCE_CLASS));
+        // Pinned: only that device.
+        assert!(mic_waits_for(
+            true,
+            Some("alsa_input.usb"),
+            "alsa_input.usb",
+            SOURCE_CLASS
+        ));
+        assert!(!mic_waits_for(
+            true,
+            Some("alsa_input.usb"),
+            "alsa_input.pci",
+            SOURCE_CLASS
+        ));
+        // A running chain, or a sink, never triggers a rebuild.
+        assert!(!mic_waits_for(false, None, "alsa_input.usb", SOURCE_CLASS));
+        assert!(!mic_waits_for(true, None, "alsa_output.usb", SINK_CLASS));
     }
 
     #[test]
