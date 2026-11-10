@@ -1,7 +1,9 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::audio::deepfilter;
-use crate::audio::types::{is_own_sink, MicConfig, NoiseSuppression, OutputDevice};
+use crate::audio::types::{
+    is_own_sink, own_input_refusal, MicConfig, NoiseSuppression, OutputDevice,
+};
 use crate::persistence::mic;
 use crate::state::AppState;
 
@@ -23,11 +25,8 @@ pub fn apply_mic_config(state: &AppState, config: &MicConfig) -> Result<(), Stri
     // Capturing one of our own nodes loops the chain into itself (the
     // follow-default path already refuses them - see follow_default_input).
     // The picker lists real inputs; this guards stale configs and invokes.
-    if config.input_device.as_deref().is_some_and(is_own_sink) {
-        return Err(format!(
-            "refusing mic input {}: capturing our own audio loops the mic chain into itself",
-            config.input_device.as_deref().unwrap_or_default()
-        ));
+    if let Some(input) = config.input_device.as_deref().filter(|i| is_own_sink(i)) {
+        return Err(own_input_refusal(input));
     }
     let mut applied = config.clone();
     applied.output_label = state.lock_mixer()?.prefs.decorate(&config.output_label);

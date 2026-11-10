@@ -24,6 +24,7 @@ pub fn load() -> MicConfig {
         Err(_) => MicConfig::default(),
     };
     config.clamp_ranges();
+    config.drop_own_input();
     config
 }
 
@@ -57,5 +58,24 @@ mod tests {
         assert_eq!(config.gain_percent, 200);
         assert_eq!(config.limiter_ceiling_db, 0.0);
         assert_eq!(config.eq.bands[0].gain_db, 24.0);
+    }
+
+    /// Every layer refuses an own-node pin, so loading one back would show
+    /// the mic on "sink_stream" while it captures nothing.
+    #[test]
+    fn load_drops_a_pin_on_our_own_nodes() {
+        let _root = crate::persistence::testing::TempConfig::new("mic-load-own");
+        for (pin, kept) in [
+            ("sink_stream", None),
+            ("sink_game.monitor", None),
+            ("alsa_input.usb-mic", Some("alsa_input.usb-mic")),
+        ] {
+            let config = MicConfig {
+                input_device: Some(pin.to_string()),
+                ..MicConfig::default()
+            };
+            save(&config).unwrap();
+            assert_eq!(load().input_device.as_deref(), kept, "pin {pin}");
+        }
     }
 }

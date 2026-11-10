@@ -123,6 +123,7 @@ pub fn load(name: &str) -> Result<Profile, SinkError> {
     let mut profile: Profile = serde_json::from_str(&raw)
         .map_err(|e| SinkError::Config(format!("malformed profile {name}: {e}")))?;
     profile.eq.clamp_ranges();
+    profile.outputs.drop_own_targets();
     Ok(profile)
 }
 
@@ -161,6 +162,26 @@ mod tests {
 
         let profile = load("Edited").unwrap();
         assert_eq!(profile.eq.get("sink_game").bands[0].gain_db, -24.0);
+    }
+
+    /// A profile load writes its outputs back as the live ones, so an
+    /// own-node target must not survive into outputs.json either.
+    #[test]
+    fn load_drops_profile_outputs_on_our_own_nodes() {
+        let _root = crate::persistence::testing::TempConfig::new("profile-load-own");
+        let path = profile_path("Looped").unwrap();
+        crate::persistence::ensure_private_dir(path.parent().unwrap()).unwrap();
+        let raw = serde_json::json!({
+            "name": "Looped",
+            "channels": [],
+            "assignments": crate::persistence::assignments::Assignments::default(),
+            "outputs": { "outputs": { "sink_game": "sink_chat", "sink_music": "alsa_output.usb" } },
+        });
+        std::fs::write(&path, raw.to_string()).unwrap();
+
+        let profile = load("Looped").unwrap();
+        assert_eq!(profile.outputs.get("sink_game"), None);
+        assert_eq!(profile.outputs.get("sink_music"), Some("alsa_output.usb"));
     }
 
     #[test]

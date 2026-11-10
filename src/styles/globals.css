@@ -1155,7 +1155,8 @@ body,
   cursor: pointer;
   font-family: inherit;
 }
-.select {
+/* Two buttons share the update row; neither may wrap or squeeze. */
+.update-row .select {
   flex: 0 0 auto;
   white-space: nowrap;
 }

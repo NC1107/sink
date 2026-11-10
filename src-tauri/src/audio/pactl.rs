@@ -5,7 +5,9 @@ use std::sync::Mutex;
 use serde::Deserialize;
 
 use crate::audio::backend::AudioBackend;
-use crate::audio::types::{is_own_sink, is_virtual_sink, AppStream, OutputDevice};
+use crate::audio::types::{
+    is_own_sink, is_virtual_sink, own_output_refusal, AppStream, OutputDevice,
+};
 use crate::error::SinkError;
 
 /// `owner_module` value pactl uses when a sink has no owning module.
@@ -67,6 +69,22 @@ impl PactlBackend {
             modules: Mutex::new(HashMap::new()),
             loopbacks: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Where a follow-default channel's loopback plays. A user can make one
+    /// of our channels the system default, and following it would loop every
+    /// follow-default channel into it, so fall back to a real device then
+    /// (the native backend's link planner does the same).
+    fn follow_default_target(&self, sink_name: &str) -> Result<String, SinkError> {
+        let default = self.get_default_devices().ok().and_then(|(sink, _)| sink);
+        if !default.as_deref().is_some_and(is_own_sink) {
+            return Ok("@DEFAULT_SINK@".to_string());
+        }
+        self.list_output_devices()?
+            .into_iter()
+            .map(|d| d.name)
+            .find(|name| !is_own_sink(name))
+            .ok_or_else(|| SinkError::Config(own_output_refusal(sink_name)))
     }
 
     /// Run pactl with the given args, returning stdout on success.
@@ -420,20 +438,12 @@ impl AudioBackend for PactlBackend {
             return Err(SinkError::UnknownSink(sink_name.to_string()));
         }
         if output_name.is_some_and(is_own_sink) {
-            return Err(SinkError::Config(format!(
-                "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
-            )));
+            return Err(SinkError::Config(own_output_refusal(sink_name)));
         }
-        // Follow-default must not follow a default that is one of ours.
-        if output_name.is_none() {
-            if let Ok((Some(default), _)) = self.get_default_devices() {
-                if is_own_sink(&default) {
-                    return Err(SinkError::Config(format!(
-                        "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
-                    )));
-                }
-            }
-        }
+        let target = match output_name {
+            Some(name) => name.to_string(),
+            None => self.follow_default_target(sink_name)?,
+        };
         // Ask the server for existing loopbacks, not just our table - a crashed
         // prior run leaves modules loaded, and stacking more would double-play.
         {
@@ -455,7 +465,6 @@ impl AudioBackend for PactlBackend {
             }
         }
 
-        let target = output_name.unwrap_or("@DEFAULT_SINK@");
         let stdout = Self::run(&[
             "load-module",
             "module-loopback",

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::audio::types::is_own_sink;
 use crate::error::SinkError;
 
 /// Per-channel output device choices (JSON in `sink/outputs.json`).
@@ -28,13 +29,15 @@ impl ChannelOutputs {
         let Ok(path) = Self::config_path() else {
             return Self::default();
         };
-        match fs::read_to_string(&path) {
+        let mut outputs: Self = match fs::read_to_string(&path) {
             Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
                 eprintln!("sink: ignoring malformed {}: {e}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
-        }
+        };
+        outputs.drop_own_targets();
+        outputs
     }
 
     pub fn save(&self) -> Result<(), SinkError> {
@@ -67,6 +70,17 @@ impl ChannelOutputs {
             self.no_failover.remove(sink_name);
         } else {
             self.no_failover.insert(sink_name.to_string());
+        }
+    }
+
+    /// Every layer refuses an output on one of our own nodes, so a saved one
+    /// (an old config, a hand edit) would only show a device the channel
+    /// isn't playing on. Those channels follow the default instead.
+    pub fn drop_own_targets(&mut self) {
+        for output in self.outputs.values_mut() {
+            if output.as_deref().is_some_and(is_own_sink) {
+                *output = None;
+            }
         }
     }
 
@@ -115,6 +129,21 @@ mod tests {
         let o: ChannelOutputs = serde_json::from_str(legacy).expect("legacy loads");
         assert!(o.failover("sink_game"), "missing field means failover on");
         assert_eq!(o.get("sink_game"), Some("dev"));
+    }
+
+    #[test]
+    fn load_drops_outputs_on_our_own_nodes() {
+        let _root = crate::persistence::testing::TempConfig::new("outputs-load-own");
+        let mut o = ChannelOutputs::default();
+        o.set("sink_game", Some("sink_chat".into()));
+        o.set("sink_chat", Some("sink_bus_voice".into()));
+        o.set("sink_music", Some("alsa_output.usb-Headset".into()));
+        o.save().unwrap();
+
+        let back = ChannelOutputs::load();
+        assert_eq!(back.get("sink_game"), None);
+        assert_eq!(back.get("sink_chat"), None);
+        assert_eq!(back.get("sink_music"), Some("alsa_output.usb-Headset"));
     }
 
     #[test]

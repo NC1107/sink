@@ -23,20 +23,16 @@ interface UpdateInfo {
   release_url: string;
 }
 
-// Session-level update-check cache: Settings unmounts on navigation, so a
-// per-component check would hit the GitHub API on every visit. One check
-// per hour, shared in-flight promise across remounts; "Check now" forces.
-let updateCache: { at: number; info: UpdateInfo } | null = null;
+// Sink only reaches the network when the user asks, so the check runs on
+// "Check now" alone. Settings unmounts on navigation; the last result is
+// kept for the session so the row doesn't forget it.
+let lastUpdateCheck: UpdateInfo | null = null;
 let updateInFlight: Promise<UpdateInfo> | null = null;
-const UPDATE_CACHE_MS = 60 * 60 * 1000;
 
-function fetchUpdateInfo(force: boolean): Promise<UpdateInfo> {
-  if (!force && updateCache && Date.now() - updateCache.at < UPDATE_CACHE_MS) {
-    return Promise.resolve(updateCache.info);
-  }
+function fetchUpdateInfo(): Promise<UpdateInfo> {
   updateInFlight ??= invoke<UpdateInfo>("check_for_updates")
     .then((info) => {
-      updateCache = { at: Date.now(), info };
+      lastUpdateCheck = info;
       return info;
     })
     .finally(() => {
@@ -126,7 +122,7 @@ export function SettingsScreen() {
   const [labelStyleOpen, setLabelStyleOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(lastUpdateCheck);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
   const inputDevices = useMixerStore((s) => s.inputDevices);
@@ -134,23 +130,19 @@ export function SettingsScreen() {
   const showBalance = useMixerStore((s) => s.showBalance);
   const setBalanceVisible = useMixerStore((s) => s.setBalanceVisible);
 
-  const checkForUpdates = async (force = false) => {
+  const checkForUpdates = async () => {
     setCheckingUpdate(true);
     try {
-      setUpdate(await fetchUpdateInfo(force));
+      setUpdate(await fetchUpdateInfo());
     } catch {
-      // Never touch the shared error banner: a slow background check
-      // resolving late would erase a real error from a user action.
-      // latest_version: null is the row's own "couldn't reach it" state.
-      setUpdate(
-        (prev) =>
-          prev ?? {
-            current_version: "",
-            latest_version: null,
-            update_available: false,
-            release_url: "",
-          },
-      );
+      // The row shows its own "couldn't reach it" state (latest_version:
+      // null), so the shared error banner stays for real failures.
+      setUpdate({
+        current_version: version,
+        latest_version: null,
+        update_available: false,
+        release_url: "",
+      });
     } finally {
       setCheckingUpdate(false);
     }
@@ -158,10 +150,10 @@ export function SettingsScreen() {
 
   const updateSub = () => {
     if (checkingUpdate) return "Checking for updates…";
-    if (!update) return "Not checked yet";
+    if (!update) return "Look for a newer release on GitHub";
     if (update.latest_version === null) return "Couldn't reach the release feed";
     if (update.update_available)
-      return `Sink ${update.latest_version} is available (you run ${update.current_version}). Packaged install? Update through your package manager.`;
+      return `Sink ${update.latest_version} is available (you run ${update.current_version}). Update through your package manager or the release page.`;
     return `You're up to date (Sink ${update.current_version})`;
   };
 
@@ -178,8 +170,6 @@ export function SettingsScreen() {
       })
       .catch(() => {});
     void getVersion().then(setVersion);
-    void checkForUpdates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickDefault = async (kind: "output" | "input", name: string) => {
@@ -382,7 +372,7 @@ export function SettingsScreen() {
               <div className="rsub">GPL-3.0 · config in ~/.config/sink</div>
             </div>
           </div>
-          <div className="row">
+          <div className="row update-row">
             <div className="ricon">
               <Ms name="system_update" />
             </div>
@@ -405,7 +395,7 @@ export function SettingsScreen() {
               type="button"
               className="select"
               disabled={checkingUpdate}
-              onClick={() => void checkForUpdates(true)}
+              onClick={() => void checkForUpdates()}
             >
               <span>{checkingUpdate ? "Checking…" : "Check now"}</span>
             </button>

@@ -8,6 +8,18 @@ pub fn is_own_sink(name: &str) -> bool {
     name.starts_with("sink_")
 }
 
+/// Why a channel can't be routed into one of our own nodes.
+pub fn own_output_refusal(sink_name: &str) -> String {
+    format!(
+        "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
+    )
+}
+
+/// Why the mic chain can't capture one of our own nodes.
+pub fn own_input_refusal(input: &str) -> String {
+    format!("refusing mic input {input}: capturing our own audio loops the mic chain into itself")
+}
+
 /// True if `sink_name` is a managed virtual channel: `sink_`-prefixed but
 /// excluding service nodes and mix buses, so channel commands can't reach them.
 pub fn is_virtual_sink(sink_name: &str) -> bool {
@@ -451,6 +463,15 @@ impl MicConfig {
             0.0,
         );
         self.eq.clamp_ranges();
+    }
+
+    /// A saved pin on one of our own nodes can never be used (every layer
+    /// refuses it), so loading it back would only show a device the mic
+    /// isn't capturing. Fall back to following the default input instead.
+    pub fn drop_own_input(&mut self) {
+        if self.input_device.as_deref().is_some_and(is_own_sink) {
+            self.input_device = None;
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use crate::audio::identity::{self, Identity};
-use crate::audio::types::{is_own_sink, AppStream, OutputDevice, VirtualSink};
+use crate::audio::types::{is_own_sink, own_output_refusal, AppStream, OutputDevice, VirtualSink};
 use crate::audio::{icons, steam};
 use crate::mixer::state::MixerState;
 use crate::persistence::assignments::identity_key;
@@ -495,9 +495,7 @@ pub fn apply_channel_output(
     // another channel), a digital feedback loop. The picker only lists real
     // devices; this guards stale profiles and direct invokes.
     if output.is_some_and(is_own_sink) {
-        return Err(format!(
-            "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
-        ));
+        return Err(own_output_refusal(sink_name));
     }
     state
         .backend

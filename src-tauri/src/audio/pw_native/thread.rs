@@ -2387,9 +2387,9 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             // backend directly, and a stale saved target must never link a
             // channel's monitor into one of our own nodes.
             if output_name.as_deref().is_some_and(is_own_sink) {
-                let _ = reply.send(Err(SinkError::Config(format!(
-                    "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
-                ))));
+                let _ = reply.send(Err(SinkError::Config(
+                    crate::audio::types::own_output_refusal(&sink_name),
+                )));
                 return;
             }
             state
