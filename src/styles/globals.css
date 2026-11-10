@@ -1155,6 +1155,11 @@ body,
   cursor: pointer;
   font-family: inherit;
 }
+/* Two buttons share the update row; neither may wrap or squeeze. */
+.update-row .select {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .select:hover {
   border-color: var(--bg-active);
 }
@@ -1372,6 +1377,10 @@ body,
   min-width: 220px;
   /* Long device names would otherwise stretch a menu across the window. */
   max-width: min(420px, calc(100vw - 32px));
+  /* Long app lists scroll instead of outgrowing the window. */
+  max-height: min(440px, calc(100vh - 32px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--bg-popover);
   border: 1px solid var(--border-popover);
   border-radius: var(--r-lg);

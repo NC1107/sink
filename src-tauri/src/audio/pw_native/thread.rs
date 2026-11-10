@@ -1037,7 +1037,7 @@ fn mic_waits_for(waiting: bool, pinned: Option<&str>, node_name: &str, media_cla
     waiting
         && is_capture_class(media_class)
         && match pinned {
-            Some(pinned) => pinned == node_name,
+            Some(pinned) => pinned == node_name && !is_own_sink(node_name),
             None => !is_own_sink(node_name),
         }
 }
@@ -1083,6 +1083,12 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
         }
     }
     let mic_target = match &s.mic_config.input_device {
+        // A stale saved pin (new configs are rejected up front): wait for a
+        // real input rather than loop the chain into itself.
+        Some(pinned) if is_own_sink(pinned) => {
+            eprintln!("sink: mic chain refusing our own node {pinned} as input");
+            return;
+        }
         Some(pinned) => pinned.clone(),
         None => {
             let sources = s
@@ -2375,6 +2381,15 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
         } => {
             if !is_virtual_sink(&sink_name) {
                 let _ = reply.send(Err(SinkError::UnknownSink(sink_name)));
+                return;
+            }
+            // Same guard as the command layer: profiles restore through the
+            // backend directly, and a stale saved target must never link a
+            // channel's monitor into one of our own nodes.
+            if output_name.as_deref().is_some_and(is_own_sink) {
+                let _ = reply.send(Err(SinkError::Config(
+                    crate::audio::types::own_output_refusal(&sink_name),
+                )));
                 return;
             }
             state

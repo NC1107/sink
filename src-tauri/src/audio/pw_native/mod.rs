@@ -21,7 +21,7 @@ use std::time::Duration;
 use pipewire as pw;
 
 use crate::audio::backend::AudioBackend;
-use crate::audio::types::{AppStream, OutputDevice};
+use crate::audio::types::{is_own_sink, own_input_refusal, AppStream, OutputDevice};
 use crate::error::SinkError;
 use levels::LevelStore;
 use thread::Cmd;
@@ -251,6 +251,12 @@ impl AudioBackend for PipeWireBackend {
     fn set_mic_config(&self, config: &crate::audio::types::MicConfig) -> Result<(), SinkError> {
         // Every path ends here (commands, startup, profiles), and the RT
         // filters trust their input, so this is the last place to sanitize.
+        // Reject an own-node pin here, not only in build_mic_streams, so
+        // startup restore takes its honest mic-disabled error path instead
+        // of reporting a live chain that can never capture.
+        if let Some(input) = config.input_device.as_deref().filter(|i| is_own_sink(i)) {
+            return Err(SinkError::Config(own_input_refusal(input)));
+        }
         let mut config = config.clone();
         config.clamp_ranges();
         self.request(|reply| Cmd::SetMicConfig { config, reply })
