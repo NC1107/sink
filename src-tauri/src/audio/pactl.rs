@@ -412,6 +412,28 @@ impl AudioBackend for PactlBackend {
         sink_name: &str,
         output_name: Option<&str>,
     ) -> Result<(), SinkError> {
+        // Same guards as the command layer and the native backend, before
+        // any teardown: profile/startup restore calls the backend directly,
+        // and a stale saved target must never loop a channel into our own
+        // nodes - here as a real module-loopback, not just a link.
+        if !is_virtual_sink(sink_name) {
+            return Err(SinkError::UnknownSink(sink_name.to_string()));
+        }
+        if output_name.is_some_and(is_own_sink) {
+            return Err(SinkError::Config(format!(
+                "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
+            )));
+        }
+        // Follow-default must not follow a default that is one of ours.
+        if output_name.is_none() {
+            if let Ok((Some(default), _)) = self.get_default_devices() {
+                if is_own_sink(&default) {
+                    return Err(SinkError::Config(format!(
+                        "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
+                    )));
+                }
+            }
+        }
         // Ask the server for existing loopbacks, not just our table - a crashed
         // prior run leaves modules loaded, and stacking more would double-play.
         {
@@ -456,6 +478,21 @@ impl AudioBackend for PactlBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The own-node guard fires before any pactl call, so this runs with
+    /// no audio server: a refused target must not reach the loopback code.
+    #[test]
+    fn channel_output_rejects_own_nodes_and_non_channels() {
+        let backend = PactlBackend::new();
+        let err = backend
+            .set_channel_output("sink_game", Some("sink_chat"))
+            .expect_err("own node must be refused");
+        assert!(err.to_string().contains("loops the channel back"), "{err}");
+        assert!(matches!(
+            backend.set_channel_output("alsa_output.usb", Some("alsa_output.pci")),
+            Err(SinkError::UnknownSink(_))
+        ));
+    }
 
     #[test]
     fn parses_volume_percent() {

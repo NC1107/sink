@@ -142,6 +142,8 @@ pub fn run() {
             commands::hotkeys::configure_hotkeys,
             commands::hotkeys::set_hotkey_binding,
             commands::hotkeys::set_balance_step,
+            commands::updates::check_for_updates,
+            commands::updates::open_release_page,
         ])
         .setup(move |app| {
             build_tray(app)?;

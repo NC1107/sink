@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use crate::audio::identity::{self, Identity};
-use crate::audio::types::{AppStream, OutputDevice, VirtualSink};
+use crate::audio::types::{is_own_sink, AppStream, OutputDevice, VirtualSink};
 use crate::audio::{icons, steam};
 use crate::mixer::state::MixerState;
 use crate::persistence::assignments::identity_key;
@@ -482,14 +482,31 @@ pub fn set_channel_output(
     } else {
         Some(output_name)
     };
+    apply_channel_output(state.inner(), &sink_name, output.as_deref())
+}
+
+pub fn apply_channel_output(
+    state: &AppState,
+    sink_name: &str,
+    output: Option<&str>,
+) -> Result<(), String> {
+    // Our own nodes are never valid outputs: linking a channel's monitor
+    // into one of them feeds the channel back into itself (directly, or via
+    // another channel), a digital feedback loop. The picker only lists real
+    // devices; this guards stale profiles and direct invokes.
+    if output.is_some_and(is_own_sink) {
+        return Err(format!(
+            "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
+        ));
+    }
     state
         .backend
-        .set_channel_output(&sink_name, output.as_deref())
+        .set_channel_output(sink_name, output)
         .map_err(|e| e.to_string())?;
 
     let outputs = {
         let mut mixer = state.lock_mixer()?;
-        mixer.outputs.set(&sink_name, output);
+        mixer.outputs.set(sink_name, output.map(str::to_string));
         crate::commands::profiles::autosave_active(&mixer);
         mixer.outputs.clone()
     };
@@ -669,5 +686,64 @@ mod tests {
         let streams = refresh_streams(&state).expect("pass");
         assert!(backend.moves().is_empty());
         assert_eq!(streams.len(), 1);
+    }
+
+    /// Our own nodes are never valid channel outputs: linking a channel's
+    /// monitor into one would feed the channel back into itself.
+    #[test]
+    fn channel_output_rejects_our_own_nodes() {
+        let _cfg = TempConfig::new("output-loop");
+        let backend = Arc::new(MockBackend::with_streams(vec![]));
+        let state = AppState::new(backend.clone(), true);
+        state.lock_mixer().expect("mixer").init_defaults();
+
+        // Itself, another channel, a mix bus, the virtual mic, a monitor.
+        for target in [
+            "sink_game",
+            "sink_chat",
+            "sink_stream",
+            "sink_bus_voice",
+            "sink_mic",
+            "sink_game.monitor",
+        ] {
+            let err = apply_channel_output(&state, "sink_game", Some(target))
+                .expect_err("own node must be refused");
+            assert!(
+                err.contains("loops the channel back into itself"),
+                "unexpected error for {target}: {err}"
+            );
+        }
+        assert!(
+            state
+                .lock_mixer()
+                .expect("mixer")
+                .outputs
+                .get("sink_game")
+                .is_none(),
+            "a refused target must not be persisted"
+        );
+    }
+
+    #[test]
+    fn channel_output_accepts_real_devices_and_follow_default() {
+        let _cfg = TempConfig::new("output-ok");
+        let backend = Arc::new(MockBackend::with_streams(vec![]));
+        let state = AppState::new(backend.clone(), true);
+        state.lock_mixer().expect("mixer").init_defaults();
+
+        apply_channel_output(
+            &state,
+            "sink_game",
+            Some("alsa_output.pci-0000_00_1f.3.analog-stereo"),
+        )
+        .expect("real device");
+        apply_channel_output(&state, "sink_chat", None).expect("follow default");
+
+        let mixer = state.lock_mixer().expect("mixer");
+        assert_eq!(
+            mixer.outputs.get("sink_game"),
+            Some("alsa_output.pci-0000_00_1f.3.analog-stereo")
+        );
+        assert_eq!(mixer.outputs.get("sink_chat"), None);
     }
 }

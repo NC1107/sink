@@ -16,6 +16,35 @@ interface DefaultDevices {
   input: string | null;
 }
 
+interface UpdateInfo {
+  current_version: string;
+  latest_version: string | null;
+  update_available: boolean;
+  release_url: string;
+}
+
+// Session-level update-check cache: Settings unmounts on navigation, so a
+// per-component check would hit the GitHub API on every visit. One check
+// per hour, shared in-flight promise across remounts; "Check now" forces.
+let updateCache: { at: number; info: UpdateInfo } | null = null;
+let updateInFlight: Promise<UpdateInfo> | null = null;
+const UPDATE_CACHE_MS = 60 * 60 * 1000;
+
+function fetchUpdateInfo(force: boolean): Promise<UpdateInfo> {
+  if (!force && updateCache && Date.now() - updateCache.at < UPDATE_CACHE_MS) {
+    return Promise.resolve(updateCache.info);
+  }
+  updateInFlight ??= invoke<UpdateInfo>("check_for_updates")
+    .then((info) => {
+      updateCache = { at: Date.now(), info };
+      return info;
+    })
+    .finally(() => {
+      updateInFlight = null;
+    });
+  return updateInFlight;
+}
+
 type LabelStyle = "plain" | "suffix" | "prefix";
 
 const LABEL_STYLES: { value: LabelStyle; label: string; example: string }[] = [
@@ -97,11 +126,44 @@ export function SettingsScreen() {
   const [labelStyleOpen, setLabelStyleOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
   const inputDevices = useMixerStore((s) => s.inputDevices);
   const replayOnboarding = useMixerStore((s) => s.replayOnboarding);
   const showBalance = useMixerStore((s) => s.showBalance);
   const setBalanceVisible = useMixerStore((s) => s.setBalanceVisible);
+
+  const checkForUpdates = async (force = false) => {
+    setCheckingUpdate(true);
+    try {
+      setUpdate(await fetchUpdateInfo(force));
+    } catch {
+      // Never touch the shared error banner: a slow background check
+      // resolving late would erase a real error from a user action.
+      // latest_version: null is the row's own "couldn't reach it" state.
+      setUpdate(
+        (prev) =>
+          prev ?? {
+            current_version: "",
+            latest_version: null,
+            update_available: false,
+            release_url: "",
+          },
+      );
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const updateSub = () => {
+    if (checkingUpdate) return "Checking for updates…";
+    if (!update) return "Not checked yet";
+    if (update.latest_version === null) return "Couldn't reach the release feed";
+    if (update.update_available)
+      return `Sink ${update.latest_version} is available (you run ${update.current_version}). Packaged install? Update through your package manager.`;
+    return `You're up to date (Sink ${update.current_version})`;
+  };
 
   useEffect(() => {
     void invoke<boolean>("get_autostart").then(setAutostart);
@@ -116,6 +178,8 @@ export function SettingsScreen() {
       })
       .catch(() => {});
     void getVersion().then(setVersion);
+    void checkForUpdates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickDefault = async (kind: "output" | "input", name: string) => {
@@ -317,6 +381,34 @@ export function SettingsScreen() {
               <div className="rtitle">Sink {version}</div>
               <div className="rsub">GPL-3.0 · config in ~/.config/sink</div>
             </div>
+          </div>
+          <div className="row">
+            <div className="ricon">
+              <Ms name="system_update" />
+            </div>
+            <div className="rmain">
+              <div className="rtitle">Software update</div>
+              <div className="rsub" role="status" aria-live="polite">
+                {updateSub()}
+              </div>
+            </div>
+            {update?.update_available && (
+              <button
+                type="button"
+                className="select"
+                onClick={() => void invoke("open_release_page").catch((e) => setError(String(e)))}
+              >
+                <span>View release</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="select"
+              disabled={checkingUpdate}
+              onClick={() => void checkForUpdates(true)}
+            >
+              <span>{checkingUpdate ? "Checking…" : "Check now"}</span>
+            </button>
           </div>
           <div className="row">
             <div className="ricon">
