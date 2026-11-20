@@ -1407,11 +1407,32 @@ body,
 .menu-item:disabled:hover {
   background: none;
 }
-/* Trailing note on a row ("not connected"): never squeezes the label away. */
+/* Trailing note on a row ("not connected", the device a default lands on):
+ * gives way to the label, never the other way round. */
 .menu-item-note {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--fs-caption);
   color: var(--fg-muted);
+}
+.menu-item-label:has(+ .menu-item-note) {
+  flex: 1 0 auto;
+}
+/* Says whose menu this is: a strip's menu opens over its neighbours. */
+.menu-head {
+  padding: 6px var(--sp-3) 4px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .menu-item .ms {
   font-size: 18px;

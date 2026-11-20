@@ -33,7 +33,7 @@ const click = (el: Element | null | undefined) =>
 /** Opens the picker for a channel routed to `value`; returns the change spy. */
 function open(value: string[]) {
   const onChange = vi.fn();
-  act(() => root.render(<OutputSelect value={value} onChange={onChange} />));
+  act(() => root.render(<OutputSelect channelLabel="Music" value={value} onChange={onChange} />));
   click(host.querySelector(".strip-route-btn"));
   return onChange;
 }
@@ -124,12 +124,42 @@ describe("OutputSelect", () => {
   it("the trigger says what it opens and whether it is open", () => {
     const trigger = () => host.querySelector(".strip-route-btn");
     act(() =>
-      root.render(<OutputSelect value={[HEADSET.name, SPEAKERS.name]} onChange={vi.fn()} />),
+      root.render(
+        <OutputSelect
+          channelLabel="Music"
+          value={[HEADSET.name, SPEAKERS.name]}
+          onChange={vi.fn()}
+        />,
+      ),
     );
     expect(trigger()?.getAttribute("aria-label")).toBe("Output: Arctis Nova 5 + Speakers Analog");
     expect(trigger()?.getAttribute("aria-expanded")).toBe("false");
     click(trigger());
     expect(trigger()?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  // A strip's menu opens over its neighbours; it has to say whose it is.
+  it("is headed with its channel's name", () => {
+    open([]);
+    expect(document.querySelector(".menu-head")?.textContent).toBe("Music output");
+  });
+
+  it("system default names the device it lands on while it is followed", () => {
+    const onChange = vi.fn();
+    act(() =>
+      root.render(
+        <OutputSelect
+          channelLabel="Music"
+          value={[]}
+          resolved={[SPEAKERS.name]}
+          onChange={onChange}
+        />,
+      ),
+    );
+    click(host.querySelector(".strip-route-btn"));
+    expect(row("System default")?.textContent).toContain("Speakers Analog");
+    // Still the default row, not a second Speakers row.
+    expect(checked("System default")).toBe("true");
   });
 
   it("every device row carries its full name for when it is cut off", () => {

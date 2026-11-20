@@ -7,6 +7,8 @@ import { Popover } from "../Popover";
 import { Toggle } from "../Toggle";
 
 interface OutputSelectProps {
+  /** The channel's name, heading the menu: it opens over its neighbours. */
+  channelLabel: string;
   /** Chosen output node names; the channel plays on all of them. Empty =
    *  follow system default. */
   value: string[];
@@ -75,6 +77,7 @@ export function summarizeOutputs(
 }
 
 export function OutputSelect({
+  channelLabel,
   value,
   resolved = [],
   failover,
@@ -92,6 +95,9 @@ export function OutputSelect({
   // be seen and unticked on.
   const disconnected = value.filter((name) => !outputDevices.some((d) => d.name === name));
   const full = value.length >= MAX_CHANNEL_OUTPUTS;
+  // Where "System default" lands right now - only known while following it.
+  const defaultDevice =
+    value.length === 0 ? outputDevices.find((d) => d.name === resolved[0]) : undefined;
 
   return (
     <div style={{ position: "relative" }}>
@@ -117,15 +123,22 @@ export function OutputSelect({
         // it) instead of making the menu cover half the board.
         style={{ width: 340 }}
       >
+        <div className="menu-head">{channelLabel} output</div>
         {/* Not a device but the absence of a choice: ticked whenever nothing
             is, so unticking the last device lands back here. */}
         <MenuCheckItem
           checked={value.length === 0}
+          title={
+            defaultDevice
+              ? `Follows the system default, now ${defaultDevice.description}`
+              : "Follows whatever the system default output is"
+          }
           onClick={() => {
             if (value.length > 0) onChange([]);
           }}
         >
           <span className="menu-item-label">System default</span>
+          {defaultDevice && <span className="menu-item-note">{defaultDevice.description}</span>}
         </MenuCheckItem>
         <div className="menu-sep" />
         {outputDevices.map((d) => {
@@ -165,10 +178,10 @@ export function OutputSelect({
                 button of its own. */}
             <div
               className="menu-item static"
-              title="Off: stays silent if none of its devices is there"
+              title="When none of this channel's devices is connected, play on another one instead of going silent"
             >
               <Ms name="sync_alt" />
-              <span className="menu-item-label">Fail over to another device</span>
+              <span className="menu-item-label">Fall back when unplugged</span>
               <Toggle on={failover ?? true} onClick={() => onFailoverChange(!(failover ?? true))} />
             </div>
           </>
