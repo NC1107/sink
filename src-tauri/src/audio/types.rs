@@ -15,6 +15,28 @@ pub fn own_output_refusal(sink_name: &str) -> String {
     )
 }
 
+/// More devices than a desk holds; bounds what a hand-edited config or a
+/// direct invoke can make the loop link.
+pub const MAX_CHANNEL_OUTPUTS: usize = 8;
+
+/// A channel's output list is only ever real devices, and not endless.
+pub fn check_channel_outputs(
+    sink_name: &str,
+    outputs: &[String],
+) -> Result<(), crate::error::SinkError> {
+    if outputs.iter().any(|output| is_own_sink(output)) {
+        return Err(crate::error::SinkError::Config(own_output_refusal(
+            sink_name,
+        )));
+    }
+    if outputs.len() > MAX_CHANNEL_OUTPUTS {
+        return Err(crate::error::SinkError::Config(format!(
+            "{sink_name} can play on at most {MAX_CHANNEL_OUTPUTS} devices at once"
+        )));
+    }
+    Ok(())
+}
+
 /// Why the mic chain can't capture one of our own nodes.
 pub fn own_input_refusal(input: &str) -> String {
     format!("refusing mic input {input}: capturing our own audio loops the mic chain into itself")

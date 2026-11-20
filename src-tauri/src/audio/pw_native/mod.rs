@@ -125,7 +125,7 @@ impl AudioBackend for PipeWireBackend {
 
     fn resolved_channel_outputs(
         &self,
-    ) -> Result<std::collections::HashMap<String, Option<String>>, SinkError> {
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, SinkError> {
         self.request(|reply| Cmd::ResolvedOutputs { reply })
     }
 
@@ -160,16 +160,12 @@ impl AudioBackend for PipeWireBackend {
         })
     }
 
-    fn set_channel_output(
-        &self,
-        sink_name: &str,
-        output_name: Option<&str>,
-    ) -> Result<(), SinkError> {
+    fn set_channel_outputs(&self, sink_name: &str, outputs: &[String]) -> Result<(), SinkError> {
         let sink_name = sink_name.to_string();
-        let output_name = output_name.map(str::to_string);
-        self.request(|reply| Cmd::SetChannelOutput {
+        let outputs = outputs.to_vec();
+        self.request(|reply| Cmd::SetChannelOutputs {
             sink_name,
-            output_name,
+            outputs,
             reply,
         })
     }

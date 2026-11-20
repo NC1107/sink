@@ -1,26 +1,28 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useMixerStore } from "../../store/mixer";
+import type { OutputDevice } from "../../types";
 import { Ms } from "../Icons";
 import { MenuItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Toggle } from "../Toggle";
 
 interface OutputSelectProps {
-  /** Selected output node name; null = follow system default. */
-  value: string | null;
+  /** Chosen output node names; the channel plays on all of them. Empty =
+   *  follow system default. */
+  value: string[];
   /**
-   * When following the system default, the device this channel actually
-   * resolves to right now. Shown so failover to another device is visible.
+   * The devices this channel is actually playing on right now. Shown while
+   * following the system default, so failover to another device is visible.
    */
-  resolved?: string | null;
+  resolved?: string[];
   /** Whether this channel fails over to another device (default true). */
   failover?: boolean;
   /** Toggle auto-failover for this channel. Omit to hide the toggle. */
   onFailoverChange?: (enabled: boolean) => void;
   /** "Mixed" display for the all-channels pill when selections differ. */
   mixed?: boolean;
-  onChange: (outputName: string | null) => void;
+  onChange: (outputNames: string[]) => void;
   /** Compact footer style (channel strip) vs pill style (mixer top bar). */
   compact?: boolean;
   popoverStyle?: CSSProperties;
@@ -34,9 +36,55 @@ function deviceIcon(description: string): string {
   return "speaker";
 }
 
+interface OutputSummary {
+  /** Full wording for the tooltip and the pill. */
+  label: string;
+  /** One short word (or count) that fits a 122px strip footer. */
+  shortLabel: string;
+  icon: string;
+}
+
+/** How a channel's output choice reads on its strip. */
+export function summarizeOutputs(
+  value: string[],
+  resolved: string[],
+  devices: OutputDevice[],
+  mixed = false,
+): OutputSummary {
+  // An unplugged device is still a choice; show its node name until it's back.
+  const describe = (name: string) => devices.find((d) => d.name === name)?.description ?? name;
+  if (mixed) return { label: "Per-channel", shortLabel: "Mixed", icon: "speaker_group" };
+  if (value.length > 1) {
+    return {
+      label: value.map(describe).join(" + "),
+      shortLabel: `${value.length} outputs`,
+      icon: "speaker_group",
+    };
+  }
+  if (value.length === 1) {
+    const description = describe(value[0]);
+    const known = devices.some((d) => d.name === value[0]);
+    return {
+      label: description,
+      shortLabel: description.split(" ")[0],
+      icon: known ? deviceIcon(description) : "arrow_forward",
+    };
+  }
+  // Following the default: name the device it lands on, so failover shows.
+  const landed = devices.find((d) => d.name === resolved[0]);
+  if (landed) {
+    return {
+      label: `System default (${landed.description})`,
+      shortLabel: landed.description.split(" ")[0],
+      icon: deviceIcon(landed.description),
+    };
+  }
+  return { label: "System default", shortLabel: "Default", icon: "arrow_forward" };
+}
+
 export function OutputSelect({
   value,
-  resolved,
+  resolved = [],
   failover,
   onFailoverChange,
   mixed,
@@ -46,61 +94,67 @@ export function OutputSelect({
 }: Readonly<OutputSelectProps>) {
   const [open, setOpen] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
+  const { label, shortLabel, icon } = summarizeOutputs(value, resolved, outputDevices, mixed);
 
-  const current = value === null ? null : outputDevices.find((d) => d.name === value);
-  // While following the default, the device it currently resolves to (so the
-  // strip shows where audio actually goes, and reflects failover).
-  const resolvedDevice =
-    value === null && resolved ? outputDevices.find((d) => d.name === resolved) : undefined;
-  const shown = current ?? resolvedDevice;
-
-  let label: string;
-  if (mixed) label = "Per-channel";
-  else if (value !== null) label = current?.description ?? value;
-  else if (resolvedDevice) label = `System default (${resolvedDevice.description})`;
-  else label = "System default";
-
-  // Compact footer label: a single meaningful word that fits a 122px strip.
-  // Following default shows the live device so the user sees where it lands.
-  let shortLabel: string;
-  if (mixed) shortLabel = "Mixed";
-  else if (value !== null) shortLabel = label.split(" ")[0];
-  else if (resolvedDevice) shortLabel = resolvedDevice.description.split(" ")[0];
-  else shortLabel = "Default";
+  const pickOnly = (outputNames: string[]) => {
+    onChange(outputNames);
+    setOpen(false);
+  };
 
   const items = (
     <>
       <MenuItem
         icon="speaker_group"
-        selected={!mixed && value === null}
+        selected={!mixed && value.length === 0}
         showCheck
-        onClick={() => {
-          onChange(null);
-          setOpen(false);
-        }}
+        onClick={() => pickOnly([])}
       >
         System default
       </MenuItem>
-      {outputDevices.map((d) => (
-        <MenuItem
-          key={d.name}
-          icon={deviceIcon(d.description)}
-          selected={!mixed && d.name === value}
-          showCheck
-          onClick={() => {
-            onChange(d.name);
-            setOpen(false);
-          }}
-        >
-          {d.description}
-        </MenuItem>
-      ))}
+      {outputDevices.map((d) => {
+        const chosen = !mixed && value.includes(d.name);
+        // The last chosen device has nothing to be removed in favour of;
+        // "System default" is how a channel stops pinning one.
+        const removable = chosen && value.length > 1;
+        return (
+          <div key={d.name} className="menu-row">
+            {/* Clicking a device plays on it alone: switching outputs stays
+                one click. The trailing button adds or drops it instead. */}
+            <MenuItem
+              icon={deviceIcon(d.description)}
+              selected={chosen}
+              showCheck
+              onClick={() => pickOnly([d.name])}
+            >
+              {d.description}
+            </MenuItem>
+            {(!chosen || removable) && (
+              <button
+                type="button"
+                className="menu-row-btn"
+                aria-label={
+                  chosen ? `Stop playing on ${d.description}` : `Also play on ${d.description}`
+                }
+                title={chosen ? "Stop playing on this device" : "Also play on this device"}
+                onClick={() =>
+                  onChange(chosen ? value.filter((name) => name !== d.name) : [...value, d.name])
+                }
+              >
+                <Ms name={chosen ? "remove" : "add"} />
+              </button>
+            )}
+          </div>
+        );
+      })}
       {onFailoverChange && !mixed && (
         <>
           <div className="menu-sep" />
           {/* Static row: the Toggle is the control, so this must not be a
               button of its own. */}
-          <div className="menu-item static" title="Off: stays silent if this device disappears">
+          <div
+            className="menu-item static"
+            title="Off: stays silent if none of its devices is there"
+          >
             <Ms name="sync_alt" />
             <span className="menu-item-label">Fail over to another device</span>
             <Toggle on={failover ?? true} onClick={() => onFailoverChange(!(failover ?? true))} />
@@ -119,7 +173,7 @@ export function OutputSelect({
           onClick={() => setOpen((o) => !o)}
           title={`Output: ${label}`}
         >
-          <Ms name={shown ? deviceIcon(shown.description) : "arrow_forward"} />
+          <Ms name={icon} />
           <span className="strip-route-name">{shortLabel}</span>
           <Ms name="expand_more" />
         </button>
@@ -139,7 +193,7 @@ export function OutputSelect({
   return (
     <div style={{ position: "relative" }}>
       <button type="button" className="out-pill" onClick={() => setOpen((o) => !o)}>
-        <Ms name={shown ? deviceIcon(shown.description) : "speaker_group"} />
+        <Ms name={icon} />
         <span>{label}</span>
         <Ms name="expand_more" className="chev" />
       </button>

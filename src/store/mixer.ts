@@ -43,23 +43,26 @@ interface MixerStore {
   setLevels: (levels: Levels) => void;
   /** Physical output devices. */
   outputDevices: OutputDevice[];
-  /** Channel -> chosen output node name (null = follow system default). */
-  channelOutputs: Record<string, string | null>;
   /**
-   * Channel -> the device node name it is actually routed to right now.
+   * Channel -> chosen output node names; it plays on all of them (empty =
+   * follow system default).
+   */
+  channelOutputs: Record<string, string[]>;
+  /**
+   * Channel -> the device node names it is actually playing on right now.
    * Lets a follow-default strip show where audio really goes and reflects failover.
    */
-  resolvedOutputs: Record<string, string | null>;
+  resolvedOutputs: Record<string, string[]>;
   /**
    * Channel -> whether it fails over to another device when its chosen device
    * is gone. Defaults to on (absent treated as true).
    */
   channelFailover: Record<string, boolean>;
   fetchOutputs: () => Promise<void>;
-  setChannelOutput: (sinkName: string, outputName: string | null) => Promise<void>;
+  setChannelOutputs: (sinkName: string, outputNames: string[]) => Promise<void>;
   setChannelFailover: (sinkName: string, enabled: boolean) => Promise<void>;
   /** Sonar-style "same device on all channels". */
-  setAllOutputs: (outputName: string | null) => Promise<void>;
+  setAllOutputs: (outputNames: string[]) => Promise<void>;
   /** Channel -> parametric EQ (absent = never configured, i.e. default). */
   eqConfigs: Record<string, EqConfig>;
   fetchEq: () => Promise<void>;
@@ -384,8 +387,8 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     try {
       const [outputDevices, channelOutputs, resolvedOutputs, channelFailover] = await Promise.all([
         invoke<OutputDevice[]>("get_output_devices"),
-        invoke<Record<string, string | null>>("get_channel_outputs"),
-        invoke<Record<string, string | null>>("get_resolved_outputs"),
+        invoke<Record<string, string[]>>("get_channel_outputs"),
+        invoke<Record<string, string[]>>("get_resolved_outputs"),
         invoke<Record<string, boolean>>("get_channel_failover"),
       ]);
       const s = get();
@@ -400,12 +403,12 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setChannelOutput: async (sinkName, outputName) => {
+  setChannelOutputs: async (sinkName, outputNames) => {
     set((s) => ({
-      channelOutputs: { ...s.channelOutputs, [sinkName]: outputName },
+      channelOutputs: { ...s.channelOutputs, [sinkName]: outputNames },
     }));
     try {
-      await invoke("set_channel_output", { sinkName, outputName: outputName ?? "" });
+      await invoke("set_channel_outputs", { sinkName, outputNames });
     } catch (e) {
       set({ error: String(e) });
       await get().fetchOutputs();
@@ -424,9 +427,9 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setAllOutputs: async (outputName) => {
+  setAllOutputs: async (outputNames) => {
     for (const channel of get().channels) {
-      await get().setChannelOutput(channel.name, outputName);
+      await get().setChannelOutputs(channel.name, outputNames);
     }
   },
 

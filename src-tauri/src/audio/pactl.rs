@@ -6,7 +6,8 @@ use serde::Deserialize;
 
 use crate::audio::backend::AudioBackend;
 use crate::audio::types::{
-    is_own_sink, is_virtual_sink, own_output_refusal, AppStream, OutputDevice,
+    check_channel_outputs, is_own_sink, is_virtual_sink, own_output_refusal, AppStream,
+    OutputDevice,
 };
 use crate::error::SinkError;
 
@@ -19,9 +20,10 @@ pub struct PactlBackend {
     /// sink name -> index of the `module-null-sink` module that owns it,
     /// tracked here since `create_virtual_sink` returns `()` per the trait.
     modules: Mutex<HashMap<String, u32>>,
-    /// channel sink name -> index of its `module-loopback` (output routing
-    /// fallback; the native backend uses passive links instead).
-    loopbacks: Mutex<HashMap<String, u32>>,
+    /// channel sink name -> indices of its `module-loopback`s, one per
+    /// output device (output routing fallback; the native backend uses
+    /// passive links instead).
+    loopbacks: Mutex<HashMap<String, Vec<u32>>>,
 }
 
 // ---- JSON shapes for `pactl --format=json` output ----
@@ -85,6 +87,21 @@ impl PactlBackend {
             .map(|d| d.name)
             .find(|name| !is_own_sink(name))
             .ok_or_else(|| SinkError::Config(own_output_refusal(sink_name)))
+    }
+
+    /// Play a channel's monitor on one device; returns the module index.
+    fn load_loopback(sink_name: &str, target: &str) -> Result<u32, SinkError> {
+        let stdout = Self::run(&[
+            "load-module",
+            "module-loopback",
+            &format!("source={sink_name}.monitor"),
+            &format!("sink={target}"),
+            "source_dont_move=true",
+        ])?;
+        stdout
+            .trim()
+            .parse()
+            .map_err(|_| SinkError::Parse(format!("load-module returned {stdout:?}")))
     }
 
     /// Run pactl with the given args, returning stdout on success.
@@ -425,11 +442,7 @@ impl AudioBackend for PactlBackend {
         Ok(())
     }
 
-    fn set_channel_output(
-        &self,
-        sink_name: &str,
-        output_name: Option<&str>,
-    ) -> Result<(), SinkError> {
+    fn set_channel_outputs(&self, sink_name: &str, outputs: &[String]) -> Result<(), SinkError> {
         // Same guards as the command layer and the native backend, before
         // any teardown: profile/startup restore calls the backend directly,
         // and a stale saved target must never loop a channel into our own
@@ -437,12 +450,11 @@ impl AudioBackend for PactlBackend {
         if !is_virtual_sink(sink_name) {
             return Err(SinkError::UnknownSink(sink_name.to_string()));
         }
-        if output_name.is_some_and(is_own_sink) {
-            return Err(SinkError::Config(own_output_refusal(sink_name)));
-        }
-        let target = match output_name {
-            Some(name) => name.to_string(),
-            None => self.follow_default_target(sink_name)?,
+        check_channel_outputs(sink_name, outputs)?;
+        let targets = if outputs.is_empty() {
+            vec![self.follow_default_target(sink_name)?]
+        } else {
+            outputs.to_vec()
         };
         // Ask the server for existing loopbacks, not just our table - a crashed
         // prior run leaves modules loaded, and stacking more would double-play.
@@ -465,21 +477,27 @@ impl AudioBackend for PactlBackend {
             }
         }
 
-        let stdout = Self::run(&[
-            "load-module",
-            "module-loopback",
-            &format!("source={sink_name}.monitor"),
-            &format!("sink={target}"),
-            "source_dont_move=true",
-        ])?;
-        let module_index: u32 = stdout
-            .trim()
-            .parse()
-            .map_err(|_| SinkError::Parse(format!("load-module returned {stdout:?}")))?;
+        // One loopback per device. A device that is unplugged right now
+        // fails to load; the channel still plays on the ones that are
+        // there, and only having none of them is an error.
+        let mut loaded = Vec::new();
+        let mut first_error = None;
+        for target in &targets {
+            match Self::load_loopback(sink_name, target) {
+                Ok(module_index) => loaded.push(module_index),
+                Err(e) => {
+                    eprintln!("sink: {sink_name} can't play on {target}: {e}");
+                    first_error.get_or_insert(e);
+                }
+            }
+        }
+        if let (true, Some(e)) = (loaded.is_empty(), first_error) {
+            return Err(e);
+        }
         self.loopbacks
             .lock()
             .map_err(|_| SinkError::Parse("loopback table lock poisoned".into()))?
-            .insert(sink_name.to_string(), module_index);
+            .insert(sink_name.to_string(), loaded);
         Ok(())
     }
 }
@@ -493,12 +511,16 @@ mod tests {
     #[test]
     fn channel_output_rejects_own_nodes_and_non_channels() {
         let backend = PactlBackend::new();
+        // One own node refuses the whole list, real device or not.
         let err = backend
-            .set_channel_output("sink_game", Some("sink_chat"))
+            .set_channel_outputs(
+                "sink_game",
+                &["alsa_output.pci".to_string(), "sink_chat".to_string()],
+            )
             .expect_err("own node must be refused");
         assert!(err.to_string().contains("loops the channel back"), "{err}");
         assert!(matches!(
-            backend.set_channel_output("alsa_output.usb", Some("alsa_output.pci")),
+            backend.set_channel_outputs("alsa_output.usb", &["alsa_output.pci".to_string()]),
             Err(SinkError::UnknownSink(_))
         ));
     }

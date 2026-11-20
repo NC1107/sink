@@ -180,8 +180,8 @@ mod tests {
         std::fs::write(&path, raw.to_string()).unwrap();
 
         let profile = load("Looped").unwrap();
-        assert_eq!(profile.outputs.get("sink_game"), None);
-        assert_eq!(profile.outputs.get("sink_music"), Some("alsa_output.usb"));
+        assert!(profile.outputs.get("sink_game").is_empty());
+        assert_eq!(profile.outputs.get("sink_music"), ["alsa_output.usb"]);
     }
 
     #[test]

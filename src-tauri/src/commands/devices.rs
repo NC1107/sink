@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use crate::audio::identity::{self, Identity};
-use crate::audio::types::{is_own_sink, own_output_refusal, AppStream, OutputDevice, VirtualSink};
+use crate::audio::types::{check_channel_outputs, AppStream, OutputDevice, VirtualSink};
 use crate::audio::{icons, steam};
 use crate::mixer::state::MixerState;
 use crate::persistence::assignments::identity_key;
@@ -336,7 +336,7 @@ pub fn init_virtual_devices(
     for def in &defs.channels {
         if let Err(e) = state
             .backend
-            .set_channel_output(&def.name, outputs.get(&def.name))
+            .set_channel_outputs(&def.name, outputs.get(&def.name))
         {
             eprintln!("sink: output routing for {} failed: {e}", def.name);
         }
@@ -423,31 +423,27 @@ pub fn init_virtual_devices(
     Ok(())
 }
 
-/// Current per-channel output choices (None = follow system default).
+/// Current per-channel output choices (empty = follow system default).
 #[tauri::command]
 pub fn get_channel_outputs(
     state: State<'_, AppState>,
-) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
     let mixer = state.lock_mixer()?;
     Ok(mixer
         .channel_defs
         .channels
         .iter()
-        .map(|def| {
-            (
-                def.name.clone(),
-                mixer.outputs.get(&def.name).map(str::to_string),
-            )
-        })
+        .map(|def| (def.name.clone(), mixer.outputs.get(&def.name).to_vec()))
         .collect())
 }
 
-/// Per-channel resolved output: the device node.name each channel is actually
-/// routed to right now. Empty on the pactl fallback, which can't report it.
+/// Per-channel resolved outputs: the device node.names each channel is
+/// actually playing on right now. Empty on the pactl fallback, which can't
+/// report it.
 #[tauri::command]
 pub fn get_resolved_outputs(
     state: State<'_, AppState>,
-) -> Result<std::collections::HashMap<String, Option<String>>, String> {
+) -> Result<std::collections::HashMap<String, Vec<String>>, String> {
     state
         .backend
         .resolved_channel_outputs()
@@ -469,42 +465,36 @@ pub fn get_channel_failover(
         .collect())
 }
 
-/// Route a channel to an output device; empty `output_name` = follow the
-/// system default. Persisted across restarts.
+/// Route a channel to output devices - it plays on all of them; an empty
+/// list = follow the system default. Persisted across restarts.
 #[tauri::command]
-pub fn set_channel_output(
+pub fn set_channel_outputs(
     state: State<'_, AppState>,
     sink_name: String,
-    output_name: String,
+    output_names: Vec<String>,
 ) -> Result<(), String> {
-    let output = if output_name.is_empty() {
-        None
-    } else {
-        Some(output_name)
-    };
-    apply_channel_output(state.inner(), &sink_name, output.as_deref())
+    apply_channel_outputs(state.inner(), &sink_name, output_names)
 }
 
-pub fn apply_channel_output(
+pub fn apply_channel_outputs(
     state: &AppState,
     sink_name: &str,
-    output: Option<&str>,
+    outputs: Vec<String>,
 ) -> Result<(), String> {
     // Our own nodes are never valid outputs: linking a channel's monitor
     // into one of them feeds the channel back into itself (directly, or via
     // another channel), a digital feedback loop. The picker only lists real
     // devices; this guards stale profiles and direct invokes.
-    if output.is_some_and(is_own_sink) {
-        return Err(own_output_refusal(sink_name));
-    }
+    check_channel_outputs(sink_name, &outputs).map_err(|e| e.to_string())?;
+    let outputs = crate::persistence::outputs::normalize(outputs);
     state
         .backend
-        .set_channel_output(sink_name, output)
+        .set_channel_outputs(sink_name, &outputs)
         .map_err(|e| e.to_string())?;
 
     let outputs = {
         let mut mixer = state.lock_mixer()?;
-        mixer.outputs.set(sink_name, output.map(str::to_string));
+        mixer.outputs.set(sink_name, outputs);
         crate::commands::profiles::autosave_active(&mixer);
         mixer.outputs.clone()
     };
@@ -686,6 +676,10 @@ mod tests {
         assert_eq!(streams.len(), 1);
     }
 
+    fn devices(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
     /// Our own nodes are never valid channel outputs: linking a channel's
     /// monitor into one would feed the channel back into itself.
     #[test]
@@ -704,12 +698,15 @@ mod tests {
             "sink_mic",
             "sink_game.monitor",
         ] {
-            let err = apply_channel_output(&state, "sink_game", Some(target))
-                .expect_err("own node must be refused");
-            assert!(
-                err.contains("loops the channel back into itself"),
-                "unexpected error for {target}: {err}"
-            );
+            // Alone, and hidden behind a real device in the same list.
+            for outputs in [devices(&[target]), devices(&["alsa_output.pci", target])] {
+                let err = apply_channel_outputs(&state, "sink_game", outputs)
+                    .expect_err("own node must be refused");
+                assert!(
+                    err.contains("loops the channel back into itself"),
+                    "unexpected error for {target}: {err}"
+                );
+            }
         }
         assert!(
             state
@@ -717,8 +714,8 @@ mod tests {
                 .expect("mixer")
                 .outputs
                 .get("sink_game")
-                .is_none(),
-            "a refused target must not be persisted"
+                .is_empty(),
+            "a refused list must not be persisted, not even its real devices"
         );
     }
 
@@ -729,19 +726,71 @@ mod tests {
         let state = AppState::new(backend.clone(), true);
         state.lock_mixer().expect("mixer").init_defaults();
 
-        apply_channel_output(
+        apply_channel_outputs(
             &state,
             "sink_game",
-            Some("alsa_output.pci-0000_00_1f.3.analog-stereo"),
+            devices(&["alsa_output.pci-0000_00_1f.3.analog-stereo"]),
         )
         .expect("real device");
-        apply_channel_output(&state, "sink_chat", None).expect("follow default");
+        apply_channel_outputs(&state, "sink_chat", Vec::new()).expect("follow default");
 
         let mixer = state.lock_mixer().expect("mixer");
         assert_eq!(
             mixer.outputs.get("sink_game"),
-            Some("alsa_output.pci-0000_00_1f.3.analog-stereo")
+            ["alsa_output.pci-0000_00_1f.3.analog-stereo"]
         );
-        assert_eq!(mixer.outputs.get("sink_chat"), None);
+        assert!(mixer.outputs.get("sink_chat").is_empty());
+    }
+
+    /// Music on the headphones and the speakers at once (#114): the whole
+    /// list is kept, in the order picked, and survives a reload.
+    #[test]
+    fn a_channel_keeps_every_device_it_is_routed_to() {
+        let _cfg = TempConfig::new("output-multi");
+        let backend = Arc::new(MockBackend::with_streams(vec![]));
+        let state = AppState::new(backend.clone(), true);
+        state.lock_mixer().expect("mixer").init_defaults();
+
+        apply_channel_outputs(
+            &state,
+            "sink_music",
+            devices(&[
+                "alsa_output.usb-Headset",
+                "alsa_output.pci-Speakers",
+                "alsa_output.usb-Headset",
+            ]),
+        )
+        .expect("two devices");
+
+        let expected = ["alsa_output.usb-Headset", "alsa_output.pci-Speakers"];
+        assert_eq!(
+            state.lock_mixer().expect("mixer").outputs.get("sink_music"),
+            expected
+        );
+        assert_eq!(backend.channel_outputs("sink_music"), expected);
+        assert_eq!(
+            crate::persistence::outputs::ChannelOutputs::load().get("sink_music"),
+            expected
+        );
+    }
+
+    #[test]
+    fn a_channel_cannot_take_an_endless_device_list() {
+        let _cfg = TempConfig::new("output-many");
+        let backend = Arc::new(MockBackend::with_streams(vec![]));
+        let state = AppState::new(backend.clone(), true);
+        state.lock_mixer().expect("mixer").init_defaults();
+
+        let many: Vec<String> = (0..=crate::audio::types::MAX_CHANNEL_OUTPUTS)
+            .map(|i| format!("alsa_output.dev{i}"))
+            .collect();
+        let err = apply_channel_outputs(&state, "sink_music", many).expect_err("too many");
+        assert!(err.contains("at most"), "{err}");
+        assert!(state
+            .lock_mixer()
+            .expect("mixer")
+            .outputs
+            .get("sink_music")
+            .is_empty());
     }
 }

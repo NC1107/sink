@@ -1440,6 +1440,43 @@ body,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A choice with a second action beside it (output picker: play on this
+ * device alone, or add/drop it). The button column is reserved even on rows
+ * without one, so every label and check lines up. */
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 30px;
+  position: relative;
+}
+.menu-row .menu-item {
+  min-width: 0;
+}
+.menu-row-btn {
+  position: absolute;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.menu-row-btn:hover {
+  background: var(--bg-popover-hover);
+  color: var(--fg-primary);
+}
+.menu-row-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.menu-row-btn .ms {
+  font-size: 18px;
+}
 .menu-sep {
   height: 1px;
   background: var(--border-popover);
