@@ -38,54 +38,57 @@ function open(value: string[]) {
   return onChange;
 }
 
+// The menu renders through a portal, outside the host.
 const row = (description: string) =>
-  [...document.querySelectorAll('[role="menuitemradio"]')].find((el) =>
+  [...document.querySelectorAll('[role="menuitemcheckbox"]')].find((el) =>
     el.textContent?.includes(description),
   );
-// The menu renders through a portal, outside the host.
-const sideButton = (label: string) => document.querySelector(`[aria-label="${label}"]`);
-const menuOpen = () => document.querySelector('[role="menuitemradio"]') !== null;
+const checked = (description: string) => row(description)?.getAttribute("aria-checked");
+const menuOpen = () => document.querySelector('[role="menuitemcheckbox"]') !== null;
 
 describe("OutputSelect", () => {
-  // Most channels play on one device: switching it must stay one click.
-  it("clicking a device plays on it alone and closes the menu", () => {
-    const onChange = open([HEADSET.name, SPEAKERS.name]);
-    click(row("HDMI Display"));
-    expect(onChange).toHaveBeenCalledWith([TV.name]);
-    expect(menuOpen()).toBe(false);
-  });
-
   // #114: music on the headphones and the speakers at the same time.
-  it("adds a second device and keeps the menu open for more", () => {
+  it("ticking a device adds it and keeps the menu open for more", () => {
     const onChange = open([HEADSET.name]);
-    click(sideButton("Also play on Speakers Analog"));
+    click(row("Speakers Analog"));
     expect(onChange).toHaveBeenCalledWith([HEADSET.name, SPEAKERS.name]);
     expect(menuOpen()).toBe(true);
   });
 
-  it("drops one of several devices and leaves the rest", () => {
+  it("unticking one of several devices leaves the rest", () => {
     const onChange = open([HEADSET.name, SPEAKERS.name, TV.name]);
-    click(sideButton("Stop playing on Speakers Analog"));
+    click(row("Speakers Analog"));
     expect(onChange).toHaveBeenCalledWith([HEADSET.name, TV.name]);
   });
 
-  it("marks every chosen device, and only those", () => {
+  it("ticks every chosen device, and only those", () => {
     open([HEADSET.name, SPEAKERS.name]);
-    expect(row("Arctis Nova 5")?.getAttribute("aria-checked")).toBe("true");
-    expect(row("Speakers Analog")?.getAttribute("aria-checked")).toBe("true");
-    expect(row("HDMI Display")?.getAttribute("aria-checked")).toBe("false");
-    expect(row("System default")?.getAttribute("aria-checked")).toBe("false");
+    expect(checked("Arctis Nova 5")).toBe("true");
+    expect(checked("Speakers Analog")).toBe("true");
+    expect(checked("HDMI Display")).toBe("false");
+    expect(checked("System default")).toBe("false");
   });
 
-  // Dropping the last device would leave nothing chosen without saying
-  // what happens next; "System default" is the explicit way there.
-  it("offers no remove button on the only chosen device", () => {
-    open([HEADSET.name]);
-    expect(sideButton("Stop playing on Arctis Nova 5")).toBeNull();
-    expect(sideButton("Also play on Arctis Nova 5")).toBeNull();
+  // "System default" is the absence of a choice, not one more device.
+  it("system default is ticked exactly when no device is", () => {
+    open([]);
+    expect(checked("System default")).toBe("true");
+    expect(checked("Arctis Nova 5")).toBe("false");
   });
 
-  it("system default clears every chosen device", () => {
+  it("ticking a device while following the default pins just that device", () => {
+    const onChange = open([]);
+    click(row("Arctis Nova 5"));
+    expect(onChange).toHaveBeenCalledWith([HEADSET.name]);
+  });
+
+  it("unticking the last device goes back to the system default", () => {
+    const onChange = open([HEADSET.name]);
+    click(row("Arctis Nova 5"));
+    expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  it("ticking system default clears every chosen device", () => {
     const onChange = open([HEADSET.name, SPEAKERS.name]);
     click(row("System default"));
     expect(onChange).toHaveBeenCalledWith([]);

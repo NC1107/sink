@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { useMixerStore } from "../../store/mixer";
 import type { OutputDevice } from "../../types";
 import { Ms } from "../Icons";
-import { MenuItem } from "../MenuItem";
+import { MenuCheckItem } from "../MenuItem";
 import { Popover } from "../Popover";
 import { Toggle } from "../Toggle";
 
@@ -96,56 +96,26 @@ export function OutputSelect({
   const outputDevices = useMixerStore((s) => s.outputDevices);
   const { label, shortLabel, icon } = summarizeOutputs(value, resolved, outputDevices, mixed);
 
-  const pickOnly = (outputNames: string[]) => {
-    onChange(outputNames);
-    setOpen(false);
-  };
+  const toggle = (name: string) =>
+    onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
 
   const items = (
     <>
-      <MenuItem
-        icon="speaker_group"
-        selected={!mixed && value.length === 0}
-        showCheck
-        onClick={() => pickOnly([])}
-      >
-        System default
-      </MenuItem>
-      {outputDevices.map((d) => {
-        const chosen = !mixed && value.includes(d.name);
-        // The last chosen device has nothing to be removed in favour of;
-        // "System default" is how a channel stops pinning one.
-        const removable = chosen && value.length > 1;
-        return (
-          <div key={d.name} className="menu-row">
-            {/* Clicking a device plays on it alone: switching outputs stays
-                one click. The trailing button adds or drops it instead. */}
-            <MenuItem
-              icon={deviceIcon(d.description)}
-              selected={chosen}
-              showCheck
-              onClick={() => pickOnly([d.name])}
-            >
-              {d.description}
-            </MenuItem>
-            {(!chosen || removable) && (
-              <button
-                type="button"
-                className="menu-row-btn"
-                aria-label={
-                  chosen ? `Stop playing on ${d.description}` : `Also play on ${d.description}`
-                }
-                title={chosen ? "Stop playing on this device" : "Also play on this device"}
-                onClick={() =>
-                  onChange(chosen ? value.filter((name) => name !== d.name) : [...value, d.name])
-                }
-              >
-                <Ms name={chosen ? "remove" : "add"} />
-              </button>
-            )}
-          </div>
-        );
-      })}
+      {/* Not a device but the absence of a choice: ticked whenever nothing
+          is, so unticking the last device lands back here. */}
+      <MenuCheckItem checked={!mixed && value.length === 0} onClick={() => onChange([])}>
+        <span className="menu-item-label">System default</span>
+      </MenuCheckItem>
+      <div className="menu-sep" />
+      {outputDevices.map((d) => (
+        <MenuCheckItem
+          key={d.name}
+          checked={!mixed && value.includes(d.name)}
+          onClick={() => toggle(d.name)}
+        >
+          <span className="menu-item-label">{d.description}</span>
+        </MenuCheckItem>
+      ))}
       {onFailoverChange && !mixed && (
         <>
           <div className="menu-sep" />
