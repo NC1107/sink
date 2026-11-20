@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::audio::types::{is_own_sink, MAX_CHANNEL_OUTPUTS};
+use crate::audio::types::{distinct_outputs, is_own_sink, MAX_CHANNEL_OUTPUTS};
 use crate::error::SinkError;
 
 /// Per-channel output device choices (JSON in `sink/outputs.json`). A channel
@@ -57,30 +57,33 @@ mod device_lists {
     pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<HashMap<String, Vec<String>>, D::Error> {
-        let stored = HashMap::<String, Option<Stored>>::deserialize(deserializer)?;
+        // Entry by entry: one channel a hand edit broke (a number, a nested
+        // list) follows the default, and every other channel keeps its
+        // devices instead of the whole file being thrown away.
+        let stored = HashMap::<String, serde_json::Value>::deserialize(deserializer)?;
         Ok(stored
             .into_iter()
-            .map(|(channel, stored)| {
-                let devices = match stored {
-                    None => Vec::new(),
-                    Some(Stored::One(device)) => vec![device],
-                    Some(Stored::Many(devices)) => devices,
+            .map(|(channel, value)| {
+                let devices = match serde_json::from_value::<Option<Stored>>(value) {
+                    Ok(None) => Vec::new(),
+                    Ok(Some(Stored::One(device))) => vec![device],
+                    Ok(Some(Stored::Many(devices))) => devices,
+                    Err(e) => {
+                        eprintln!("sink: ignoring the saved outputs of {channel}: {e}");
+                        Vec::new()
+                    }
                 };
-                (channel, super::normalize(devices))
+                (channel, super::normalize(&devices))
             })
             .collect())
     }
 }
 
-/// A device list without blanks or repeats, in the order chosen, and no
-/// longer than a channel may have.
-pub fn normalize(devices: Vec<String>) -> Vec<String> {
-    let mut kept: Vec<String> = Vec::new();
-    for device in devices {
-        if !device.is_empty() && !kept.contains(&device) {
-            kept.push(device);
-        }
-    }
+/// What a stored list is trusted as: no blanks or repeats, and cut to what
+/// a channel may have. A command refuses an over-long list; a file that
+/// already holds one keeps its first devices rather than losing them all.
+fn normalize(devices: &[String]) -> Vec<String> {
+    let mut kept = distinct_outputs(devices);
     kept.truncate(MAX_CHANNEL_OUTPUTS);
     kept
 }
@@ -120,7 +123,7 @@ impl ChannelOutputs {
 
     pub fn set(&mut self, sink_name: &str, devices: Vec<String>) {
         self.outputs
-            .insert(sink_name.to_string(), normalize(devices));
+            .insert(sink_name.to_string(), normalize(&devices));
     }
 
     /// The channel's chosen devices; empty means it follows the default.
@@ -214,6 +217,37 @@ mod tests {
         let hand_edited = r#"{"outputs":{"sink_game":["x","x",""]}}"#;
         let o: ChannelOutputs = serde_json::from_str(hand_edited).expect("loads");
         assert_eq!(o.get("sink_game"), ["x"]);
+    }
+
+    #[test]
+    fn a_hand_edited_list_is_cut_to_what_a_channel_may_have() {
+        let many: Vec<String> = (0..12).map(|i| format!("dev{i}")).collect();
+        let raw = serde_json::json!({ "outputs": { "sink_game": many } }).to_string();
+        let o: ChannelOutputs = serde_json::from_str(&raw).expect("loads");
+        assert_eq!(o.get("sink_game").len(), MAX_CHANNEL_OUTPUTS);
+        assert_eq!(o.get("sink_game")[0], "dev0");
+        assert_eq!(o.get("sink_game")[7], "dev7");
+    }
+
+    /// The whole file used to be rejected, and the next save then wiped
+    /// every channel's device.
+    #[test]
+    fn one_broken_entry_does_not_cost_the_other_channels_their_devices() {
+        let raw = r#"{"outputs":{
+            "sink_game": 42,
+            "sink_chat": [["nested"]],
+            "sink_system": ["ok", null],
+            "sink_music": ["alsa_output.usb-Headset", "alsa_output.pci-Speakers"]
+        },"no_failover":["sink_music"]}"#;
+        let o: ChannelOutputs = serde_json::from_str(raw).expect("loads");
+        assert!(o.get("sink_game").is_empty());
+        assert!(o.get("sink_chat").is_empty());
+        assert!(o.get("sink_system").is_empty());
+        assert_eq!(
+            o.get("sink_music"),
+            ["alsa_output.usb-Headset", "alsa_output.pci-Speakers"]
+        );
+        assert!(!o.failover("sink_music"));
     }
 
     #[test]

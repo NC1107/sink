@@ -32,8 +32,7 @@ pub trait AudioBackend: Send + Sync {
     fn set_channel_eq(&self, sink_name: &str, config: &EqConfig) -> Result<(), SinkError>;
 
     /// Per-channel devices actually playing after explicit/default/fallback
-    /// resolution, so the UI can show what "System default" resolves to and
-    /// which chosen devices are missing.
+    /// resolution, so the UI can show what "System default" resolves to.
     fn resolved_channel_outputs(
         &self,
     ) -> Result<std::collections::HashMap<String, Vec<String>>, SinkError> {

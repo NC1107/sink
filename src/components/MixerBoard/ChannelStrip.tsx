@@ -195,7 +195,6 @@ export function ChannelStrip({
       <ChannelEqModal channel={channel} open={editingEq} onClose={() => setEditingEq(false)} />
 
       <OutputSelect
-        compact
         value={outputs}
         resolved={resolvedOutputs}
         failover={failover}

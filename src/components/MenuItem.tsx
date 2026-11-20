@@ -47,6 +47,8 @@ export function MenuItem({
 
 interface MenuCheckItemProps {
   checked: boolean;
+  /** Shown but not toggleable (a list that is full, say). */
+  disabled?: boolean;
   onClick: () => void;
   title?: string;
   className?: string;
@@ -56,6 +58,7 @@ interface MenuCheckItemProps {
 /** A menu row that toggles rather than picks: membership lists and flags. */
 export function MenuCheckItem({
   checked,
+  disabled = false,
   onClick,
   title,
   className,
@@ -66,6 +69,7 @@ export function MenuCheckItem({
       type="button"
       role="menuitemcheckbox"
       aria-checked={checked}
+      disabled={disabled}
       className={cx("menu-item", className)}
       title={title}
       onClick={onClick}

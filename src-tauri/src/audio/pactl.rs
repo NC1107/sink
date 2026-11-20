@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::audio::backend::AudioBackend;
 use crate::audio::types::{
-    check_channel_outputs, is_own_sink, is_virtual_sink, own_output_refusal, AppStream,
+    checked_channel_outputs, is_own_sink, is_virtual_sink, own_output_refusal, AppStream,
     OutputDevice,
 };
 use crate::error::SinkError;
@@ -450,55 +450,80 @@ impl AudioBackend for PactlBackend {
         if !is_virtual_sink(sink_name) {
             return Err(SinkError::UnknownSink(sink_name.to_string()));
         }
-        check_channel_outputs(sink_name, outputs)?;
+        let outputs = checked_channel_outputs(sink_name, outputs)?;
+        if let Some(name) = outputs.iter().find(|name| !is_plain_device_name(name)) {
+            return Err(SinkError::Config(format!(
+                "{name:?} is not a device name pactl can address"
+            )));
+        }
         let targets = if outputs.is_empty() {
             vec![self.follow_default_target(sink_name)?]
         } else {
-            outputs.to_vec()
+            outputs
         };
         // Ask the server for existing loopbacks, not just our table - a crashed
         // prior run leaves modules loaded, and stacking more would double-play.
-        {
-            let mut loopbacks = self
-                .loopbacks
-                .lock()
-                .map_err(|_| SinkError::Parse("loopback table lock poisoned".into()))?;
-            loopbacks.remove(sink_name);
-        }
         let needle = format!("source={sink_name}.monitor");
-        if let Ok(stdout) = Self::run(&["list", "modules", "short"]) {
-            for line in stdout.lines() {
-                if line.contains("module-loopback") && line.contains(&needle) {
-                    if let Some(index) = line.split_whitespace().next() {
-                        // Best effort: the module may already be gone.
-                        let _ = Self::run(&["unload-module", index]);
-                    }
-                }
-            }
-        }
+        let previous: Vec<String> = Self::run(&["list", "modules", "short"])
+            .map(|stdout| {
+                stdout
+                    .lines()
+                    .filter(|line| line.contains("module-loopback") && line.contains(&needle))
+                    .filter_map(|line| line.split_whitespace().next().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
 
-        // One loopback per device. A device that is unplugged right now
-        // fails to load; the channel still plays on the ones that are
-        // there, and only having none of them is an error.
-        let mut loaded = Vec::new();
-        let mut first_error = None;
-        for target in &targets {
-            match Self::load_loopback(sink_name, target) {
-                Ok(module_index) => loaded.push(module_index),
-                Err(e) => {
-                    eprintln!("sink: {sink_name} can't play on {target}: {e}");
-                    first_error.get_or_insert(e);
-                }
-            }
-        }
-        if let (true, Some(e)) = (loaded.is_empty(), first_error) {
-            return Err(e);
+        // One loopback per device, loaded before the previous ones go: if
+        // none of the new devices is there, the channel keeps playing where
+        // it was instead of going silent on an error.
+        let loaded = loaded_or_first_error(
+            targets
+                .iter()
+                .map(|target| {
+                    Self::load_loopback(sink_name, target).inspect_err(|e| {
+                        eprintln!("sink: {sink_name} can't play on {target}: {e}");
+                    })
+                })
+                .collect(),
+        )?;
+        for index in &previous {
+            // Best effort: the module may already be gone.
+            let _ = Self::run(&["unload-module", index]);
         }
         self.loopbacks
             .lock()
             .map_err(|_| SinkError::Parse("loopback table lock poisoned".into()))?
             .insert(sink_name.to_string(), loaded);
         Ok(())
+    }
+}
+
+/// pactl joins a module's arguments into one space-separated string, so a
+/// name with a space or a quote in it would be read as extra module
+/// arguments. Real device node names have neither.
+fn is_plain_device_name(name: &str) -> bool {
+    !name
+        .chars()
+        .any(|c| c.is_whitespace() || c.is_control() || c == '"' || c == '\'')
+}
+
+/// A channel routed to several devices plays on the ones that loaded - one
+/// of them being unplugged is not a failure. Only none loading is.
+fn loaded_or_first_error(results: Vec<Result<u32, SinkError>>) -> Result<Vec<u32>, SinkError> {
+    let mut loaded = Vec::new();
+    let mut first_error = None;
+    for result in results {
+        match result {
+            Ok(module_index) => loaded.push(module_index),
+            Err(e) => {
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    match first_error {
+        Some(e) if loaded.is_empty() => Err(e),
+        _ => Ok(loaded),
     }
 }
 
@@ -523,6 +548,45 @@ mod tests {
             backend.set_channel_outputs("alsa_output.usb", &["alsa_output.pci".to_string()]),
             Err(SinkError::UnknownSink(_))
         ));
+    }
+
+    #[test]
+    fn a_channel_plays_on_the_devices_that_loaded() {
+        let gone = || Err(SinkError::Parse("no such sink".into()));
+        assert_eq!(
+            loaded_or_first_error(vec![Ok(3), gone(), Ok(9)]).expect("two loaded"),
+            [3, 9]
+        );
+        assert!(loaded_or_first_error(vec![gone(), gone()]).is_err());
+        // Follow-default with nothing to load is not an error either.
+        assert_eq!(
+            loaded_or_first_error(vec![]).expect("empty"),
+            Vec::<u32>::new()
+        );
+    }
+
+    /// A space would end `sink=<name>` and start another module argument.
+    #[test]
+    fn a_device_name_cannot_smuggle_module_arguments() {
+        let backend = PactlBackend::new();
+        for name in [
+            "alsa_output.pci source_dont_move=false",
+            " sink_chat",
+            "alsa\"quoted",
+            "tab\tseparated",
+        ] {
+            let err = backend
+                .set_channel_outputs("sink_game", &[name.to_string()])
+                .expect_err("refused before any pactl call");
+            assert!(
+                err.to_string().contains("not a device name"),
+                "{name}: {err}"
+            );
+        }
+        assert!(is_plain_device_name(
+            "alsa_output.usb-Generic_USB_Audio-00.HiFi__Speaker__sink"
+        ));
+        assert!(is_plain_device_name("bluez_output.AA_BB_CC_DD_EE_FF.1"));
     }
 
     #[test]

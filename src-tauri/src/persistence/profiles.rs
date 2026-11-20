@@ -164,6 +164,34 @@ mod tests {
         assert_eq!(profile.eq.get("sink_game").bands[0].gain_db, -24.0);
     }
 
+    /// Profiles store outputs through the same type as outputs.json; an old
+    /// profile ("device" or null) and a multi-device one both load.
+    #[test]
+    fn profile_outputs_load_in_the_old_and_the_list_format() {
+        let _root = crate::persistence::testing::TempConfig::new("profile-load-lists");
+        let path = profile_path("Desk").unwrap();
+        crate::persistence::ensure_private_dir(path.parent().unwrap()).unwrap();
+        let raw = serde_json::json!({
+            "name": "Desk",
+            "channels": [],
+            "assignments": crate::persistence::assignments::Assignments::default(),
+            "outputs": { "outputs": {
+                "sink_game": "alsa_output.usb",
+                "sink_chat": null,
+                "sink_music": ["alsa_output.usb", "alsa_output.pci"],
+            } },
+        });
+        std::fs::write(&path, raw.to_string()).unwrap();
+
+        let profile = load("Desk").unwrap();
+        assert_eq!(profile.outputs.get("sink_game"), ["alsa_output.usb"]);
+        assert!(profile.outputs.get("sink_chat").is_empty());
+        assert_eq!(
+            profile.outputs.get("sink_music"),
+            ["alsa_output.usb", "alsa_output.pci"]
+        );
+    }
+
     /// A profile load writes its outputs back as the live ones, so an
     /// own-node target must not survive into outputs.json either.
     #[test]

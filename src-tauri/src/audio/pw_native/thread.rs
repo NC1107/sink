@@ -1396,6 +1396,45 @@ fn resolve_targets(
     stand_in.into_iter().collect()
 }
 
+/// (output port, input port) links between one source and one device.
+type PortPairs = Vec<(u32, u32)>;
+
+/// Which of a channel's per-device link sets to tear down, and which devices
+/// to build one for, to get from the live sets to the plan. A set already
+/// matching its plan is in neither list: it keeps playing untouched.
+fn diff_link_sets(
+    current: &HashMap<u32, PortPairs>,
+    plan: &[(u32, PortPairs)],
+) -> (Vec<u32>, Vec<u32>) {
+    let planned = |target: &u32| {
+        plan.iter()
+            .find(|(t, _)| t == target)
+            .map(|(_, pairs)| pairs)
+    };
+    let mut stale: Vec<u32> = current
+        .iter()
+        .filter(|(target, pairs)| planned(target) != Some(*pairs))
+        .map(|(target, _)| *target)
+        .collect();
+    stale.sort_unstable();
+    let missing = plan
+        .iter()
+        .filter(|(target, pairs)| !pairs.is_empty() && current.get(target) != Some(pairs))
+        .map(|(target, _)| *target)
+        .collect();
+    (stale, missing)
+}
+
+/// Whether a channel already has links to `device`. Listening adds links to
+/// the default output; on a channel that plays there anyway they would be
+/// duplicates.
+fn plays_on<T>(link_sets: Option<&HashMap<u32, T>>, device: Option<u32>) -> bool {
+    match (link_sets, device) {
+        (Some(sets), Some(device)) => sets.contains_key(&device),
+        _ => false,
+    }
+}
+
 /// Create link objects for `pairs` between two nodes; returns the proxies.
 fn create_links(
     core: &CoreRc,
@@ -1624,20 +1663,23 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         }
         // Reconcile one link set per device: a set whose plan is unchanged is
         // left alone, so adding or losing a device never glitches the others.
+        let plan: Vec<(u32, PortPairs)> = targets
+            .iter()
+            .map(|target| (*target, desired_pairs(&s, source_id, *target)))
+            .collect();
         let mut live = s.channel_links.remove(sink_name).unwrap_or_default();
-        live.retain(|target, _| targets.contains(target));
-        for target in &targets {
-            let pairs = desired_pairs(&s, source_id, *target);
-            let current: Vec<(u32, u32)> = live
-                .get(target)
-                .map(|links| links.iter().map(|(o, i, _)| (*o, *i)).collect())
-                .unwrap_or_default();
-            if current != pairs {
-                live.remove(target);
-                let created = create_links(&core, sink_name, source_id, *target, &pairs);
-                if !created.is_empty() {
-                    live.insert(*target, created);
-                }
+        let current: HashMap<u32, PortPairs> = live
+            .iter()
+            .map(|(target, links)| (*target, links.iter().map(|(o, i, _)| (*o, *i)).collect()))
+            .collect();
+        let (stale, missing) = diff_link_sets(&current, &plan);
+        for target in stale {
+            live.remove(&target);
+        }
+        for (target, pairs) in plan.iter().filter(|(target, _)| missing.contains(target)) {
+            let created = create_links(&core, sink_name, source_id, *target, pairs);
+            if !created.is_empty() {
+                live.insert(*target, created);
             }
         }
         if !live.is_empty() {
@@ -1712,12 +1754,7 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         };
         // A channel already playing to the default output needs no extra
         // links (and duplicates would fail) - monitoring is a no-op there.
-        let already_there = default_id.is_some_and(|default| {
-            s.channel_links
-                .get(&name)
-                .is_some_and(|sets| sets.contains_key(&default))
-        });
-        if already_there {
+        if plays_on(s.channel_links.get(&name), default_id) {
             pairs = Vec::new();
         }
         let current: Vec<(u32, u32)> = s
@@ -2412,10 +2449,13 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             // Same guard as the command layer: profiles restore through the
             // backend directly, and a stale saved target must never link a
             // channel's monitor into one of our own nodes.
-            if let Err(e) = crate::audio::types::check_channel_outputs(&sink_name, &outputs) {
-                let _ = reply.send(Err(e));
-                return;
-            }
+            let outputs = match crate::audio::types::checked_channel_outputs(&sink_name, &outputs) {
+                Ok(outputs) => outputs,
+                Err(e) => {
+                    let _ = reply.send(Err(e));
+                    return;
+                }
+            };
             state
                 .borrow_mut()
                 .channel_outputs
@@ -2707,6 +2747,82 @@ mod tests {
         assert_eq!(resolve_targets(&[], true, false, None, Some(2)), [2]);
         // Pinned but gone, failover off -> silence, never another device.
         assert_eq!(resolve_targets(&[], true, true, Some(1), Some(2)), none);
+    }
+
+    fn sets(entries: &[(u32, &[(u32, u32)])]) -> HashMap<u32, PortPairs> {
+        entries.iter().map(|(t, p)| (*t, p.to_vec())).collect()
+    }
+
+    fn plan(entries: &[(u32, &[(u32, u32)])]) -> Vec<(u32, PortPairs)> {
+        entries.iter().map(|(t, p)| (*t, p.to_vec())).collect()
+    }
+
+    const SPEAKERS: &[(u32, u32)] = &[(10, 70), (11, 71)];
+    const HEADSET: &[(u32, u32)] = &[(10, 80), (11, 81)];
+    const NONE: Vec<u32> = Vec::new();
+
+    #[test]
+    fn adding_a_device_leaves_the_playing_set_untouched() {
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS)]),
+            &plan(&[(7, SPEAKERS), (8, HEADSET)]),
+        );
+        assert_eq!(stale, NONE, "the speakers keep their links");
+        assert_eq!(missing, [8]);
+    }
+
+    #[test]
+    fn losing_a_device_drops_only_its_set() {
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS), (8, HEADSET)]),
+            &plan(&[(7, SPEAKERS)]),
+        );
+        assert_eq!(stale, [8]);
+        assert_eq!(missing, NONE);
+    }
+
+    #[test]
+    fn an_unchanged_plan_touches_nothing() {
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS), (8, HEADSET)]),
+            &plan(&[(8, HEADSET), (7, SPEAKERS)]),
+        );
+        assert_eq!((stale, missing), (NONE, NONE));
+    }
+
+    /// An EQ insert coming or going changes the source ports: every device
+    /// is re-linked from the new source.
+    #[test]
+    fn a_new_source_rebuilds_every_device() {
+        let from_eq: &[(u32, u32)] = &[(20, 70), (21, 71)];
+        let headset_from_eq: &[(u32, u32)] = &[(20, 80), (21, 81)];
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS), (8, HEADSET)]),
+            &plan(&[(7, from_eq), (8, headset_from_eq)]),
+        );
+        assert_eq!(stale, [7, 8]);
+        assert_eq!(missing, [7, 8]);
+    }
+
+    /// A device whose ports aren't known yet has nothing to link; its old
+    /// set goes and nothing is built until the ports show up.
+    #[test]
+    fn a_device_without_ports_is_dropped_and_not_rebuilt() {
+        let (stale, missing) =
+            diff_link_sets(&sets(&[(7, SPEAKERS)]), &plan(&[(7, &[]), (8, &[])]));
+        assert_eq!(stale, [7]);
+        assert_eq!(missing, NONE);
+    }
+
+    #[test]
+    fn listening_adds_nothing_where_the_channel_already_plays() {
+        let both = sets(&[(7, SPEAKERS), (8, HEADSET)]);
+        // The default (8) is one of the channel's own devices.
+        assert!(plays_on(Some(&both), Some(8)));
+        // It plays elsewhere: listening needs its own links.
+        assert!(!plays_on(Some(&both), Some(9)));
+        assert!(!plays_on(Some(&both), None));
+        assert!(!plays_on(None::<&HashMap<u32, PortPairs>>, Some(8)));
     }
 
     #[test]

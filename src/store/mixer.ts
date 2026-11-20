@@ -61,8 +61,6 @@ interface MixerStore {
   fetchOutputs: () => Promise<void>;
   setChannelOutputs: (sinkName: string, outputNames: string[]) => Promise<void>;
   setChannelFailover: (sinkName: string, enabled: boolean) => Promise<void>;
-  /** Sonar-style "same device on all channels". */
-  setAllOutputs: (outputNames: string[]) => Promise<void>;
   /** Channel -> parametric EQ (absent = never configured, i.e. default). */
   eqConfigs: Record<string, EqConfig>;
   fetchEq: () => Promise<void>;
@@ -173,6 +171,9 @@ interface MixerStore {
 /** Structural equality via JSON, to skip no-op store writes on each poll and
  *  avoid re-rendering the whole board when nothing changed. */
 const jsonEqual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/** Output changes sent to the backend, so a poll can tell it overlapped one. */
+const outputWrites = { started: 0, pending: 0 };
 
 export const useMixerStore = create<MixerStore>((set, get) => ({
   channels: [],
@@ -384,6 +385,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
   },
 
   fetchOutputs: async () => {
+    const writesBefore = outputWrites.started;
     try {
       const [outputDevices, channelOutputs, resolvedOutputs, channelFailover] = await Promise.all([
         invoke<OutputDevice[]>("get_output_devices"),
@@ -394,7 +396,13 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
       const s = get();
       const patch: Partial<MixerStore> = {};
       if (!jsonEqual(s.outputDevices, outputDevices)) patch.outputDevices = outputDevices;
-      if (!jsonEqual(s.channelOutputs, channelOutputs)) patch.channelOutputs = channelOutputs;
+      // A poll that overlapped an output change read the choices from
+      // before it; applying them would untick what was just ticked, and the
+      // next tick would then be built on the stale list.
+      const overlappedWrite = outputWrites.pending > 0 || outputWrites.started !== writesBefore;
+      if (!overlappedWrite && !jsonEqual(s.channelOutputs, channelOutputs)) {
+        patch.channelOutputs = channelOutputs;
+      }
       if (!jsonEqual(s.resolvedOutputs, resolvedOutputs)) patch.resolvedOutputs = resolvedOutputs;
       if (!jsonEqual(s.channelFailover, channelFailover)) patch.channelFailover = channelFailover;
       if (Object.keys(patch).length) set(patch);
@@ -407,10 +415,18 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     set((s) => ({
       channelOutputs: { ...s.channelOutputs, [sinkName]: outputNames },
     }));
+    outputWrites.started += 1;
+    outputWrites.pending += 1;
+    let failure: unknown;
     try {
       await invoke("set_channel_outputs", { sinkName, outputNames });
     } catch (e) {
-      set({ error: String(e) });
+      failure = e;
+    } finally {
+      outputWrites.pending -= 1;
+    }
+    if (failure !== undefined) {
+      set({ error: String(failure) });
       await get().fetchOutputs();
     }
   },
@@ -424,12 +440,6 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
       await get().fetchOutputs();
-    }
-  },
-
-  setAllOutputs: async (outputNames) => {
-    for (const channel of get().channels) {
-      await get().setChannelOutputs(channel.name, outputNames);
     }
   },
 

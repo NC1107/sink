@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use tauri::State;
 
 use crate::audio::identity::{self, Identity};
-use crate::audio::types::{check_channel_outputs, AppStream, OutputDevice, VirtualSink};
+use crate::audio::types::{checked_channel_outputs, AppStream, OutputDevice, VirtualSink};
 use crate::audio::{icons, steam};
 use crate::mixer::state::MixerState;
 use crate::persistence::assignments::identity_key;
@@ -485,8 +485,18 @@ pub fn apply_channel_outputs(
     // into one of them feeds the channel back into itself (directly, or via
     // another channel), a digital feedback loop. The picker only lists real
     // devices; this guards stale profiles and direct invokes.
-    check_channel_outputs(sink_name, &outputs).map_err(|e| e.to_string())?;
-    let outputs = crate::persistence::outputs::normalize(outputs);
+    let outputs = checked_channel_outputs(sink_name, &outputs).map_err(|e| e.to_string())?;
+    // Only a channel that exists: anything else would sit in outputs.json
+    // forever, since entries are dropped when their channel is deleted.
+    let known = state
+        .lock_mixer()?
+        .channel_defs
+        .channels
+        .iter()
+        .any(|def| def.name == sink_name);
+    if !known {
+        return Err(crate::error::SinkError::UnknownSink(sink_name.to_string()).to_string());
+    }
     state
         .backend
         .set_channel_outputs(sink_name, &outputs)
@@ -772,6 +782,24 @@ mod tests {
             crate::persistence::outputs::ChannelOutputs::load().get("sink_music"),
             expected
         );
+    }
+
+    #[test]
+    fn outputs_are_only_kept_for_channels_that_exist() {
+        let _cfg = TempConfig::new("output-ghost");
+        let backend = Arc::new(MockBackend::with_streams(vec![]));
+        let state = AppState::new(backend.clone(), true);
+        state.lock_mixer().expect("mixer").init_defaults();
+
+        apply_channel_outputs(&state, "sink_never_made", devices(&["alsa_output.pci"]))
+            .expect_err("no such channel");
+        assert!(backend.channel_outputs("sink_never_made").is_empty());
+        assert!(!state
+            .lock_mixer()
+            .expect("mixer")
+            .outputs
+            .outputs
+            .contains_key("sink_never_made"));
     }
 
     #[test]

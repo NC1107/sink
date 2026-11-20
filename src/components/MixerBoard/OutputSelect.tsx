@@ -1,7 +1,6 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
 import { useMixerStore } from "../../store/mixer";
-import type { OutputDevice } from "../../types";
+import { MAX_CHANNEL_OUTPUTS, type OutputDevice } from "../../types";
 import { Ms } from "../Icons";
 import { MenuCheckItem } from "../MenuItem";
 import { Popover } from "../Popover";
@@ -20,12 +19,7 @@ interface OutputSelectProps {
   failover?: boolean;
   /** Toggle auto-failover for this channel. Omit to hide the toggle. */
   onFailoverChange?: (enabled: boolean) => void;
-  /** "Mixed" display for the all-channels pill when selections differ. */
-  mixed?: boolean;
   onChange: (outputNames: string[]) => void;
-  /** Compact footer style (channel strip) vs pill style (mixer top bar). */
-  compact?: boolean;
-  popoverStyle?: CSSProperties;
 }
 
 function deviceIcon(description: string): string {
@@ -37,7 +31,7 @@ function deviceIcon(description: string): string {
 }
 
 interface OutputSummary {
-  /** Full wording for the tooltip and the pill. */
+  /** Full wording, for the tooltip and assistive tech. */
   label: string;
   /** One short word (or count) that fits a 122px strip footer. */
   shortLabel: string;
@@ -49,11 +43,9 @@ export function summarizeOutputs(
   value: string[],
   resolved: string[],
   devices: OutputDevice[],
-  mixed = false,
 ): OutputSummary {
   // An unplugged device is still a choice; show its node name until it's back.
   const describe = (name: string) => devices.find((d) => d.name === name)?.description ?? name;
-  if (mixed) return { label: "Per-channel", shortLabel: "Mixed", icon: "speaker_group" };
   if (value.length > 1) {
     return {
       label: value.map(describe).join(" + "),
@@ -87,94 +79,100 @@ export function OutputSelect({
   resolved = [],
   failover,
   onFailoverChange,
-  mixed,
   onChange,
-  compact,
-  popoverStyle,
 }: Readonly<OutputSelectProps>) {
   const [open, setOpen] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
-  const { label, shortLabel, icon } = summarizeOutputs(value, resolved, outputDevices, mixed);
+  const { label, shortLabel, icon } = summarizeOutputs(value, resolved, outputDevices);
 
   const toggle = (name: string) =>
     onChange(value.includes(name) ? value.filter((n) => n !== name) : [...value, name]);
-
-  const items = (
-    <>
-      {/* Not a device but the absence of a choice: ticked whenever nothing
-          is, so unticking the last device lands back here. */}
-      <MenuCheckItem checked={!mixed && value.length === 0} onClick={() => onChange([])}>
-        <span className="menu-item-label">System default</span>
-      </MenuCheckItem>
-      <div className="menu-sep" />
-      {outputDevices.map((d) => (
-        <MenuCheckItem
-          key={d.name}
-          checked={!mixed && value.includes(d.name)}
-          onClick={() => toggle(d.name)}
-        >
-          <span className="menu-item-label">{d.description}</span>
-        </MenuCheckItem>
-      ))}
-      {onFailoverChange && !mixed && (
-        <>
-          <div className="menu-sep" />
-          {/* Static row: the Toggle is the control, so this must not be a
-              button of its own. */}
-          <div
-            className="menu-item static"
-            title="Off: stays silent if none of its devices is there"
-          >
-            <Ms name="sync_alt" />
-            <span className="menu-item-label">Fail over to another device</span>
-            <Toggle on={failover ?? true} onClick={() => onFailoverChange(!(failover ?? true))} />
-          </div>
-        </>
-      )}
-    </>
-  );
-
-  if (compact) {
-    return (
-      <div style={{ position: "relative" }}>
-        <button
-          type="button"
-          className="strip-route strip-route-btn"
-          onClick={() => setOpen((o) => !o)}
-          title={`Output: ${label}`}
-        >
-          <Ms name={icon} />
-          <span className="strip-route-name">{shortLabel}</span>
-          <Ms name="expand_more" />
-        </button>
-        <Popover
-          open={open}
-          onClose={() => setOpen(false)}
-          side="top"
-          align="center"
-          style={popoverStyle}
-        >
-          {items}
-        </Popover>
-      </div>
-    );
-  }
+  // Chosen devices that are unplugged right now. They are still the
+  // channel's choice (and come back by themselves), so they need a row to
+  // be seen and unticked on.
+  const disconnected = value.filter((name) => !outputDevices.some((d) => d.name === name));
+  const full = value.length >= MAX_CHANNEL_OUTPUTS;
 
   return (
     <div style={{ position: "relative" }}>
-      <button type="button" className="out-pill" onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className="strip-route strip-route-btn"
+        onClick={() => setOpen((o) => !o)}
+        title={`Output: ${label}`}
+        aria-label={`Output: ${label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
         <Ms name={icon} />
-        <span>{label}</span>
-        <Ms name="expand_more" className="chev" />
+        <span className="strip-route-name">{shortLabel}</span>
+        <Ms name="expand_more" />
       </button>
       <Popover
         open={open}
         onClose={() => setOpen(false)}
-        side="bottom"
-        align="start"
-        style={popoverStyle}
+        side="top"
+        align="center"
+        // A long device name is ellipsised (its row's tooltip has all of
+        // it) instead of making the menu cover half the board.
+        style={{ width: 340 }}
       >
-        {items}
+        {/* Not a device but the absence of a choice: ticked whenever nothing
+            is, so unticking the last device lands back here. */}
+        <MenuCheckItem
+          checked={value.length === 0}
+          onClick={() => {
+            if (value.length > 0) onChange([]);
+          }}
+        >
+          <span className="menu-item-label">System default</span>
+        </MenuCheckItem>
+        <div className="menu-sep" />
+        {outputDevices.map((d) => {
+          const checked = value.includes(d.name);
+          return (
+            <MenuCheckItem
+              key={d.name}
+              checked={checked}
+              disabled={full && !checked}
+              title={
+                full && !checked
+                  ? `A channel plays on at most ${MAX_CHANNEL_OUTPUTS} devices`
+                  : d.description
+              }
+              onClick={() => toggle(d.name)}
+            >
+              <span className="menu-item-label">{d.description}</span>
+            </MenuCheckItem>
+          );
+        })}
+        {disconnected.map((name) => (
+          <MenuCheckItem
+            key={name}
+            checked
+            className="muted"
+            title={`${name} - plays here again when it is reconnected`}
+            onClick={() => toggle(name)}
+          >
+            <span className="menu-item-label">{name}</span>
+            <span className="menu-item-note">not connected</span>
+          </MenuCheckItem>
+        ))}
+        {onFailoverChange && (
+          <>
+            <div className="menu-sep" />
+            {/* Static row: the Toggle is the control, so this must not be a
+                button of its own. */}
+            <div
+              className="menu-item static"
+              title="Off: stays silent if none of its devices is there"
+            >
+              <Ms name="sync_alt" />
+              <span className="menu-item-label">Fail over to another device</span>
+              <Toggle on={failover ?? true} onClick={() => onFailoverChange(!(failover ?? true))} />
+            </div>
+          </>
+        )}
       </Popover>
     </div>
   );
