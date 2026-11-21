@@ -33,6 +33,8 @@ pub struct MockBackend {
     on_bus: Mutex<Option<BusHook>>,
     /// Backend calls (by `Call::Other` name) that return an error.
     failing: Mutex<Vec<&'static str>>,
+    /// Channel sink name -> the output devices it was last routed to.
+    outputs: Mutex<std::collections::HashMap<String, Vec<String>>>,
 }
 
 impl MockBackend {
@@ -41,6 +43,16 @@ impl MockBackend {
             streams: Mutex::new(streams),
             ..Default::default()
         }
+    }
+
+    /// The devices a channel was last routed to (empty = follow default).
+    pub fn channel_outputs(&self, sink_name: &str) -> Vec<String> {
+        self.outputs
+            .lock()
+            .expect("outputs")
+            .get(sink_name)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn on_move(&self, f: impl Fn(u32, &str) + Send + Sync + 'static) {
@@ -187,7 +199,11 @@ impl AudioBackend for MockBackend {
         Ok(())
     }
 
-    fn set_channel_output(&self, _sink_name: &str, _device: Option<&str>) -> Result<(), SinkError> {
+    fn set_channel_outputs(&self, sink_name: &str, outputs: &[String]) -> Result<(), SinkError> {
+        self.outputs
+            .lock()
+            .expect("outputs")
+            .insert(sink_name.to_string(), outputs.to_vec());
         Ok(())
     }
 
@@ -197,7 +213,7 @@ impl AudioBackend for MockBackend {
 
     fn resolved_channel_outputs(
         &self,
-    ) -> Result<std::collections::HashMap<String, Option<String>>, SinkError> {
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, SinkError> {
         Ok(std::collections::HashMap::new())
     }
 

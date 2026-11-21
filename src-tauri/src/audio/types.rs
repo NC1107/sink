@@ -15,6 +15,42 @@ pub fn own_output_refusal(sink_name: &str) -> String {
     )
 }
 
+/// More devices than a desk holds; bounds what a hand-edited config or a
+/// direct invoke can make the loop link.
+pub const MAX_CHANNEL_OUTPUTS: usize = 8;
+
+/// A device list without blanks or repeats, in the order chosen.
+pub fn distinct_outputs(outputs: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for output in outputs {
+        if !output.is_empty() && !kept.contains(output) {
+            kept.push(output.clone());
+        }
+    }
+    kept
+}
+
+/// The one gate a requested output list goes through at every layer
+/// (command, loop, pactl): repeats and blanks dropped, then only real
+/// devices, and not endlessly many. Returns the list to act on.
+pub fn checked_channel_outputs(
+    sink_name: &str,
+    outputs: &[String],
+) -> Result<Vec<String>, crate::error::SinkError> {
+    let outputs = distinct_outputs(outputs);
+    if outputs.iter().any(|output| is_own_sink(output)) {
+        return Err(crate::error::SinkError::Config(own_output_refusal(
+            sink_name,
+        )));
+    }
+    if outputs.len() > MAX_CHANNEL_OUTPUTS {
+        return Err(crate::error::SinkError::Config(format!(
+            "{sink_name} can play on at most {MAX_CHANNEL_OUTPUTS} devices at once"
+        )));
+    }
+    Ok(outputs)
+}
+
 /// Why the mic chain can't capture one of our own nodes.
 pub fn own_input_refusal(input: &str) -> String {
     format!("refusing mic input {input}: capturing our own audio loops the mic chain into itself")
