@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -20,10 +21,119 @@ pub struct PactlBackend {
     /// sink name -> index of the `module-null-sink` module that owns it,
     /// tracked here since `create_virtual_sink` returns `()` per the trait.
     modules: Mutex<HashMap<String, u32>>,
-    /// channel sink name -> indices of its `module-loopback`s, one per
-    /// output device (output routing fallback; the native backend uses
-    /// passive links instead).
-    loopbacks: Mutex<HashMap<String, Vec<u32>>>,
+    /// Where each channel should play. Shared with the thread that keeps
+    /// the `module-loopback`s in step with the devices that are connected
+    /// (the native backend uses passive links and registry events instead).
+    routing: Arc<Mutex<Routing>>,
+}
+
+/// pactl has no events to react to, so devices coming and going are noticed
+/// by looking again this often.
+const DEVICE_WATCH_INTERVAL: Duration = Duration::from_secs(2);
+
+#[derive(Default)]
+struct Routing {
+    /// channel sink name -> its chosen devices; empty = follow the default.
+    /// Only channels that were routed at least once are in here.
+    chosen: HashMap<String, Vec<String>>,
+    /// Channels that go silent, not to the default, with no device left.
+    strict: HashSet<String>,
+    /// What every routed channel's loopbacks were last matched against;
+    /// `None` while a channel still owes a match (so the watcher retries).
+    matched: Option<Devices>,
+}
+
+/// What decides where loopbacks go, as last seen on the server.
+#[derive(Debug, Clone, PartialEq)]
+struct Devices {
+    connected: Vec<String>,
+    /// A user can make one of our channels the system default; following
+    /// it would loop every follow-default channel into it.
+    default_is_ours: bool,
+}
+
+/// One `module-loopback` a channel should have.
+#[derive(Debug, Clone, PartialEq)]
+struct Loopback {
+    sink: String,
+    /// A loopback follows its sink to the default device when the sink is
+    /// unplugged. On a chosen device that would play the channel twice on
+    /// the default (once per missing device), so those are pinned and die
+    /// with the device; only the follow-default one may move.
+    pinned: bool,
+}
+
+impl Loopback {
+    fn arguments(&self, sink_name: &str) -> Vec<String> {
+        let mut arguments = vec![
+            format!("source={sink_name}.monitor"),
+            format!("sink={}", self.sink),
+            "source_dont_move=true".to_string(),
+        ];
+        if self.pinned {
+            arguments.push("sink_dont_move=true".to_string());
+        }
+        arguments
+    }
+
+    fn is_loaded_as(&self, argument: &str) -> bool {
+        let pinned = argument
+            .split_whitespace()
+            .any(|token| token == "sink_dont_move=true");
+        let sink = format!("sink={}", self.sink);
+        pinned == self.pinned && argument.split_whitespace().any(|token| token == sink)
+    }
+}
+
+/// Where a channel plays, given the devices connected right now.
+#[derive(Debug, PartialEq)]
+enum Targets {
+    Devices(Vec<String>),
+    FollowDefault,
+    Silent,
+}
+
+/// The native link planner's rule: a channel stays on its chosen devices
+/// while at least one is connected, and only then follows the default (or
+/// goes silent when its failover is off).
+fn resolve_targets(chosen: &[String], strict: bool, connected: &[String]) -> Targets {
+    let present: Vec<String> = chosen
+        .iter()
+        .filter(|name| connected.contains(name))
+        .cloned()
+        .collect();
+    if !present.is_empty() {
+        Targets::Devices(present)
+    } else if chosen.is_empty() || !strict {
+        Targets::FollowDefault
+    } else {
+        Targets::Silent
+    }
+}
+
+/// What to change so a channel's loaded loopbacks (`(module index,
+/// argument)`) become `wanted`: the wanted ones to load, and the module
+/// indices to unload (duplicates of a wanted one included).
+fn diff_loopbacks(loaded: &[(u32, String)], wanted: &[Loopback]) -> (Vec<Loopback>, Vec<u32>) {
+    let mut keep = HashSet::new();
+    let mut missing = Vec::new();
+    for loopback in wanted {
+        match loaded
+            .iter()
+            .find(|(_, argument)| loopback.is_loaded_as(argument))
+        {
+            Some((index, _)) => {
+                keep.insert(*index);
+            }
+            None => missing.push(loopback.clone()),
+        }
+    }
+    let stale = loaded
+        .iter()
+        .map(|(index, _)| *index)
+        .filter(|index| !keep.contains(index))
+        .collect();
+    (missing, stale)
 }
 
 // ---- JSON shapes for `pactl --format=json` output ----
@@ -57,19 +167,204 @@ struct PactlSinkInput {
     properties: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Deserialize)]
+/// A loaded module, from the tab-separated `pactl list modules short`.
+/// The JSON listing can't be used for these: pactl 17 leaves the index out.
+#[derive(Debug, PartialEq)]
 struct PactlModule {
     index: u32,
     name: String,
-    #[serde(default)]
-    argument: Option<String>,
+    argument: String,
+}
+
+fn parse_modules(listing: &str) -> Vec<PactlModule> {
+    listing
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split('\t');
+            // A native module's argument can span lines; the continuation
+            // lines carry no index and are not modules of ours anyway.
+            let index = fields.next()?.parse().ok()?;
+            Some(PactlModule {
+                index,
+                name: fields.next()?.to_string(),
+                argument: fields.next().unwrap_or_default().trim().to_string(),
+            })
+        })
+        .collect()
 }
 
 impl PactlBackend {
     pub fn new() -> Self {
+        let routing = Arc::new(Mutex::new(Routing::default()));
+        let watched = Arc::downgrade(&routing);
+        if let Err(e) = std::thread::Builder::new()
+            .name("sink-pactl-devices".into())
+            .spawn(move || Self::watch_devices(&watched))
+        {
+            eprintln!("sink: no device watcher ({e}); replugged devices need a re-pick");
+        }
         Self {
             modules: Mutex::new(HashMap::new()),
-            loopbacks: Mutex::new(HashMap::new()),
+            routing,
+        }
+    }
+
+    /// Re-match every routed channel's loopbacks whenever the devices
+    /// change, until the backend is dropped.
+    fn watch_devices(routing: &Weak<Mutex<Routing>>) {
+        loop {
+            std::thread::sleep(DEVICE_WATCH_INTERVAL);
+            let Some(routing) = routing.upgrade() else {
+                return;
+            };
+            let idle = match routing.lock() {
+                Ok(routing) => routing.chosen.is_empty(),
+                Err(_) => return,
+            };
+            if idle {
+                continue;
+            }
+            // Asked without the lock: a pick in the UI must not wait for it.
+            let Ok(devices) = Self::devices() else {
+                continue;
+            };
+            let Ok(mut routing) = routing.lock() else {
+                return;
+            };
+            if routing.matched.as_ref() == Some(&devices) {
+                continue;
+            }
+            let mut all_matched = true;
+            for sink_name in routing.chosen.keys() {
+                if let Err(e) = Self::match_loopbacks(&routing, sink_name, &devices) {
+                    eprintln!("sink: output routing for {sink_name} failed: {e}");
+                    all_matched = false;
+                }
+            }
+            // A device that is still starting up can refuse its loopback;
+            // leaving this unset has the next pass try again.
+            routing.matched = all_matched.then_some(devices);
+        }
+    }
+
+    fn lock_routing(&self) -> Result<MutexGuard<'_, Routing>, SinkError> {
+        self.routing
+            .lock()
+            .map_err(|_| SinkError::Parse("output routing lock poisoned".into()))
+    }
+
+    fn devices() -> Result<Devices, SinkError> {
+        let connected = Self::list_sinks()?
+            .into_iter()
+            .map(|sink| sink.name)
+            .filter(|name| !is_own_sink(name))
+            .collect();
+        let default_is_ours =
+            Self::run(&["get-default-sink"]).is_ok_and(|default| is_own_sink(default.trim()));
+        Ok(Devices {
+            connected,
+            default_is_ours,
+        })
+    }
+
+    /// Load and unload `module-loopback`s until `sink_name` plays where its
+    /// routing says it should with these `devices`.
+    fn match_loopbacks(
+        routing: &Routing,
+        sink_name: &str,
+        devices: &Devices,
+    ) -> Result<(), SinkError> {
+        let chosen = routing.chosen.get(sink_name).map_or(&[][..], Vec::as_slice);
+        let strict = routing.strict.contains(sink_name);
+        let wanted: Vec<Loopback> = match resolve_targets(chosen, strict, &devices.connected) {
+            Targets::Devices(devices) => devices
+                .into_iter()
+                .map(|sink| Loopback { sink, pinned: true })
+                .collect(),
+            Targets::FollowDefault => vec![Loopback {
+                sink: Self::follow_default_target(sink_name, devices)?,
+                pinned: false,
+            }],
+            Targets::Silent => Vec::new(),
+        };
+        // Ask the server what is loaded instead of remembering it: a pinned
+        // loopback unloads itself with its device, and a crashed prior run
+        // leaves modules behind that would double-play if stacked on.
+        let source = format!("source={sink_name}.monitor");
+        let loaded: Vec<(u32, String)> = Self::list_modules()?
+            .into_iter()
+            .filter(|module| module.name == "module-loopback")
+            .map(|module| (module.index, module.argument))
+            .filter(|(_, argument)| argument.split_whitespace().any(|token| token == source))
+            .collect();
+        let (missing, stale) = diff_loopbacks(&loaded, &wanted);
+
+        // Loaded before the stale ones go: if none of the new devices takes
+        // a loopback, the channel keeps playing where it was instead of
+        // going silent on an error.
+        let mut failed = None;
+        let mut playing = wanted.len() - missing.len();
+        for loopback in &missing {
+            let arguments = loopback.arguments(sink_name);
+            let mut command = vec!["load-module", "module-loopback"];
+            command.extend(arguments.iter().map(String::as_str));
+            match Self::run(&command) {
+                Ok(_) => playing += 1,
+                Err(e) => {
+                    eprintln!("sink: {sink_name} can't play on {}: {e}", loopback.sink);
+                    failed.get_or_insert(e);
+                }
+            }
+        }
+        // One device refusing is not a failure while another plays.
+        if let Some(e) = failed.filter(|_| playing == 0) {
+            return Err(e);
+        }
+        for index in stale {
+            // Best effort: the module may already be gone.
+            let _ = Self::run(&["unload-module", &index.to_string()]);
+        }
+        Ok(())
+    }
+
+    /// Apply `change` to the routing and re-match `sink_name` to it,
+    /// restoring the routing it had if nothing could be made to play.
+    fn reroute(&self, sink_name: &str, change: impl FnOnce(&mut Routing)) -> Result<(), SinkError> {
+        let devices = Self::devices();
+        let mut routing = self.lock_routing()?;
+        let chosen_before = routing.chosen.get(sink_name).cloned();
+        let strict_before = routing.strict.contains(sink_name);
+        change(&mut routing);
+        if !routing.chosen.contains_key(sink_name) {
+            // Never routed (or deleted meanwhile): nothing to match, and
+            // its first routing reads what was just recorded.
+            return Ok(());
+        }
+        let matched = devices.and_then(|devices| {
+            Self::match_loopbacks(&routing, sink_name, &devices)?;
+            Ok(devices)
+        });
+        match matched {
+            Ok(devices) => {
+                // Only this channel was matched; the watcher still owes the
+                // others a pass if the devices changed.
+                if routing.matched.as_ref() != Some(&devices) {
+                    routing.matched = None;
+                }
+                Ok(())
+            }
+            Err(e) => {
+                match chosen_before {
+                    Some(chosen) => routing.chosen.insert(sink_name.to_string(), chosen),
+                    None => routing.chosen.remove(sink_name),
+                };
+                if strict_before {
+                    routing.strict.insert(sink_name.to_string());
+                } else {
+                    routing.strict.remove(sink_name);
+                }
+                Err(e)
+            }
         }
     }
 
@@ -77,31 +372,15 @@ impl PactlBackend {
     /// of our channels the system default, and following it would loop every
     /// follow-default channel into it, so fall back to a real device then
     /// (the native backend's link planner does the same).
-    fn follow_default_target(&self, sink_name: &str) -> Result<String, SinkError> {
-        let default = self.get_default_devices().ok().and_then(|(sink, _)| sink);
-        if !default.as_deref().is_some_and(is_own_sink) {
+    fn follow_default_target(sink_name: &str, devices: &Devices) -> Result<String, SinkError> {
+        if !devices.default_is_ours {
             return Ok("@DEFAULT_SINK@".to_string());
         }
-        self.list_output_devices()?
-            .into_iter()
-            .map(|d| d.name)
-            .find(|name| !is_own_sink(name))
+        devices
+            .connected
+            .first()
+            .cloned()
             .ok_or_else(|| SinkError::Config(own_output_refusal(sink_name)))
-    }
-
-    /// Play a channel's monitor on one device; returns the module index.
-    fn load_loopback(sink_name: &str, target: &str) -> Result<u32, SinkError> {
-        let stdout = Self::run(&[
-            "load-module",
-            "module-loopback",
-            &format!("source={sink_name}.monitor"),
-            &format!("sink={target}"),
-            "source_dont_move=true",
-        ])?;
-        stdout
-            .trim()
-            .parse()
-            .map_err(|_| SinkError::Parse(format!("load-module returned {stdout:?}")))
     }
 
     /// Run pactl with the given args, returning stdout on success.
@@ -137,6 +416,10 @@ impl PactlBackend {
             .map_err(|e| SinkError::Parse(format!("`pactl list {kind}`: {e}")))
     }
 
+    fn list_modules() -> Result<Vec<PactlModule>, SinkError> {
+        Ok(parse_modules(&Self::run(&["list", "modules", "short"])?))
+    }
+
     fn list_sinks() -> Result<Vec<PactlSink>, SinkError> {
         Self::query("sinks")
     }
@@ -150,16 +433,12 @@ impl PactlBackend {
     /// Find the module index of a `module-null-sink` owning `sink_name` by
     /// scanning live modules - covers a sink left over from a crashed run.
     fn find_null_sink_module(sink_name: &str) -> Result<Option<u32>, SinkError> {
-        let modules: Vec<PactlModule> = Self::query("modules")?;
         let needle = format!("sink_name={sink_name}");
-        Ok(modules
+        Ok(Self::list_modules()?
             .iter()
             .find(|m| {
                 m.name == "module-null-sink"
-                    && m.argument
-                        .as_deref()
-                        .map(|a| a.split_whitespace().any(|tok| tok == needle))
-                        .unwrap_or(false)
+                    && m.argument.split_whitespace().any(|tok| tok == needle)
             })
             .map(|m| m.index))
     }
@@ -224,6 +503,12 @@ impl AudioBackend for PactlBackend {
     }
 
     fn destroy_virtual_sink(&self, name: &str) -> Result<(), SinkError> {
+        // Its loopbacks die with their source; forgetting the routing keeps
+        // the device watcher from loading them again. Held until the sink
+        // is gone, so no routing lands on it halfway.
+        let mut routing = self.lock_routing()?;
+        routing.chosen.remove(name);
+        routing.strict.remove(name);
         let tracked = self.lock_modules()?.remove(name);
         let module_index = match tracked {
             Some(idx) => Some(idx),
@@ -456,46 +741,19 @@ impl AudioBackend for PactlBackend {
                 "{name:?} is not a device name pactl can address"
             )));
         }
-        let targets = if outputs.is_empty() {
-            vec![self.follow_default_target(sink_name)?]
-        } else {
-            outputs
-        };
-        // Ask the server for existing loopbacks, not just our table - a crashed
-        // prior run leaves modules loaded, and stacking more would double-play.
-        let needle = format!("source={sink_name}.monitor");
-        let previous: Vec<String> = Self::run(&["list", "modules", "short"])
-            .map(|stdout| {
-                stdout
-                    .lines()
-                    .filter(|line| line.contains("module-loopback") && line.contains(&needle))
-                    .filter_map(|line| line.split_whitespace().next().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
+        self.reroute(sink_name, |routing| {
+            routing.chosen.insert(sink_name.to_string(), outputs);
+        })
+    }
 
-        // One loopback per device, loaded before the previous ones go: if
-        // none of the new devices is there, the channel keeps playing where
-        // it was instead of going silent on an error.
-        let loaded = loaded_or_first_error(
-            targets
-                .iter()
-                .map(|target| {
-                    Self::load_loopback(sink_name, target).inspect_err(|e| {
-                        eprintln!("sink: {sink_name} can't play on {target}: {e}");
-                    })
-                })
-                .collect(),
-        )?;
-        for index in &previous {
-            // Best effort: the module may already be gone.
-            let _ = Self::run(&["unload-module", index]);
-        }
-        self.loopbacks
-            .lock()
-            .map_err(|_| SinkError::Parse("loopback table lock poisoned".into()))?
-            .insert(sink_name.to_string(), loaded);
-        Ok(())
+    fn set_channel_failover(&self, sink_name: &str, enabled: bool) -> Result<(), SinkError> {
+        self.reroute(sink_name, |routing| {
+            if enabled {
+                routing.strict.remove(sink_name);
+            } else {
+                routing.strict.insert(sink_name.to_string());
+            }
+        })
     }
 }
 
@@ -506,25 +764,6 @@ fn is_plain_device_name(name: &str) -> bool {
     !name
         .chars()
         .any(|c| c.is_whitespace() || c.is_control() || c == '"' || c == '\'')
-}
-
-/// A channel routed to several devices plays on the ones that loaded - one
-/// of them being unplugged is not a failure. Only none loading is.
-fn loaded_or_first_error(results: Vec<Result<u32, SinkError>>) -> Result<Vec<u32>, SinkError> {
-    let mut loaded = Vec::new();
-    let mut first_error = None;
-    for result in results {
-        match result {
-            Ok(module_index) => loaded.push(module_index),
-            Err(e) => {
-                first_error.get_or_insert(e);
-            }
-        }
-    }
-    match first_error {
-        Some(e) if loaded.is_empty() => Err(e),
-        _ => Ok(loaded),
-    }
 }
 
 #[cfg(test)]
@@ -550,19 +789,86 @@ mod tests {
         ));
     }
 
+    fn names(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| name.to_string()).collect()
+    }
+
     #[test]
-    fn a_channel_plays_on_the_devices_that_loaded() {
-        let gone = || Err(SinkError::Parse("no such sink".into()));
+    fn modules_are_read_from_the_short_listing() {
+        let listing =
+            "1\tlibpipewire-module-protocol-native\t{\n            #sockets = [ ]\n        }\t\n\
+            536870913\tmodule-null-sink\tsink_name=sink_game sink_properties=x\t\n\
+            536870914\tmodule-loopback\tsource=sink_game.monitor sink=speakers\t\n\
+            536870915\tmodule-always-sink\t\t\n";
+        let modules = parse_modules(listing);
+        assert_eq!(modules.len(), 4);
         assert_eq!(
-            loaded_or_first_error(vec![Ok(3), gone(), Ok(9)]).expect("two loaded"),
-            [3, 9]
+            modules[2],
+            PactlModule {
+                index: 536870914,
+                name: "module-loopback".into(),
+                argument: "source=sink_game.monitor sink=speakers".into(),
+            }
         );
-        assert!(loaded_or_first_error(vec![gone(), gone()]).is_err());
-        // Follow-default with nothing to load is not an error either.
+        assert_eq!(modules[3].argument, "");
+    }
+
+    #[test]
+    fn a_channel_stays_on_its_devices_until_none_is_connected() {
+        let chosen = names(&["speakers", "headset"]);
         assert_eq!(
-            loaded_or_first_error(vec![]).expect("empty"),
-            Vec::<u32>::new()
+            resolve_targets(&chosen, false, &names(&["hdmi", "headset", "speakers"])),
+            Targets::Devices(names(&["speakers", "headset"]))
         );
+        // One unplugged: the other keeps the channel, nothing follows the default.
+        assert_eq!(
+            resolve_targets(&chosen, false, &names(&["hdmi", "speakers"])),
+            Targets::Devices(names(&["speakers"]))
+        );
+        assert_eq!(
+            resolve_targets(&chosen, false, &names(&["hdmi"])),
+            Targets::FollowDefault
+        );
+        assert_eq!(
+            resolve_targets(&chosen, true, &names(&["hdmi"])),
+            Targets::Silent
+        );
+        // No choice is not a missing device: failover off changes nothing.
+        assert_eq!(
+            resolve_targets(&[], true, &names(&["hdmi"])),
+            Targets::FollowDefault
+        );
+    }
+
+    #[test]
+    fn loopbacks_are_matched_by_device_and_pinning() {
+        let pinned = |sink: &str| Loopback {
+            sink: sink.to_string(),
+            pinned: true,
+        };
+        let loaded = vec![
+            (4, pinned("speakers").arguments("sink_game").join(" ")),
+            // A duplicate, as a crashed run leaves behind.
+            (5, pinned("speakers").arguments("sink_game").join(" ")),
+            // The same device unpinned (an older Sink) would follow it to
+            // the default when unplugged, so it is replaced.
+            (
+                6,
+                "source=sink_game.monitor sink=headset source_dont_move=true".to_string(),
+            ),
+            (7, pinned("hdmi").arguments("sink_game").join(" ")),
+        ];
+        let (missing, stale) = diff_loopbacks(&loaded, &[pinned("speakers"), pinned("headset")]);
+        assert_eq!(missing, [pinned("headset")]);
+        assert_eq!(stale, [5, 6, 7]);
+
+        // A device name that only starts like another is a different device.
+        assert!(!pinned("speakers").is_loaded_as(
+            "source=sink_game.monitor sink=speakers.2 source_dont_move=true sink_dont_move=true"
+        ));
+        let (missing, stale) = diff_loopbacks(&loaded, &[]);
+        assert!(missing.is_empty());
+        assert_eq!(stale, [4, 5, 6, 7]);
     }
 
     /// A space would end `sink=<name>` and start another module argument.
