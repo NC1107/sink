@@ -1,7 +1,9 @@
 use tauri::{AppHandle, Emitter, State};
 
 use crate::audio::deepfilter;
-use crate::audio::types::{MicConfig, NoiseSuppression, OutputDevice};
+use crate::audio::types::{
+    is_own_sink, own_input_refusal, MicConfig, NoiseSuppression, OutputDevice,
+};
 use crate::persistence::mic;
 use crate::state::AppState;
 
@@ -16,6 +18,16 @@ pub fn get_mic_config(state: State<'_, AppState>) -> Result<MicConfig, String> {
 #[tauri::command]
 pub fn set_mic_config(state: State<'_, AppState>, mut config: MicConfig) -> Result<(), String> {
     config.clamp_ranges();
+    apply_mic_config(state.inner(), &config)
+}
+
+pub fn apply_mic_config(state: &AppState, config: &MicConfig) -> Result<(), String> {
+    // Capturing one of our own nodes loops the chain into itself (the
+    // follow-default path already refuses them - see follow_default_input).
+    // The picker lists real inputs; this guards stale configs and invokes.
+    if let Some(input) = config.input_device.as_deref().filter(|i| is_own_sink(i)) {
+        return Err(own_input_refusal(input));
+    }
     let mut applied = config.clone();
     applied.output_label = state.lock_mixer()?.prefs.decorate(&config.output_label);
     state
@@ -26,7 +38,7 @@ pub fn set_mic_config(state: State<'_, AppState>, mut config: MicConfig) -> Resu
         let mut mixer = state.lock_mixer()?;
         mixer.mic = config.clone();
     }
-    mic::save(&config).map_err(|e| e.to_string())
+    mic::save(config).map_err(|e| e.to_string())
 }
 
 /// Hardware microphones available as the chain's input.
@@ -75,6 +87,80 @@ pub fn remove_noise_engine() -> Result<(), String> {
     deepfilter::remove_download().map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::mock::MockBackend;
+    use crate::persistence::testing::TempConfig;
+    use std::sync::Arc;
+
+    fn app() -> AppState {
+        let backend = Arc::new(MockBackend::with_streams(vec![]));
+        AppState::new(backend, true)
+    }
+
+    /// Capturing one of our own nodes loops the chain into itself: a pinned
+    /// channel monitor, a mix, or the virtual mic must all be refused.
+    #[test]
+    fn mic_input_rejects_our_own_nodes() {
+        let _cfg = TempConfig::new("mic-loop");
+        let state = app();
+
+        for target in [
+            "sink_game.monitor",
+            "sink_stream",
+            "sink_bus_voice",
+            "sink_mic",
+        ] {
+            let config = MicConfig {
+                input_device: Some(target.to_string()),
+                ..MicConfig::default()
+            };
+            let err = apply_mic_config(&state, &config).expect_err("own node must be refused");
+            assert!(
+                err.contains("loops the mic chain into itself"),
+                "unexpected error for {target}: {err}"
+            );
+        }
+        assert!(
+            state
+                .lock_mixer()
+                .expect("mixer")
+                .mic
+                .input_device
+                .is_none(),
+            "a refused pin must not stick"
+        );
+    }
+
+    #[test]
+    fn mic_input_accepts_real_devices_and_follow_default() {
+        let _cfg = TempConfig::new("mic-ok");
+        let state = app();
+
+        let config = MicConfig {
+            input_device: Some("alsa_input.usb-mic".to_string()),
+            ..MicConfig::default()
+        };
+        apply_mic_config(&state, &config).expect("real device");
+        assert_eq!(
+            state.lock_mixer().expect("mixer").mic.input_device,
+            Some("alsa_input.usb-mic".to_string())
+        );
+
+        apply_mic_config(&state, &MicConfig::default()).expect("follow default");
+        assert!(
+            state
+                .lock_mixer()
+                .expect("mixer")
+                .mic
+                .input_device
+                .is_none(),
+            "clearing the pin follows the default again"
+        );
+    }
+}
+
 /// Takes a mode, not a URL, so the frontend can't open arbitrary pages.
 #[tauri::command]
 pub fn open_noise_engine_page(mode: NoiseSuppression) -> Result<(), String> {
@@ -83,16 +169,5 @@ pub fn open_noise_engine_page(mode: NoiseSuppression) -> Result<(), String> {
         NoiseSuppression::Light => deepfilter::LIGHT_URL,
         NoiseSuppression::Strong => deepfilter::STRONG_URL,
     };
-    std::process::Command::new("xdg-open")
-        .arg(url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|mut child| {
-            // Reap it off-thread: some desktops' openers block until the
-            // browser exits, and an unwaited child lingers as a zombie.
-            std::thread::spawn(move || child.wait());
-        })
-        .map_err(|e| format!("open {url}: {e}"))
+    super::open_url(url)
 }

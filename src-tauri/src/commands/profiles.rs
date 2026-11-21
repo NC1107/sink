@@ -141,7 +141,7 @@ pub fn load_profile_on(state: &AppState, name: String) -> Result<(), String> {
         // Output: profile's choice, or follow-default when unset.
         if let Err(e) = state
             .backend
-            .set_channel_output(&channel.name, profile.outputs.get(&channel.name))
+            .set_channel_outputs(&channel.name, profile.outputs.get(&channel.name))
         {
             eprintln!("sink: profile output for {} failed: {e}", channel.name);
         }

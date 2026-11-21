@@ -16,13 +16,10 @@ pub trait AudioBackend: Send + Sync {
     fn move_stream_to_sink(&self, stream_index: u32, sink_name: &str) -> Result<(), SinkError>;
     fn set_app_volume(&self, stream_index: u32, volume_percent: u8) -> Result<(), SinkError>;
 
-    /// Route a channel to a physical output device. `None` means "follow the
-    /// system default" (with automatic failover).
-    fn set_channel_output(
-        &self,
-        sink_name: &str,
-        output_name: Option<&str>,
-    ) -> Result<(), SinkError>;
+    /// Route a channel to physical output devices; it plays on all of them.
+    /// An empty list means "follow the system default" (with automatic
+    /// failover).
+    fn set_channel_outputs(&self, sink_name: &str, outputs: &[String]) -> Result<(), SinkError>;
 
     /// Turn a channel's auto-failover on or off. Off = stay on the chosen
     /// device (or exact default) and go silent when it's gone, not fall back.
@@ -34,11 +31,11 @@ pub trait AudioBackend: Send + Sync {
     /// chain). Native-only: the pactl fallback has no in-graph insert point.
     fn set_channel_eq(&self, sink_name: &str, config: &EqConfig) -> Result<(), SinkError>;
 
-    /// Per-channel resolved output after explicit/default/fallback resolution,
-    /// so the UI can show what "System default" resolves to.
+    /// Per-channel devices actually playing after explicit/default/fallback
+    /// resolution, so the UI can show what "System default" resolves to.
     fn resolved_channel_outputs(
         &self,
-    ) -> Result<std::collections::HashMap<String, Option<String>>, SinkError> {
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, SinkError> {
         Ok(std::collections::HashMap::new())
     }
 

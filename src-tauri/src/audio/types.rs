@@ -8,6 +8,54 @@ pub fn is_own_sink(name: &str) -> bool {
     name.starts_with("sink_")
 }
 
+/// Why a channel can't be routed into one of our own nodes.
+pub fn own_output_refusal(sink_name: &str) -> String {
+    format!(
+        "refusing to route {sink_name} into our own audio: that loops the channel back into itself"
+    )
+}
+
+/// More devices than a desk holds; bounds what a hand-edited config or a
+/// direct invoke can make the loop link.
+pub const MAX_CHANNEL_OUTPUTS: usize = 8;
+
+/// A device list without blanks or repeats, in the order chosen.
+pub fn distinct_outputs(outputs: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for output in outputs {
+        if !output.is_empty() && !kept.contains(output) {
+            kept.push(output.clone());
+        }
+    }
+    kept
+}
+
+/// The one gate a requested output list goes through at every layer
+/// (command, loop, pactl): repeats and blanks dropped, then only real
+/// devices, and not endlessly many. Returns the list to act on.
+pub fn checked_channel_outputs(
+    sink_name: &str,
+    outputs: &[String],
+) -> Result<Vec<String>, crate::error::SinkError> {
+    let outputs = distinct_outputs(outputs);
+    if outputs.iter().any(|output| is_own_sink(output)) {
+        return Err(crate::error::SinkError::Config(own_output_refusal(
+            sink_name,
+        )));
+    }
+    if outputs.len() > MAX_CHANNEL_OUTPUTS {
+        return Err(crate::error::SinkError::Config(format!(
+            "{sink_name} can play on at most {MAX_CHANNEL_OUTPUTS} devices at once"
+        )));
+    }
+    Ok(outputs)
+}
+
+/// Why the mic chain can't capture one of our own nodes.
+pub fn own_input_refusal(input: &str) -> String {
+    format!("refusing mic input {input}: capturing our own audio loops the mic chain into itself")
+}
+
 /// True if `sink_name` is a managed virtual channel: `sink_`-prefixed but
 /// excluding service nodes and mix buses, so channel commands can't reach them.
 pub fn is_virtual_sink(sink_name: &str) -> bool {
@@ -451,6 +499,15 @@ impl MicConfig {
             0.0,
         );
         self.eq.clamp_ranges();
+    }
+
+    /// A saved pin on one of our own nodes can never be used (every layer
+    /// refuses it), so loading it back would only show a device the mic
+    /// isn't capturing. Fall back to following the default input instead.
+    pub fn drop_own_input(&mut self) {
+        if self.input_device.as_deref().is_some_and(is_own_sink) {
+            self.input_device = None;
+        }
     }
 }
 
