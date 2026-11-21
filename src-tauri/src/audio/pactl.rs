@@ -38,8 +38,18 @@ struct Routing {
     chosen: HashMap<String, Vec<String>>,
     /// Channels that go silent, not to the default, with no device left.
     strict: HashSet<String>,
-    /// The devices the loopbacks were last matched against.
-    matched_devices: Option<Vec<String>>,
+    /// What every routed channel's loopbacks were last matched against;
+    /// `None` while a channel still owes a match (so the watcher retries).
+    matched: Option<Devices>,
+}
+
+/// What decides where loopbacks go, as last seen on the server.
+#[derive(Debug, Clone, PartialEq)]
+struct Devices {
+    connected: Vec<String>,
+    /// A user can make one of our channels the system default; following
+    /// it would loop every follow-default channel into it.
+    default_is_ours: bool,
 }
 
 /// One `module-loopback` a channel should have.
@@ -199,32 +209,41 @@ impl PactlBackend {
         }
     }
 
-    /// Re-match every routed channel's loopbacks whenever the set of
-    /// connected devices changes, until the backend is dropped.
+    /// Re-match every routed channel's loopbacks whenever the devices
+    /// change, until the backend is dropped.
     fn watch_devices(routing: &Weak<Mutex<Routing>>) {
         loop {
             std::thread::sleep(DEVICE_WATCH_INTERVAL);
             let Some(routing) = routing.upgrade() else {
                 return;
             };
+            let idle = match routing.lock() {
+                Ok(routing) => routing.chosen.is_empty(),
+                Err(_) => return,
+            };
+            if idle {
+                continue;
+            }
+            // Asked without the lock: a pick in the UI must not wait for it.
+            let Ok(devices) = Self::devices() else {
+                continue;
+            };
             let Ok(mut routing) = routing.lock() else {
                 return;
             };
-            if routing.chosen.is_empty() {
+            if routing.matched.as_ref() == Some(&devices) {
                 continue;
             }
-            let Ok(connected) = Self::connected_devices() else {
-                continue;
-            };
-            if routing.matched_devices.as_ref() == Some(&connected) {
-                continue;
-            }
+            let mut all_matched = true;
             for sink_name in routing.chosen.keys() {
-                if let Err(e) = Self::match_loopbacks(&routing, sink_name, &connected) {
+                if let Err(e) = Self::match_loopbacks(&routing, sink_name, &devices) {
                     eprintln!("sink: output routing for {sink_name} failed: {e}");
+                    all_matched = false;
                 }
             }
-            routing.matched_devices = Some(connected);
+            // A device that is still starting up can refuse its loopback;
+            // leaving this unset has the next pass try again.
+            routing.matched = all_matched.then_some(devices);
         }
     }
 
@@ -234,30 +253,36 @@ impl PactlBackend {
             .map_err(|_| SinkError::Parse("output routing lock poisoned".into()))
     }
 
-    fn connected_devices() -> Result<Vec<String>, SinkError> {
-        Ok(Self::list_sinks()?
+    fn devices() -> Result<Devices, SinkError> {
+        let connected = Self::list_sinks()?
             .into_iter()
             .map(|sink| sink.name)
             .filter(|name| !is_own_sink(name))
-            .collect())
+            .collect();
+        let default_is_ours =
+            Self::run(&["get-default-sink"]).is_ok_and(|default| is_own_sink(default.trim()));
+        Ok(Devices {
+            connected,
+            default_is_ours,
+        })
     }
 
     /// Load and unload `module-loopback`s until `sink_name` plays where its
-    /// routing says it should with `connected` devices.
+    /// routing says it should with these `devices`.
     fn match_loopbacks(
         routing: &Routing,
         sink_name: &str,
-        connected: &[String],
+        devices: &Devices,
     ) -> Result<(), SinkError> {
         let chosen = routing.chosen.get(sink_name).map_or(&[][..], Vec::as_slice);
         let strict = routing.strict.contains(sink_name);
-        let wanted: Vec<Loopback> = match resolve_targets(chosen, strict, connected) {
+        let wanted: Vec<Loopback> = match resolve_targets(chosen, strict, &devices.connected) {
             Targets::Devices(devices) => devices
                 .into_iter()
                 .map(|sink| Loopback { sink, pinned: true })
                 .collect(),
             Targets::FollowDefault => vec![Loopback {
-                sink: Self::follow_default_target(sink_name, connected)?,
+                sink: Self::follow_default_target(sink_name, devices)?,
                 pinned: false,
             }],
             Targets::Silent => Vec::new(),
@@ -302,23 +327,29 @@ impl PactlBackend {
         Ok(())
     }
 
-    /// Route `sink_name` by `change`d routing, restoring the routing it had
-    /// if nothing could be made to play.
+    /// Apply `change` to the routing and re-match `sink_name` to it,
+    /// restoring the routing it had if nothing could be made to play.
     fn reroute(&self, sink_name: &str, change: impl FnOnce(&mut Routing)) -> Result<(), SinkError> {
+        let devices = Self::devices();
         let mut routing = self.lock_routing()?;
         let chosen_before = routing.chosen.get(sink_name).cloned();
         let strict_before = routing.strict.contains(sink_name);
         change(&mut routing);
-        let matched = Self::connected_devices().and_then(|connected| {
-            Self::match_loopbacks(&routing, sink_name, &connected)?;
-            Ok(connected)
+        if !routing.chosen.contains_key(sink_name) {
+            // Never routed (or deleted meanwhile): nothing to match, and
+            // its first routing reads what was just recorded.
+            return Ok(());
+        }
+        let matched = devices.and_then(|devices| {
+            Self::match_loopbacks(&routing, sink_name, &devices)?;
+            Ok(devices)
         });
         match matched {
-            Ok(connected) => {
+            Ok(devices) => {
                 // Only this channel was matched; the watcher still owes the
                 // others a pass if the devices changed.
-                if routing.matched_devices.as_ref() != Some(&connected) {
-                    routing.matched_devices = None;
+                if routing.matched.as_ref() != Some(&devices) {
+                    routing.matched = None;
                 }
                 Ok(())
             }
@@ -341,12 +372,12 @@ impl PactlBackend {
     /// of our channels the system default, and following it would loop every
     /// follow-default channel into it, so fall back to a real device then
     /// (the native backend's link planner does the same).
-    fn follow_default_target(sink_name: &str, connected: &[String]) -> Result<String, SinkError> {
-        let default = Self::run(&["get-default-sink"]).ok();
-        if !default.is_some_and(|sink| is_own_sink(sink.trim())) {
+    fn follow_default_target(sink_name: &str, devices: &Devices) -> Result<String, SinkError> {
+        if !devices.default_is_ours {
             return Ok("@DEFAULT_SINK@".to_string());
         }
-        connected
+        devices
+            .connected
             .first()
             .cloned()
             .ok_or_else(|| SinkError::Config(own_output_refusal(sink_name)))
@@ -473,12 +504,11 @@ impl AudioBackend for PactlBackend {
 
     fn destroy_virtual_sink(&self, name: &str) -> Result<(), SinkError> {
         // Its loopbacks die with their source; forgetting the routing keeps
-        // the device watcher from loading them again.
-        {
-            let mut routing = self.lock_routing()?;
-            routing.chosen.remove(name);
-            routing.strict.remove(name);
-        }
+        // the device watcher from loading them again. Held until the sink
+        // is gone, so no routing lands on it halfway.
+        let mut routing = self.lock_routing()?;
+        routing.chosen.remove(name);
+        routing.strict.remove(name);
         let tracked = self.lock_modules()?.remove(name);
         let module_index = match tracked {
             Some(idx) => Some(idx),
@@ -717,18 +747,6 @@ impl AudioBackend for PactlBackend {
     }
 
     fn set_channel_failover(&self, sink_name: &str, enabled: bool) -> Result<(), SinkError> {
-        let mut routing = self.lock_routing()?;
-        let routed = routing.chosen.contains_key(sink_name);
-        if !routed {
-            // Nothing to re-match yet; the first routing picks this up.
-            if enabled {
-                routing.strict.remove(sink_name);
-            } else {
-                routing.strict.insert(sink_name.to_string());
-            }
-            return Ok(());
-        }
-        drop(routing);
         self.reroute(sink_name, |routing| {
             if enabled {
                 routing.strict.remove(sink_name);

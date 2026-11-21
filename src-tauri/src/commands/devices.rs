@@ -334,17 +334,19 @@ pub fn init_virtual_devices(
     // Wire every channel to its saved output (or the system default) so
     // channels are audible from the start.
     for def in &defs.channels {
+        // Restore per-channel failover (default on, so only push the ones
+        // off) ahead of the output: a channel whose devices are all
+        // unplugged must not start on the default before it goes silent.
+        if !outputs.failover(&def.name) {
+            if let Err(e) = state.backend.set_channel_failover(&def.name, false) {
+                eprintln!("sink: failover setting for {} failed: {e}", def.name);
+            }
+        }
         if let Err(e) = state
             .backend
             .set_channel_outputs(&def.name, outputs.get(&def.name))
         {
             eprintln!("sink: output routing for {} failed: {e}", def.name);
-        }
-        // Restore per-channel failover (default on, so only push the ones off).
-        if !outputs.failover(&def.name) {
-            if let Err(e) = state.backend.set_channel_failover(&def.name, false) {
-                eprintln!("sink: failover setting for {} failed: {e}", def.name);
-            }
         }
         // Restore saved EQ (only channels that were ever configured; the
         // loop builds the insert when the sink node appears).
