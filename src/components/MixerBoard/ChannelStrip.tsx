@@ -14,6 +14,10 @@ import { StripName } from "./StripName";
 import { VolumeReadout } from "./VolumeReadout";
 import { VuMeter } from "./VuMeter";
 
+// One stable empty list: a fresh [] per render would re-render every strip
+// on every store update.
+const NO_OUTPUTS: string[] = [];
+
 interface ChannelStripProps {
   channel: VirtualSink;
   appCount: number;
@@ -35,10 +39,10 @@ export function ChannelStrip({
   const setChannelVolume = useMixerStore((s) => s.setChannelVolume);
   const toggleMute = useMixerStore((s) => s.toggleMute);
   const level = useMixerStore((s) => s.levels[channel.name]);
-  const output = useMixerStore((s) => s.channelOutputs[channel.name] ?? null);
-  const resolvedOutput = useMixerStore((s) => s.resolvedOutputs[channel.name] ?? null);
+  const outputs = useMixerStore((s) => s.channelOutputs[channel.name] ?? NO_OUTPUTS);
+  const resolvedOutputs = useMixerStore((s) => s.resolvedOutputs[channel.name] ?? NO_OUTPUTS);
   const failover = useMixerStore((s) => s.channelFailover[channel.name] ?? true);
-  const setChannelOutput = useMixerStore((s) => s.setChannelOutput);
+  const setChannelOutputs = useMixerStore((s) => s.setChannelOutputs);
   const setChannelFailover = useMixerStore((s) => s.setChannelFailover);
   const renameChannel = useMixerStore((s) => s.renameChannel);
   const removeChannel = useMixerStore((s) => s.removeChannel);
@@ -191,12 +195,12 @@ export function ChannelStrip({
       <ChannelEqModal channel={channel} open={editingEq} onClose={() => setEditingEq(false)} />
 
       <OutputSelect
-        compact
-        value={output}
-        resolved={resolvedOutput}
+        channelLabel={channel.label}
+        value={outputs}
+        resolved={resolvedOutputs}
         failover={failover}
         onFailoverChange={(enabled) => void setChannelFailover(channel.name, enabled)}
-        onChange={(o) => void setChannelOutput(channel.name, o)}
+        onChange={(o) => void setChannelOutputs(channel.name, o)}
       />
 
       <ConfirmModal

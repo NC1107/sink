@@ -16,6 +16,31 @@ interface DefaultDevices {
   input: string | null;
 }
 
+interface UpdateInfo {
+  current_version: string;
+  latest_version: string | null;
+  update_available: boolean;
+  release_url: string;
+}
+
+// Sink only reaches the network when the user asks, so the check runs on
+// "Check now" alone. Settings unmounts on navigation; the last result is
+// kept for the session so the row doesn't forget it.
+let lastUpdateCheck: UpdateInfo | null = null;
+let updateInFlight: Promise<UpdateInfo> | null = null;
+
+function fetchUpdateInfo(): Promise<UpdateInfo> {
+  updateInFlight ??= invoke<UpdateInfo>("check_for_updates")
+    .then((info) => {
+      lastUpdateCheck = info;
+      return info;
+    })
+    .finally(() => {
+      updateInFlight = null;
+    });
+  return updateInFlight;
+}
+
 type LabelStyle = "plain" | "suffix" | "prefix";
 
 const LABEL_STYLES: { value: LabelStyle; label: string; example: string }[] = [
@@ -97,11 +122,40 @@ export function SettingsScreen() {
   const [labelStyleOpen, setLabelStyleOpen] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(lastUpdateCheck);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const outputDevices = useMixerStore((s) => s.outputDevices);
   const inputDevices = useMixerStore((s) => s.inputDevices);
   const replayOnboarding = useMixerStore((s) => s.replayOnboarding);
   const showBalance = useMixerStore((s) => s.showBalance);
   const setBalanceVisible = useMixerStore((s) => s.setBalanceVisible);
+
+  const checkForUpdates = async () => {
+    setCheckingUpdate(true);
+    try {
+      setUpdate(await fetchUpdateInfo());
+    } catch {
+      // The row shows its own "couldn't reach it" state (latest_version:
+      // null), so the shared error banner stays for real failures.
+      setUpdate({
+        current_version: version,
+        latest_version: null,
+        update_available: false,
+        release_url: "",
+      });
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const updateSub = () => {
+    if (checkingUpdate) return "Checking for updates…";
+    if (!update) return "Look for a newer release on GitHub";
+    if (update.latest_version === null) return "Couldn't reach the release feed";
+    if (update.update_available)
+      return `Sink ${update.latest_version} is available (you run ${update.current_version}). Update through your package manager or the release page.`;
+    return `You're up to date (Sink ${update.current_version})`;
+  };
 
   useEffect(() => {
     void invoke<boolean>("get_autostart").then(setAutostart);
@@ -317,6 +371,34 @@ export function SettingsScreen() {
               <div className="rtitle">Sink {version}</div>
               <div className="rsub">GPL-3.0 · config in ~/.config/sink</div>
             </div>
+          </div>
+          <div className="row update-row">
+            <div className="ricon">
+              <Ms name="system_update" />
+            </div>
+            <div className="rmain">
+              <div className="rtitle">Software update</div>
+              <div className="rsub" role="status" aria-live="polite">
+                {updateSub()}
+              </div>
+            </div>
+            {update?.update_available && (
+              <button
+                type="button"
+                className="select"
+                onClick={() => void invoke("open_release_page").catch((e) => setError(String(e)))}
+              >
+                <span>View release</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="select"
+              disabled={checkingUpdate}
+              onClick={() => void checkForUpdates()}
+            >
+              <span>{checkingUpdate ? "Checking…" : "Check now"}</span>
+            </button>
           </div>
           <div className="row">
             <div className="ricon">

@@ -75,7 +75,7 @@ pub fn run() {
             commands::devices::get_resolved_outputs,
             commands::devices::get_channel_failover,
             commands::devices::set_channel_failover,
-            commands::devices::set_channel_output,
+            commands::devices::set_channel_outputs,
             commands::apps::get_seen_apps,
             commands::apps::set_app_ignored,
             commands::apps::forget_app,
@@ -142,6 +142,8 @@ pub fn run() {
             commands::hotkeys::configure_hotkeys,
             commands::hotkeys::set_hotkey_binding,
             commands::hotkeys::set_balance_step,
+            commands::updates::check_for_updates,
+            commands::updates::open_release_page,
         ])
         .setup(move |app| {
             build_tray(app)?;

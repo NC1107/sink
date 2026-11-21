@@ -21,7 +21,7 @@ use std::time::Duration;
 use pipewire as pw;
 
 use crate::audio::backend::AudioBackend;
-use crate::audio::types::{AppStream, OutputDevice};
+use crate::audio::types::{is_own_sink, own_input_refusal, AppStream, OutputDevice};
 use crate::error::SinkError;
 use levels::LevelStore;
 use thread::Cmd;
@@ -125,7 +125,7 @@ impl AudioBackend for PipeWireBackend {
 
     fn resolved_channel_outputs(
         &self,
-    ) -> Result<std::collections::HashMap<String, Option<String>>, SinkError> {
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, SinkError> {
         self.request(|reply| Cmd::ResolvedOutputs { reply })
     }
 
@@ -160,16 +160,12 @@ impl AudioBackend for PipeWireBackend {
         })
     }
 
-    fn set_channel_output(
-        &self,
-        sink_name: &str,
-        output_name: Option<&str>,
-    ) -> Result<(), SinkError> {
+    fn set_channel_outputs(&self, sink_name: &str, outputs: &[String]) -> Result<(), SinkError> {
         let sink_name = sink_name.to_string();
-        let output_name = output_name.map(str::to_string);
-        self.request(|reply| Cmd::SetChannelOutput {
+        let outputs = outputs.to_vec();
+        self.request(|reply| Cmd::SetChannelOutputs {
             sink_name,
-            output_name,
+            outputs,
             reply,
         })
     }
@@ -251,6 +247,12 @@ impl AudioBackend for PipeWireBackend {
     fn set_mic_config(&self, config: &crate::audio::types::MicConfig) -> Result<(), SinkError> {
         // Every path ends here (commands, startup, profiles), and the RT
         // filters trust their input, so this is the last place to sanitize.
+        // Reject an own-node pin here, not only in build_mic_streams, so
+        // startup restore takes its honest mic-disabled error path instead
+        // of reporting a live chain that can never capture.
+        if let Some(input) = config.input_device.as_deref().filter(|i| is_own_sink(i)) {
+            return Err(SinkError::Config(own_input_refusal(input)));
+        }
         let mut config = config.clone();
         config.clamp_ranges();
         self.request(|reply| Cmd::SetMicConfig { config, reply })

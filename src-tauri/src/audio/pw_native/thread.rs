@@ -64,7 +64,7 @@ pub enum Cmd {
         reply: Reply<Vec<OutputDevice>>,
     },
     ResolvedOutputs {
-        reply: Reply<HashMap<String, Option<String>>>,
+        reply: Reply<HashMap<String, Vec<String>>>,
     },
     SetNodeVolumeByName {
         name: String,
@@ -86,10 +86,10 @@ pub enum Cmd {
         sink_name: String,
         reply: Reply<()>,
     },
-    /// Route a channel's monitor to an output device (None = follow default).
-    SetChannelOutput {
+    /// Route a channel's monitor to output devices (none = follow default).
+    SetChannelOutputs {
         sink_name: String,
-        output_name: Option<String>,
+        outputs: Vec<String>,
         reply: Reply<()>,
     },
     SetChannelFailover {
@@ -227,14 +227,15 @@ struct State {
     meters: HashMap<String, MeterHandle>,
     /// All known ports, for monitor→output linking.
     ports: HashMap<u32, PortEntry>,
-    /// Channel sink name -> chosen output node.name (None = follow default).
-    channel_outputs: HashMap<String, Option<String>>,
+    /// Channel sink name -> chosen output node.names (empty = follow default).
+    channel_outputs: HashMap<String, Vec<String>>,
 
-    /// Channel sink name -> live loopback links.
-    channel_links: HashMap<String, LinkSet>,
-    /// Channel sink name -> the device node id it currently routes to, after
+    /// Channel sink name -> live loopback links, one set per device node id
+    /// so changing one device never interrupts the others.
+    channel_links: HashMap<String, HashMap<u32, LinkSet>>,
+    /// Channel sink name -> the device node ids it currently plays on, after
     /// explicit/default/fallback resolution.
-    channel_targets: HashMap<String, u32>,
+    channel_targets: HashMap<String, Vec<u32>>,
     /// Channels with auto-failover off: route only to their chosen device and
     /// stay silent when it's gone. Absence means failover is on.
     channel_strict: std::collections::HashSet<String>,
@@ -1037,7 +1038,7 @@ fn mic_waits_for(waiting: bool, pinned: Option<&str>, node_name: &str, media_cla
     waiting
         && is_capture_class(media_class)
         && match pinned {
-            Some(pinned) => pinned == node_name,
+            Some(pinned) => pinned == node_name && !is_own_sink(node_name),
             None => !is_own_sink(node_name),
         }
 }
@@ -1083,6 +1084,12 @@ fn build_mic_streams(state: &Rc<RefCell<State>>) {
         }
     }
     let mic_target = match &s.mic_config.input_device {
+        // A stale saved pin (new configs are rejected up front): wait for a
+        // real input rather than loop the chain into itself.
+        Some(pinned) if is_own_sink(pinned) => {
+            eprintln!("sink: mic chain refusing our own node {pinned} as input");
+            return;
+        }
         Some(pinned) => pinned.clone(),
         None => {
             let sources = s
@@ -1320,6 +1327,15 @@ fn fallback_sink(s: &State) -> Option<u32> {
     )
 }
 
+/// Devices in the order a person reads them. The node map has no order of
+/// its own, and a picker whose rows move between two clicks gets the wrong
+/// device chosen.
+fn sort_devices(devices: &mut [OutputDevice]) {
+    devices.sort_by(|a, b| {
+        (a.description.to_lowercase(), &a.name).cmp(&(b.description.to_lowercase(), &b.name))
+    });
+}
+
 /// Where a stream move sends a stream: an empty sink name means "unassigned",
 /// which must clear the pin rather than pin to whatever is default right now.
 #[derive(Debug, PartialEq)]
@@ -1357,20 +1373,65 @@ fn listen_target(
     real_default(default_sink_name, node_ids).or(fallback)
 }
 
-/// Which device a channel routes to: explicit pin wins, then default, then the
-/// best available sink; strict + gone device = silence.
-fn resolve_target(
-    explicit_id: Option<u32>,
+/// Which devices a channel plays on: its chosen devices that are present
+/// win. With none of them present it follows the default, then the best
+/// available sink - a channel still playing on one chosen device never
+/// spills onto a device nobody picked. Strict + nothing chosen present =
+/// silence.
+fn resolve_targets(
+    present: &[u32],
     pinned: bool,
     strict: bool,
     default_id: Option<u32>,
     fallback: Option<u32>,
-) -> Option<u32> {
-    match explicit_id {
-        Some(id) => Some(id),
-        None if pinned && strict => None,
-        None if strict => default_id,
-        None => default_id.or(fallback),
+) -> Vec<u32> {
+    if !present.is_empty() {
+        return present.to_vec();
+    }
+    let stand_in = match (pinned, strict) {
+        (true, true) => None,
+        (false, true) => default_id,
+        (_, false) => default_id.or(fallback),
+    };
+    stand_in.into_iter().collect()
+}
+
+/// (output port, input port) links between one source and one device.
+type PortPairs = Vec<(u32, u32)>;
+
+/// Which of a channel's per-device link sets to tear down, and which devices
+/// to build one for, to get from the live sets to the plan. A set already
+/// matching its plan is in neither list: it keeps playing untouched.
+fn diff_link_sets(
+    current: &HashMap<u32, PortPairs>,
+    plan: &[(u32, PortPairs)],
+) -> (Vec<u32>, Vec<u32>) {
+    let planned = |target: &u32| {
+        plan.iter()
+            .find(|(t, _)| t == target)
+            .map(|(_, pairs)| pairs)
+    };
+    let mut stale: Vec<u32> = current
+        .iter()
+        .filter(|(target, pairs)| planned(target) != Some(*pairs))
+        .map(|(target, _)| *target)
+        .collect();
+    stale.sort_unstable();
+    let missing = plan
+        .iter()
+        .filter(|(target, pairs)| !pairs.is_empty() && current.get(target) != Some(pairs))
+        .map(|(target, _)| *target)
+        .collect();
+    (stale, missing)
+}
+
+/// Whether a channel already has links to `device`. Listening adds links to
+/// the default output; on a channel that plays there anyway they would be
+/// duplicates.
+fn plays_on<T>(link_sets: Option<&HashMap<u32, T>>, device: Option<u32>) -> bool {
+    match (link_sets, device) {
+        (Some(sets), Some(device)) => sets.contains_key(&device),
+        _ => false,
     }
 }
 
@@ -1582,46 +1643,54 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         let source_id = resolve_source(s.eq_playback_node(sink_name), channel_id);
 
         // ---- output device links ----
-        let explicit = s.channel_outputs.get(sink_name).cloned().flatten();
-        let pinned = explicit.is_some();
-        let explicit_id = explicit
-            .as_deref()
-            .and_then(|name| node_ids.get(name).copied());
+        let chosen = s.channel_outputs.get(sink_name);
+        let pinned = chosen.is_some_and(|devices| !devices.is_empty());
+        let mut present: Vec<u32> = Vec::new();
+        for id in chosen
+            .into_iter()
+            .flatten()
+            .filter_map(|name| node_ids.get(name).copied())
+        {
+            if !present.contains(&id) {
+                present.push(id);
+            }
+        }
         let strict = s.channel_strict.contains(sink_name);
         let default_id = real_default(s.default_sink_name.as_deref(), &node_ids);
-        let target_id = resolve_target(explicit_id, pinned, strict, default_id, fallback);
-        // Record where this channel resolves to (even when the link set is
-        // unchanged) so the UI reflects the live target, including failover.
-        match target_id {
-            Some(t) => {
-                s.channel_targets.insert(sink_name.to_string(), t);
-            }
-            None => {
-                s.channel_targets.remove(sink_name);
+        let targets = resolve_targets(&present, pinned, strict, default_id, fallback);
+        if source_id != channel_id {
+            eq_targets.entry(source_id).or_default().extend(&targets);
+        }
+        // Reconcile one link set per device: a set whose plan is unchanged is
+        // left alone, so adding or losing a device never glitches the others.
+        let plan: Vec<(u32, PortPairs)> = targets
+            .iter()
+            .map(|target| (*target, desired_pairs(&s, source_id, *target)))
+            .collect();
+        let mut live = s.channel_links.remove(sink_name).unwrap_or_default();
+        let current: HashMap<u32, PortPairs> = live
+            .iter()
+            .map(|(target, links)| (*target, links.iter().map(|(o, i, _)| (*o, *i)).collect()))
+            .collect();
+        let (stale, missing) = diff_link_sets(&current, &plan);
+        for target in stale {
+            live.remove(&target);
+        }
+        for (target, pairs) in plan.iter().filter(|(target, _)| missing.contains(target)) {
+            let created = create_links(&core, sink_name, source_id, *target, pairs);
+            if !created.is_empty() {
+                live.insert(*target, created);
             }
         }
-        if let (Some(t), true) = (target_id, source_id != channel_id) {
-            eq_targets.entry(source_id).or_default().insert(t);
+        if !live.is_empty() {
+            s.channel_links.insert(sink_name.to_string(), live);
         }
-        let pairs = target_id
-            .map(|t| desired_pairs(&s, source_id, t))
-            .unwrap_or_default();
-        let current: Vec<(u32, u32)> = s
-            .channel_links
-            .get(sink_name)
-            .map(|links| links.iter().map(|(o, i, _)| (*o, *i)).collect())
-            .unwrap_or_default();
-        if current != pairs {
-            s.channel_links.remove(sink_name);
-            if let Some(in_node) = pairs
-                .first()
-                .and_then(|(_, input)| s.ports.get(input).map(|p| p.node_id))
-            {
-                let created = create_links(&core, sink_name, source_id, in_node, &pairs);
-                if !created.is_empty() {
-                    s.channel_links.insert(sink_name.to_string(), created);
-                }
-            }
+        // Record where this channel resolves to (even when the link sets are
+        // unchanged) so the UI reflects the live targets, including failover.
+        if targets.is_empty() {
+            s.channel_targets.remove(sink_name);
+        } else {
+            s.channel_targets.insert(sink_name.to_string(), targets);
         }
 
         // ---- mix bus links (one set per bus, membership-gated) ----
@@ -1685,12 +1754,8 @@ fn ensure_all_links(state: &Rc<RefCell<State>>) {
         };
         // A channel already playing to the default output needs no extra
         // links (and duplicates would fail) - monitoring is a no-op there.
-        if let Some(existing) = s.channel_links.get(&name) {
-            let existing_pairs: Vec<(u32, u32)> =
-                existing.iter().map(|(o, i, _)| (*o, *i)).collect();
-            if existing_pairs == pairs {
-                pairs = Vec::new();
-            }
+        if plays_on(s.channel_links.get(&name), default_id) {
+            pairs = Vec::new();
         }
         let current: Vec<(u32, u32)> = s
             .monitor_links
@@ -1915,7 +1980,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
         }
         Cmd::ListOutputs { reply } => {
             let s = state.borrow();
-            let outputs = s
+            let mut outputs: Vec<OutputDevice> = s
                 .nodes
                 .values()
                 // Where a channel may be sent: real devices only. One of
@@ -1938,6 +2003,7 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                         .unwrap_or_default(),
                 })
                 .collect();
+            sort_devices(&mut outputs);
             let _ = reply.send(Ok(outputs));
         }
         Cmd::ResolvedOutputs { reply } => {
@@ -1947,12 +2013,15 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
                 .keys()
                 .chain(s.adopted_sinks.keys())
                 .map(|name| {
-                    let device = s
+                    let devices = s
                         .channel_targets
                         .get(name)
-                        .and_then(|id| s.nodes.get(id))
-                        .and_then(|n| n.props.get("node.name").cloned());
-                    (name.clone(), device)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|id| s.nodes.get(id))
+                        .filter_map(|n| n.props.get("node.name").cloned())
+                        .collect();
+                    (name.clone(), devices)
                 })
                 .collect();
             let _ = reply.send(Ok(resolved));
@@ -2368,19 +2437,29 @@ fn handle_cmd(state: &Rc<RefCell<State>>, registry: &RegistryRc, cmd: Cmd) {
             metadata.set_property(0, key, Some("Spa:String:JSON"), Some(&value));
             let _ = reply.send(Ok(()));
         }
-        Cmd::SetChannelOutput {
+        Cmd::SetChannelOutputs {
             sink_name,
-            output_name,
+            outputs,
             reply,
         } => {
             if !is_virtual_sink(&sink_name) {
                 let _ = reply.send(Err(SinkError::UnknownSink(sink_name)));
                 return;
             }
+            // Same guard as the command layer: profiles restore through the
+            // backend directly, and a stale saved target must never link a
+            // channel's monitor into one of our own nodes.
+            let outputs = match crate::audio::types::checked_channel_outputs(&sink_name, &outputs) {
+                Ok(outputs) => outputs,
+                Err(e) => {
+                    let _ = reply.send(Err(e));
+                    return;
+                }
+            };
             state
                 .borrow_mut()
                 .channel_outputs
-                .insert(sink_name, output_name);
+                .insert(sink_name, outputs);
             ensure_all_links(state);
             let _ = reply.send(Ok(()));
         }
@@ -2652,30 +2731,138 @@ mod tests {
     }
 
     #[test]
-    fn resolve_target_covers_the_failover_matrix() {
+    fn resolve_targets_covers_the_failover_matrix() {
+        let none: Vec<u32> = Vec::new();
         // Pinned and present -> that device, failover on or off.
-        assert_eq!(
-            resolve_target(Some(7), true, false, Some(1), Some(2)),
-            Some(7)
-        );
-        assert_eq!(
-            resolve_target(Some(7), true, true, Some(1), Some(2)),
-            Some(7)
-        );
+        assert_eq!(resolve_targets(&[7], true, false, Some(1), Some(2)), [7]);
+        assert_eq!(resolve_targets(&[7], true, true, Some(1), Some(2)), [7]);
         // Follow-default, failover on -> default, else the fallback sink.
-        assert_eq!(
-            resolve_target(None, false, false, Some(1), Some(2)),
-            Some(1)
-        );
-        assert_eq!(resolve_target(None, false, false, None, Some(2)), Some(2));
+        assert_eq!(resolve_targets(&[], false, false, Some(1), Some(2)), [1]);
+        assert_eq!(resolve_targets(&[], false, false, None, Some(2)), [2]);
         // Follow-default, failover off -> default only; silent when it's gone.
-        assert_eq!(resolve_target(None, false, true, Some(1), Some(2)), Some(1));
-        assert_eq!(resolve_target(None, false, true, None, Some(2)), None);
+        assert_eq!(resolve_targets(&[], false, true, Some(1), Some(2)), [1]);
+        assert_eq!(resolve_targets(&[], false, true, None, Some(2)), none);
         // Pinned but gone, failover on -> default then fallback.
-        assert_eq!(resolve_target(None, true, false, Some(1), Some(2)), Some(1));
-        assert_eq!(resolve_target(None, true, false, None, Some(2)), Some(2));
+        assert_eq!(resolve_targets(&[], true, false, Some(1), Some(2)), [1]);
+        assert_eq!(resolve_targets(&[], true, false, None, Some(2)), [2]);
         // Pinned but gone, failover off -> silence, never another device.
-        assert_eq!(resolve_target(None, true, true, Some(1), Some(2)), None);
+        assert_eq!(resolve_targets(&[], true, true, Some(1), Some(2)), none);
+    }
+
+    fn sets(entries: &[(u32, &[(u32, u32)])]) -> HashMap<u32, PortPairs> {
+        entries.iter().map(|(t, p)| (*t, p.to_vec())).collect()
+    }
+
+    fn plan(entries: &[(u32, &[(u32, u32)])]) -> Vec<(u32, PortPairs)> {
+        entries.iter().map(|(t, p)| (*t, p.to_vec())).collect()
+    }
+
+    const SPEAKERS: &[(u32, u32)] = &[(10, 70), (11, 71)];
+    const HEADSET: &[(u32, u32)] = &[(10, 80), (11, 81)];
+    const NONE: Vec<u32> = Vec::new();
+
+    #[test]
+    fn adding_a_device_leaves_the_playing_set_untouched() {
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS)]),
+            &plan(&[(7, SPEAKERS), (8, HEADSET)]),
+        );
+        assert_eq!(stale, NONE, "the speakers keep their links");
+        assert_eq!(missing, [8]);
+    }
+
+    #[test]
+    fn losing_a_device_drops_only_its_set() {
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS), (8, HEADSET)]),
+            &plan(&[(7, SPEAKERS)]),
+        );
+        assert_eq!(stale, [8]);
+        assert_eq!(missing, NONE);
+    }
+
+    #[test]
+    fn an_unchanged_plan_touches_nothing() {
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS), (8, HEADSET)]),
+            &plan(&[(8, HEADSET), (7, SPEAKERS)]),
+        );
+        assert_eq!((stale, missing), (NONE, NONE));
+    }
+
+    /// An EQ insert coming or going changes the source ports: every device
+    /// is re-linked from the new source.
+    #[test]
+    fn a_new_source_rebuilds_every_device() {
+        let from_eq: &[(u32, u32)] = &[(20, 70), (21, 71)];
+        let headset_from_eq: &[(u32, u32)] = &[(20, 80), (21, 81)];
+        let (stale, missing) = diff_link_sets(
+            &sets(&[(7, SPEAKERS), (8, HEADSET)]),
+            &plan(&[(7, from_eq), (8, headset_from_eq)]),
+        );
+        assert_eq!(stale, [7, 8]);
+        assert_eq!(missing, [7, 8]);
+    }
+
+    /// A device whose ports aren't known yet has nothing to link; its old
+    /// set goes and nothing is built until the ports show up.
+    #[test]
+    fn a_device_without_ports_is_dropped_and_not_rebuilt() {
+        let (stale, missing) =
+            diff_link_sets(&sets(&[(7, SPEAKERS)]), &plan(&[(7, &[]), (8, &[])]));
+        assert_eq!(stale, [7]);
+        assert_eq!(missing, NONE);
+    }
+
+    #[test]
+    fn listening_adds_nothing_where_the_channel_already_plays() {
+        let both = sets(&[(7, SPEAKERS), (8, HEADSET)]);
+        // The default (8) is one of the channel's own devices.
+        assert!(plays_on(Some(&both), Some(8)));
+        // It plays elsewhere: listening needs its own links.
+        assert!(!plays_on(Some(&both), Some(9)));
+        assert!(!plays_on(Some(&both), None));
+        assert!(!plays_on(None::<&HashMap<u32, PortPairs>>, Some(8)));
+    }
+
+    #[test]
+    fn devices_list_in_a_stable_readable_order() {
+        let device = |index, name: &str, description: &str| OutputDevice {
+            index,
+            name: name.into(),
+            description: description.into(),
+        };
+        let mut devices = vec![
+            device(9, "alsa_output.pci", "speakers"),
+            device(4, "alsa_output.usb-b", "Arctis Nova 5"),
+            device(7, "alsa_output.hdmi", "HDMI Display"),
+            device(2, "alsa_output.usb-a", "Arctis Nova 5"),
+        ];
+        sort_devices(&mut devices);
+        let names: Vec<&str> = devices.iter().map(|d| d.name.as_str()).collect();
+        // By description ignoring case; twins fall back to the node name.
+        assert_eq!(
+            names,
+            [
+                "alsa_output.usb-a",
+                "alsa_output.usb-b",
+                "alsa_output.hdmi",
+                "alsa_output.pci"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_channel_plays_on_every_chosen_device_that_is_present() {
+        // Headphones (7) and speakers (8) chosen, both plugged in.
+        assert_eq!(
+            resolve_targets(&[7, 8], true, false, Some(1), Some(2)),
+            [7, 8]
+        );
+        // Headphones unplugged: the speakers carry on alone. The default (1)
+        // is a device nobody picked, so it stays out while one choice plays.
+        assert_eq!(resolve_targets(&[8], true, false, Some(1), Some(2)), [8]);
+        assert_eq!(resolve_targets(&[8], true, true, Some(1), Some(2)), [8]);
     }
 
     #[test]
@@ -2742,8 +2929,8 @@ mod tests {
             s.monitored.insert(ch.into());
             s.channel_strict.insert(ch.into());
             s.channel_outputs
-                .insert(ch.into(), Some("alsa_output.usb".into()));
-            s.channel_targets.insert(ch.into(), 42);
+                .insert(ch.into(), vec!["alsa_output.usb".into()]);
+            s.channel_targets.insert(ch.into(), vec![42]);
             s.eq_configs.insert(ch.into(), EqConfig::default());
             s.bus_member_gains.insert((mix.clone(), ch.into()), 70);
         }

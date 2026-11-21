@@ -185,6 +185,9 @@ export interface ProfileInfo {
 export const UNASSIGNED = "";
 
 export const MAX_VOLUME = 150;
+
+/** Mirrors Rust MAX_CHANNEL_OUTPUTS: how many devices one channel plays on. */
+export const MAX_CHANNEL_OUTPUTS = 8;
 export const MAX_MIC_GAIN = 200;
 /** Levels key for the mic chain. */
 export const MIC_LEVEL_KEY = "sink_mic";

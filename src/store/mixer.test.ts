@@ -196,6 +196,52 @@ describe("onBackendReconnected", () => {
   });
 });
 
+describe("setChannelOutputs", () => {
+  // The poll reads choices from before the click; applied late, it unticked
+  // the device just ticked, and the next tick was built on the stale list.
+  it("a poll that overlaps an output change does not undo it", async () => {
+    let settle: () => void = () => {};
+    invoke.mockImplementation((cmd: string) => {
+      if (cmd === "set_channel_outputs") return new Promise<void>((r) => (settle = r));
+      if (cmd === "get_channel_outputs") return Promise.resolve({ sink_music: ["headset"] });
+      if (cmd === "get_output_devices") return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+    useMixerStore.setState({ channelOutputs: { sink_music: ["headset"] } });
+
+    const write = useMixerStore.getState().setChannelOutputs("sink_music", ["headset", "speakers"]);
+    await useMixerStore.getState().fetchOutputs();
+    expect(useMixerStore.getState().channelOutputs.sink_music).toEqual(["headset", "speakers"]);
+
+    settle();
+    await write;
+    expect(useMixerStore.getState().channelOutputs.sink_music).toEqual(["headset", "speakers"]);
+  });
+
+  it("a later poll still brings in what the backend has", async () => {
+    invoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_channel_outputs") return Promise.resolve({ sink_music: ["tv"] });
+      if (cmd === "get_output_devices") return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+    await useMixerStore.getState().setChannelOutputs("sink_music", ["headset"]);
+    await useMixerStore.getState().fetchOutputs();
+    expect(useMixerStore.getState().channelOutputs.sink_music).toEqual(["tv"]);
+  });
+
+  it("a refused change shows the error and falls back to the backend's list", async () => {
+    invoke.mockImplementation((cmd: string) => {
+      if (cmd === "set_channel_outputs") return Promise.reject("at most 8 devices");
+      if (cmd === "get_channel_outputs") return Promise.resolve({ sink_music: ["headset"] });
+      if (cmd === "get_output_devices") return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+    await useMixerStore.getState().setChannelOutputs("sink_music", ["headset", "nope"]);
+    expect(useMixerStore.getState().error).toBe("at most 8 devices");
+    expect(useMixerStore.getState().channelOutputs.sink_music).toEqual(["headset"]);
+  });
+});
+
 describe("removeChannel", () => {
   it("drops the deleted channel's listen toggle and keeps the others", async () => {
     useMixerStore.setState({ monitors: { sink_game: true, sink_chat: true } });
