@@ -133,11 +133,11 @@ jobs:
           # --version, package metadata) matches the release instead of 0.1.0.
           sed -i '0,/^version = /{s/^version = .*/version = "'"$ver"'"/}' src-tauri/Cargo.toml
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       - name: Verify (never publish untested code)
         run: |
-          npx tsc --noEmit
+          npm run typecheck
           npm test
           cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
           cargo test --manifest-path src-tauri/Cargo.toml

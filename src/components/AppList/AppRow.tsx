@@ -107,7 +107,7 @@ export function AppRow({ streams, total }: Readonly<AppRowProps>) {
           value={stream.volume_percent}
           max={100}
           onChange={(v) => {
-            for (const s of streams) void setAppVolume(s.index, v);
+            for (const s of streams) setAppVolume(s.index, v);
           }}
         />
         <ChannelSelect

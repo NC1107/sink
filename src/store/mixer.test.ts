@@ -38,8 +38,8 @@ describe("setChannelVolume", () => {
     useMixerStore.setState({ channels: [channel("sink_game")] });
     const store = useMixerStore.getState();
 
-    await store.setChannelVolume("sink_game", 40);
-    await store.setChannelVolume("sink_game", 55);
+    store.setChannelVolume("sink_game", 40);
+    store.setChannelVolume("sink_game", 55);
 
     // Optimistic: the strip moved on the second call already…
     expect(useMixerStore.getState().channels[0].volume_percent).toBe(55);
@@ -59,8 +59,8 @@ describe("setChannelVolume", () => {
     useMixerStore.setState({ channels: [channel("sink_game"), channel("sink_chat")] });
     const store = useMixerStore.getState();
 
-    await store.setChannelVolume("sink_game", 10);
-    await store.setChannelVolume("sink_chat", 20);
+    store.setChannelVolume("sink_game", 10);
+    store.setChannelVolume("sink_chat", 20);
     vi.advanceTimersByTime(100);
 
     expect(invoke).toHaveBeenCalledTimes(2);
@@ -156,9 +156,9 @@ describe("setChannelEq", () => {
       enabled: true,
     };
 
-    await store.setChannelEq("sink_game", { ...config, preamp_db: -2 });
-    await store.setChannelEq("sink_game", { ...config, preamp_db: -5 });
-    await store.setChannelEq("sink_chat", config);
+    store.setChannelEq("sink_game", { ...config, preamp_db: -2 });
+    store.setChannelEq("sink_game", { ...config, preamp_db: -5 });
+    store.setChannelEq("sink_chat", config);
 
     // Optimistic: both channels reflect their latest config immediately…
     expect(useMixerStore.getState().eqConfigs["sink_game"].preamp_db).toBe(-5);

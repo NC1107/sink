@@ -34,7 +34,7 @@ export function ChannelEqModal({
       name={channel.label}
       target="output"
       config={config}
-      onChange={(next) => void setChannelEq(channel.name, next)}
+      onChange={(next) => setChannelEq(channel.name, next)}
       open={open}
       onClose={onClose}
     />

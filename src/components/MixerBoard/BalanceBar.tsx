@@ -42,8 +42,8 @@ export function BalanceBar() {
     const clamped = Math.max(-1, Math.min(1, p));
     // Snap to true center near the middle.
     const snapped = Math.abs(clamped) < 0.04 ? 0 : clamped;
-    void setChannelVolume(a.name, Math.round(100 * Math.min(1, 1 - snapped)));
-    void setChannelVolume(b.name, Math.round(100 * Math.min(1, 1 + snapped)));
+    setChannelVolume(a.name, Math.round(100 * Math.min(1, 1 - snapped)));
+    setChannelVolume(b.name, Math.round(100 * Math.min(1, 1 + snapped)));
   };
 
   const fromEvent = (clientX: number) => {
