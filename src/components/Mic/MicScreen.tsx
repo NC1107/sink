@@ -98,13 +98,13 @@ export function MicScreen() {
               value={micConfig.output_label}
               maxLength={32}
               title="How other apps list your processed mic"
-              onChange={(e) => void setMicConfig({ output_label: e.target.value })}
+              onChange={(e) => setMicConfig({ output_label: e.target.value })}
             />
             <Toggle
               on={micConfig.enabled}
               label="Microphone"
               title={waiting ? `Waiting for ${micConfig.input_device}` : undefined}
-              onClick={() => void setMicConfig({ enabled: !micConfig.enabled })}
+              onClick={() => setMicConfig({ enabled: !micConfig.enabled })}
             />
           </div>
           <div className={"mic-card-body" + (micConfig.enabled ? "" : " mic-disabled")}>
@@ -131,7 +131,7 @@ export function MicScreen() {
                     icon="mic"
                     selected={micConfig.input_device === null}
                     onClick={() => {
-                      void setMicConfig({ input_device: null });
+                      setMicConfig({ input_device: null });
                       setDeviceOpen(false);
                     }}
                   >
@@ -143,7 +143,7 @@ export function MicScreen() {
                       icon="mic"
                       selected={d.name === micConfig.input_device}
                       onClick={() => {
-                        void setMicConfig({ input_device: d.name });
+                        setMicConfig({ input_device: d.name });
                         setDeviceOpen(false);
                       }}
                     >
@@ -157,7 +157,7 @@ export function MicScreen() {
                 className={"sbtn" + (micConfig.muted ? " on-mute" : "")}
                 style={{ width: 34, flex: "0 0 34px" }}
                 title={micConfig.muted ? "Unmute mic" : "Mute mic"}
-                onClick={() => void setMicConfig({ muted: !micConfig.muted })}
+                onClick={() => setMicConfig({ muted: !micConfig.muted })}
               >
                 <Ms name={micConfig.muted ? "mic_off" : "mic"} style={{ fontSize: 18 }} />
               </button>
@@ -179,7 +179,7 @@ export function MicScreen() {
               <HSlider
                 value={micConfig.gain_percent}
                 max={MAX_MIC_GAIN}
-                onChange={(v) => void setMicConfig({ gain_percent: v })}
+                onChange={(v) => setMicConfig({ gain_percent: v })}
               />
             </div>
           </div>
@@ -190,14 +190,14 @@ export function MicScreen() {
           <div className="card" style={{ padding: "var(--sp-2)" }}>
             <NoiseSuppressionRow
               mode={micConfig.noise_suppression}
-              onMode={(m) => void setMicConfig({ noise_suppression: m })}
+              onMode={(m) => setMicConfig({ noise_suppression: m })}
             />
             <ToggleRow
               icon="noise_control_off"
               title="Noise gate"
               sub="Cuts the noise floor between words"
               on={micConfig.gate_enabled}
-              onToggle={() => void setMicConfig({ gate_enabled: !micConfig.gate_enabled })}
+              onToggle={() => setMicConfig({ gate_enabled: !micConfig.gate_enabled })}
             />
             {micConfig.gate_enabled && (
               <DspSlider
@@ -208,7 +208,7 @@ export function MicScreen() {
                 unit=" dB"
                 value={micConfig.gate_threshold_db}
                 defaultValue={MIC_DSP_DEFAULTS.gate_threshold_db}
-                onChange={(v) => void setMicConfig({ gate_threshold_db: v })}
+                onChange={(v) => setMicConfig({ gate_threshold_db: v })}
               />
             )}
             <ToggleRow
@@ -216,7 +216,7 @@ export function MicScreen() {
               title="Compressor"
               sub="Evens out loud peaks and quiet speech"
               on={micConfig.comp_enabled}
-              onToggle={() => void setMicConfig({ comp_enabled: !micConfig.comp_enabled })}
+              onToggle={() => setMicConfig({ comp_enabled: !micConfig.comp_enabled })}
             />
             {micConfig.comp_enabled && (
               <>
@@ -228,7 +228,7 @@ export function MicScreen() {
                   unit=" dB"
                   value={micConfig.comp_threshold_db}
                   defaultValue={MIC_DSP_DEFAULTS.comp_threshold_db}
-                  onChange={(v) => void setMicConfig({ comp_threshold_db: v })}
+                  onChange={(v) => setMicConfig({ comp_threshold_db: v })}
                 />
                 <DspSlider
                   label="Ratio"
@@ -238,7 +238,7 @@ export function MicScreen() {
                   unit=":1"
                   value={micConfig.comp_ratio}
                   defaultValue={MIC_DSP_DEFAULTS.comp_ratio}
-                  onChange={(v) => void setMicConfig({ comp_ratio: v })}
+                  onChange={(v) => setMicConfig({ comp_ratio: v })}
                 />
               </>
             )}
@@ -247,7 +247,7 @@ export function MicScreen() {
               title="Limiter"
               sub="Hard ceiling - nothing clips downstream"
               on={micConfig.limiter_enabled}
-              onToggle={() => void setMicConfig({ limiter_enabled: !micConfig.limiter_enabled })}
+              onToggle={() => setMicConfig({ limiter_enabled: !micConfig.limiter_enabled })}
             />
             {micConfig.limiter_enabled && (
               <DspSlider
@@ -258,7 +258,7 @@ export function MicScreen() {
                 unit=" dB"
                 value={micConfig.limiter_ceiling_db}
                 defaultValue={MIC_DSP_DEFAULTS.limiter_ceiling_db}
-                onChange={(v) => void setMicConfig({ limiter_ceiling_db: v })}
+                onChange={(v) => setMicConfig({ limiter_ceiling_db: v })}
               />
             )}
           </div>

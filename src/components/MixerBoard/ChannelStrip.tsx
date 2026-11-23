@@ -151,7 +151,7 @@ export function ChannelStrip({
         <Fader
           value={channel.volume_percent}
           max={MAX_VOLUME}
-          onChange={(v) => void setChannelVolume(channel.name, v)}
+          onChange={(v) => setChannelVolume(channel.name, v)}
         />
         <VuMeter target={channel.muted ? 0 : perceptual(amplitude)} />
       </div>
@@ -159,7 +159,7 @@ export function ChannelStrip({
       <VolumeReadout
         percent={channel.volume_percent}
         max={MAX_VOLUME}
-        onChange={(v: number) => void setChannelVolume(channel.name, v)}
+        onChange={(v: number) => setChannelVolume(channel.name, v)}
       />
 
       <div className="strip-btns">

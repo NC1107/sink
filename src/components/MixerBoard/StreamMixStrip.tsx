@@ -49,7 +49,7 @@ export function BusStrip({ bus }: Readonly<{ bus: BusDef }>) {
 
   const amplitude = Math.max(level?.[0] ?? 0, level?.[1] ?? 0);
 
-  const applyVolume = (v: number) => void setBusVolume(bus.name, v);
+  const applyVolume = (v: number) => setBusVolume(bus.name, v);
   const toggleMute = () => void setBusMute(bus.name, !muted);
   // What this mix actually carries (mode-aware).
   const allNames = channels.map((c) => c.name);

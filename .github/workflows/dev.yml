@@ -123,10 +123,10 @@ jobs:
           }
           apt_try || { sleep 30; apt_try; } || { sleep 120; apt_try; }
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run format:check
       - run: npm run lint
-      - run: npx tsc --noEmit
+      - run: npm run typecheck
       - run: npm test
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -141,7 +141,7 @@ jobs:
         run: |
           set -euo pipefail
           url="https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -sSfL --retry 3 -o /tmp/actionlint.tar.gz "$url"
+          curl --proto "=https" --tlsv1.2 -sSfL --retry 3 -o /tmp/actionlint.tar.gz "$url"
           echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
           tar xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           /tmp/actionlint -color
@@ -198,7 +198,7 @@ jobs:
           }
           apt_try || { sleep 30; apt_try; } || { sleep 120; apt_try; }
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run tauri build
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
