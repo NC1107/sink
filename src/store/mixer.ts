@@ -64,12 +64,12 @@ interface MixerStore {
   /** Channel -> parametric EQ (absent = never configured, i.e. default). */
   eqConfigs: Record<string, EqConfig>;
   fetchEq: () => Promise<void>;
-  setChannelEq: (sinkName: string, config: EqConfig) => Promise<void>;
+  setChannelEq: (sinkName: string, config: EqConfig) => void;
   /** Null until loaded. */
   micConfig: MicConfig | null;
   inputDevices: OutputDevice[];
   fetchMic: () => Promise<void>;
-  setMicConfig: (patch: Partial<MicConfig>) => Promise<void>;
+  setMicConfig: (patch: Partial<MicConfig>) => void;
   profiles: ProfileInfo[];
   /** Bind or clear the output device that auto-loads a profile. */
   setProfileTrigger: (name: string, device: string | null) => Promise<void>;
@@ -115,12 +115,12 @@ interface MixerStore {
   /** Which device list the mix shows up in. */
   setBusRole: (name: string, role: MixRole) => Promise<void>;
   /** A mix's playback level for recorders (0-150%); persisted. */
-  setBusVolume: (name: string, volume: number) => Promise<void>;
+  setBusVolume: (name: string, volume: number) => void;
   /** Mute a mix for recorders; persisted. */
   setBusMute: (name: string, muted: boolean) => Promise<void>;
   /** One member's send level within one mix (0-150%; 100 = no override);
    *  persisted, independent of the member's own volume. */
-  setBusMemberGain: (bus: string, member: string, percent: number) => Promise<void>;
+  setBusMemberGain: (bus: string, member: string, percent: number) => void;
   /** Open (or focus) the popout window with one mix's send levels. */
   openMixFaderWindow: (bus: string) => Promise<void>;
   /** Session-scoped "listen on default output" toggles per node. */
@@ -157,10 +157,10 @@ interface MixerStore {
   initialize: () => Promise<void>;
   fetchChannels: () => Promise<void>;
   fetchAppStreams: () => Promise<void>;
-  setChannelVolume: (sinkName: string, volume: number) => Promise<void>;
+  setChannelVolume: (sinkName: string, volume: number) => void;
   toggleMute: (sinkName: string, muted: boolean) => Promise<void>;
   routeApp: (streamIndex: number, sinkName: string) => Promise<void>;
-  setAppVolume: (streamIndex: number, volume: number) => Promise<void>;
+  setAppVolume: (streamIndex: number, volume: number) => void;
   fetchProfiles: () => Promise<void>;
   loadProfile: (name: string) => Promise<void>;
   deleteProfile: (name: string) => Promise<void>;
@@ -329,7 +329,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setChannelVolume: async (sinkName, volume) => {
+  setChannelVolume: (sinkName, volume) => {
     set((s) => ({
       channels: s.channels.map((c) => (c.name === sinkName ? { ...c, volume_percent: volume } : c)),
     }));
@@ -373,7 +373,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setAppVolume: async (streamIndex, volume) => {
+  setAppVolume: (streamIndex, volume) => {
     set((s) => ({
       appStreams: s.appStreams.map((a) =>
         a.index === streamIndex ? { ...a, volume_percent: volume } : a,
@@ -454,7 +454,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setChannelEq: async (sinkName, config) => {
+  setChannelEq: (sinkName, config) => {
     set({ eqConfigs: { ...get().eqConfigs, [sinkName]: config } });
     // Debounced per channel: a band drag settles into one apply, and two
     // open EQ panels never clobber each other's pending call.
@@ -476,7 +476,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setMicConfig: async (patch) => {
+  setMicConfig: (patch) => {
     const current = get().micConfig;
     if (!current) return;
     const config = { ...current, ...patch };
@@ -738,7 +738,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     }
   },
 
-  setBusVolume: async (name, volume) => {
+  setBusVolume: (name, volume) => {
     set((s) => ({
       buses: s.buses.map((b) => (b.name === name ? { ...b, volume_percent: volume } : b)),
     }));
@@ -748,7 +748,7 @@ export const useMixerStore = create<MixerStore>((set, get) => ({
     });
   },
 
-  setBusMemberGain: async (bus, member, percent) => {
+  setBusMemberGain: (bus, member, percent) => {
     set((s) => ({
       buses: s.buses.map((b) =>
         b.name === bus ? { ...b, member_gains: { ...b.member_gains, [member]: percent } } : b,

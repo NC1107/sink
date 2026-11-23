@@ -12,7 +12,7 @@ if grep -qiE 'panicked at|error while loading shared libraries|cannot open share
   echo "::error::sink failed to start cleanly - see the log above"
   exit 1
 fi
-if [ "$code" -ne 124 ]; then
+if [[ "$code" -ne 124 ]]; then
   echo "::error::sink exited early (code $code) instead of staying alive for 25s"
   exit 1
 fi

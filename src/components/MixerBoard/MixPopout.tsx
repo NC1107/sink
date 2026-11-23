@@ -86,7 +86,7 @@ export function MixPopout({ busName }: Readonly<{ busName: string }>) {
                 icon="mic"
                 label="Microphone"
                 value={bus.member_gains[MIC_LEVEL_KEY] ?? 100}
-                onChange={(v) => void setBusMemberGain(bus.name, MIC_LEVEL_KEY, v)}
+                onChange={(v) => setBusMemberGain(bus.name, MIC_LEVEL_KEY, v)}
               />
             )}
             {channels
@@ -97,7 +97,7 @@ export function MixPopout({ busName }: Readonly<{ busName: string }>) {
                   icon={channelIcon(c)}
                   label={c.label}
                   value={bus.member_gains[c.name] ?? 100}
-                  onChange={(v) => void setBusMemberGain(bus.name, c.name, v)}
+                  onChange={(v) => setBusMemberGain(bus.name, c.name, v)}
                 />
               ))}
             {!bus.mic && carried.length === 0 && (
